@@ -16,7 +16,7 @@ const corsOptions = {
   origin: [
     'http://localhost:3000',           // za lokalni development
     'http://localhost:5173',           // za Vite development
-    'https://your-frontend.vercel.app', // zameni sa svojim Vercel URL-om kada ga dobiješ
+    'https://robotik-three.vercel.app/', // zameni sa svojim Vercel URL-om kada ga dobiješ
     'https://robotikb.onrender.com'    // za testiranje backend-a
   ],
   credentials: true,
