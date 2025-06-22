@@ -10,8 +10,22 @@ const multer = require('multer');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+
+// CORS konfiguracija - DODAJ OVO!
+const corsOptions = {
+  origin: [
+    'http://localhost:3000',           // za lokalni development
+    'http://localhost:5173',           // za Vite development
+    'https://your-frontend.vercel.app', // zameni sa svojim Vercel URL-om kada ga dobiješ
+    'https://robotikb.onrender.com'    // za testiranje backend-a
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(morgan('dev'));
 
