@@ -1,0 +1,2693 @@
+[
+  {
+    "id": "1750546864105.513",
+    "category": "cam",
+    "description": "MODUL CI- CRYPTOGUARD",
+    "serialNumber": "450077992",
+    "location": "user-25533503",
+    "status": "in-use",
+    "assignedAt": "2025-06-21T23:08:43.429Z"
+  },
+  {
+    "id": "1750546864105.4856",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC63144D2",
+    "location": "tehnicar-1",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:38:46.611Z"
+  },
+  {
+    "id": "1750546864105.4995",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC631ED96",
+    "location": "tehnicar-1",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:38:46.611Z"
+  },
+  {
+    "id": "1750546864105.0647",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "4519204763",
+    "location": "tehnicar-1",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:38:46.611Z"
+  },
+  {
+    "id": "1750546864105.14",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "4612502751",
+    "location": "tehnicar-1",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:38:46.611Z"
+  },
+  {
+    "id": "1750546864105.8264",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160383321",
+    "location": "tehnicar-1",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:38:46.611Z"
+  },
+  {
+    "id": "1750546864105.2266",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160383327",
+    "location": "tehnicar-1",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:38:46.611Z"
+  },
+  {
+    "id": "1750546864105.5444",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160383336",
+    "location": "tehnicar-1748387231451",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:40:40.626Z"
+  },
+  {
+    "id": "1750546864105.9204",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160383339",
+    "location": "user-26394678",
+    "status": "in-use",
+    "assignedAt": "2025-06-21T23:40:40.626Z"
+  },
+  {
+    "id": "1750546864105.0298",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160383341",
+    "location": "defective",
+    "status": "defective",
+    "assignedAt": "2025-06-21T23:40:40.626Z"
+  },
+  {
+    "id": "1750546864105.974",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160383342",
+    "location": "tehnicar-1748387231451",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:40:40.626Z"
+  },
+  {
+    "id": "1750546864105.8289",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160383343",
+    "location": "tehnicar-1748387231451",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:40:40.626Z"
+  },
+  {
+    "id": "1750546864105.0732",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160383344",
+    "location": "tehnicar-1748387231451",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:40:40.626Z"
+  },
+  {
+    "id": "1750546864105.7454",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160385546",
+    "location": "tehnicar-1748387231451",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:40:40.626Z"
+  },
+  {
+    "id": "1750546864105.094",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160385547",
+    "location": "tehnicar-1748387231451",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:40:40.626Z"
+  },
+  {
+    "id": "1750546864105.401",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160385548",
+    "location": "tehnicar-1748387231451",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:40:40.626Z"
+  },
+  {
+    "id": "1750546864105.4417",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160385551",
+    "location": "tehnicar-1748387231451",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:40:40.626Z"
+  },
+  {
+    "id": "1750546864105.6082",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160385553",
+    "location": "tehnicar-1748387231451",
+    "status": "available",
+    "assignedAt": "2025-06-21T23:40:40.626Z"
+  },
+  {
+    "id": "1750546864105.3188",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160385558",
+    "location": "tehnicar-1",
+    "status": "available",
+    "assignedAt": "2025-06-22T14:09:50.429Z"
+  },
+  {
+    "id": "1750546864105.9302",
+    "category": "stb",
+    "description": "UREĐAJ STB SKY MASTER XC2",
+    "serialNumber": "160385560",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5735",
+    "category": "cam",
+    "description": "KARTICA TV - CRYPTOGUARD",
+    "serialNumber": "240895878241",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.273",
+    "category": "cam",
+    "description": "KARTICA TV - CRYPTOGUARD",
+    "serialNumber": "240895898249",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7349",
+    "category": "cam",
+    "description": "KARTICA TV - CRYPTOGUARD",
+    "serialNumber": "240895958240",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6948",
+    "category": "cam",
+    "description": "KARTICA TV - CRYPTOGUARD",
+    "serialNumber": "240906240241",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1658",
+    "category": "cam",
+    "description": "KARTICA TV - CRYPTOGUARD",
+    "serialNumber": "240911500248",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7324",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635686",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8135",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635696",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.783",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635730",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8516",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635822",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.733",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635830",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0183",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635869",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635870",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6758",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635871",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2603",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635880",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3254",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635895",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.444",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635896",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7258",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635902",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.217",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635903",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0835",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635904",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0574",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635905",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9763",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635908",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5618",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635912",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3035",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635913",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9666",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635914",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2036",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635917",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6782",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635921",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0522",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635925",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7444",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043635932",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7957",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043636471",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7097",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043636609",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7798",
+    "category": "fiksni telefon",
+    "description": "BAT GIGASET A116 BLACK KORISNIČKA",
+    "serialNumber": "101043637058",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2185",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D3EFAA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1504",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D3F2AA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1255",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D3F4AA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7278",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D3F5AA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3406",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D3FBAA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5085",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D42FAA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1494",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D430AA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8923",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D431AA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3608",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D437AA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1184",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D43CAA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8276",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D458AA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4268",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D45EAA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6716",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D468AA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.548",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D46EAA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4648",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8245W5-6T",
+    "serialNumber": "48575443D8D47EAA",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0225",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080001",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8584",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080002",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.045",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080003",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2034",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080004",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.045",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080006",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9138",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080007",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.365",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080008",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.249",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080009",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.102",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080010",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0125",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080011",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.816",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080013",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5654",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080014",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0588",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080015",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6494",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080017",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.867",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080018",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6873",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080019",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2527",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080020",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4023",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080021",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.587",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080022",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.933",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080023",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6394",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080024",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5225",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080026",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6614",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080027",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6667",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080028",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9573",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080029",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7717",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080030",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7727",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080031",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1895",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080032",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8982",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080034",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0613",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080035",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.048",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080036",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7969",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080037",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7385",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080038",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8105",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080039",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6233",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080040",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6711",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080041",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.637",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080042",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4836",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080043",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.457",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080044",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0452",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080045",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.606",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080046",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2925",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080047",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0706",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080048",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4656",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080049",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0833",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080050",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7139",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080051",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7886",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080052",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6892",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080053",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.656",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080054",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.791",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080055",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8044",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080056",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6975",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080057",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.632",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080058",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0642",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080059",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.513",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080060",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.709",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080061",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7698",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080062",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1077",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080065",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.526",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080066",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2275",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080067",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5667",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080068",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.095",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080069",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.605",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080070",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0051",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080071",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.572",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080072",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7314",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080073",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2444",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080074",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.999",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080075",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0693",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080076",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4707",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080077",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4648",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080078",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.16",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080079",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4683",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080080",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.524",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080081",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1907",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080082",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3682",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080083",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864106",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080085",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.623",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080086",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3416",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080087",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4197",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080088",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6443",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080089",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0105",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080090",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9514",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080091",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.609",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080092",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1404",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080094",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9487",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080096",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3313",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080097",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.074",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080098",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4575",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080099",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7961",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23080100",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7676",
+    "category": "mini nod",
+    "description": "OPTIČKI ČVOR MINI 1550nm SA PON PORT WDM",
+    "serialNumber": "23081287",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.604",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202401004667",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4902",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202403003374",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4092",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202403005685",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6265",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202403009234",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2788",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202403009325",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.65",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202403009326",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1143",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202403009327",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.041",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202403009328",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.007",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202403012266",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.929",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC89EEB5F",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3188",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8AEA7E3",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1528",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8E0089F",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8167",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404000004",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5752",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404000040",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8174",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404000262",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.193",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404000438",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6772",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404001935",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1313",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404001966",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0493",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404001967",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7537",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404001968",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0376",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404002033",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1013",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404002034",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.905",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404002035",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8735",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404002036",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.452",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404002038",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1519",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404002108",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0115",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404002127",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.327",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404003716",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2349",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404005395",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.751",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404008426",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.486",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404008545",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3445",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404008568",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7043",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404008575",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0144",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404008576",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.636",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404008668",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7288",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404008801",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.238",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404009462",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.328",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404009465",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.15",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404009466",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4092",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404009592",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8303",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404013671",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9072",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404013769",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.991",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404013786",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.597",
+    "category": "hybrid",
+    "description": "UREĐAJ STB HIBRID -CRYPTOGUARD UCA-B160R",
+    "serialNumber": "TSR202404014062",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5864",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "485754433711B5B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2175",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "4857544337120CB0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.35",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371214B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4756",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "4857544337121AB0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3997",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "485754433712DEB0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2454",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "4857544337133EB0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7578",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "4857544337134FB0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.273",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "4857544337137DB0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.38",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "485754433713A7B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.772",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "485754433713B9B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9712",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "485754433713C6B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4958",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "485754433713D9B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7837",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "485754433713E9B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.008",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371426B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0547",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371427B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.038",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "4857544337145CB0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.026",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371476B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.014",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371541B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1362",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371557B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.108",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371605B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1309",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "4857544337167EB0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9702",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "4857544337169EB0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6467",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "485754433716F9B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2754",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371723B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0232",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "4857544337176AB0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8354",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371801B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7427",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371228B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8113",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371305B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3462",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371374B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.639",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "485754433713C7B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3926",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "4857544337159AB0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4492",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "485754433715D2B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1262",
+    "category": "modem",
+    "description": "UREĐAJ ONT HUAWEI HG8145X6-6TE",
+    "serialNumber": "48575443371719B0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7769",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "24536300216",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.421",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "4513202982",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5225",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "4535302362",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.385",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "4535305425",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.924",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "4537206230",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2883",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "4539506811",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1528",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "4545606294",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1484",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "4550302343",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6465",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "4552201430",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0845",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "16548306307",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8767",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "16608206379",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5618",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "29542300575",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.046",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "29742401857",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2131",
+    "category": "modem",
+    "description": "UREĐAJ MODEM TECHNICOLOR TC7210",
+    "serialNumber": "29902405324",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9497",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC430CC0A",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1638",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC430D79B",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3232",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC430FC16",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1738",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC89C86F6",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5923",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC89F1AAB",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5657",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC89F1F4F",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.456",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC89F22C3",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0803",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8AA2778",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3684",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8AA3AD1",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4995",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8AA3B73",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.714",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8AEC6B5",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5725",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8AEC892",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.196",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8AEC982",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3013",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8DAEF47",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9387",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8DFE19B",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6494",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8DFF9C1",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4534",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8E53C93",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5474",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8E55CD8",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.332",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8E9973A",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8447",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8E99F62",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3306",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8E9B53C",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7485",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8E9BFE3",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.43",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8E9C41D",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.727",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8EA1FB1",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.547",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8FA886B",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9084",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8FBD009",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7737",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC430EDAB",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3357",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC430F88C",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6516",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC430FE65",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.757",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC4310BE0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0632",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC43A2234",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4512",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827007F",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0654",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827021C",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6855",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82703B9",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9377",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82709D6",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.133",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8270D3E",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.532",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82710B1",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8323",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82719F4",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3508",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8271D40",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.8062",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8271ED3",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1357",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8271ED6",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.151",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827220E",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.173",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8272440",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3557",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8272962",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9941",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8272ABE",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7527",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8272DC7",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2727",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8273562",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5815",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82736A9",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9224",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82739E4",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7258",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82797C2",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7014",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827A123",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4558",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827A4F0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.693",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827A8FF",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.7996",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827A91A",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3875",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827AD21",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4563",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827B3EE",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.9895",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827B74A",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.527",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827BB48",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5312",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC827BF53",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1877",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82B6193",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1035",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82B63A9",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.752",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82B63CB",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2024",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82B642B",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3674",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82B65F0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5925",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82B672B",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2954",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82B6855",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3672",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82B6DA3",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3984",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82BE77C",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0935",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82BFE0B",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.835",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82C01C7",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3035",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82C06D6",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.4294",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82C0EB5",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.155",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82C0EDC",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2344",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82C11D0",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0745",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82C14C7",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3975",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82C1A85",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1973",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82C1B50",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.6172",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82C1C46",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1455",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82C1F06",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1458",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC82C1FAD",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.5676",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8DFF2C7",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.2383",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8E007D4",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.0986",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8E553E7",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3909",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8FA876C",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.1404",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8FBC89A",
+    "location": "magacin",
+    "status": "available"
+  },
+  {
+    "id": "1750546864105.3271",
+    "category": "modem",
+    "description": "UREĐAJ ONT ZXHN  ZTE F680",
+    "serialNumber": "ZTEGC8FBD556",
+    "location": "magacin",
+    "status": "available"
+  }
+]

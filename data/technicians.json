@@ -1,0 +1,49 @@
+[
+  {
+    "id": "1",
+    "name": "Marko Marković",
+    "password": "$2b$10$xOhWFNhWRAKsWQmULSaGHuAr9gNBx/NrSeChYRFZg/XrX22cp/C7W",
+    "materials": [
+      {
+        "materialId": "1",
+        "quantity": 10
+      },
+      {
+        "materialId": "2",
+        "quantity": 5
+      }
+    ],
+    "createdAt": "2023-05-15T12:00:00Z",
+    "updatedAt": "2025-05-27T14:56:41.334Z"
+  },
+  {
+    "id": "2",
+    "name": "Nikola Nikolić",
+    "password": "$2b$10$inWgV6cPRpIg5MuxJDBzLu1ETfu5QMgI.UJ4ZuVzfUG2bnIK7FsQe",
+    "materials": [],
+    "createdAt": "2023-05-20T14:30:00Z"
+  },
+  {
+    "id": "1748387231451",
+    "name": "matija sikic",
+    "password": "$2b$10$trBSyhgCmik1cePiK7PsZO37bLdDZaCWZIEgzIARzmQDGVGvuPkg2",
+    "materials": [
+      {
+        "materialId": "1748387407219",
+        "quantity": 1
+      }
+    ],
+    "createdAt": "2025-05-27T23:07:11.451Z",
+    "updatedAt": "2025-06-04T01:52:53.509Z",
+    "equipment": [
+      {
+        "equipmentId": "1748958547523.368",
+        "quantity": 1
+      },
+      {
+        "equipmentId": "1748958547523.649",
+        "quantity": 1
+      }
+    ]
+  }
+]
