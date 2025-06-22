@@ -10,24 +10,34 @@ const multer = require('multer');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-
-// CORS konfiguracija - DODAJ OVO!
+// CORS konfiguracija - ISPRAVKA!
 const corsOptions = {
   origin: [
-    'http://localhost:3000',           // za lokalni development
-    'http://localhost:5173',           // za Vite development
-    'https://robotik-three.vercel.app/', // zameni sa svojim Vercel URL-om kada ga dobiješ
-    'https://robotikb.onrender.com'    // za testiranje backend-a
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://robotik-three.vercel.app',  // UKLONJENO "/" na kraju!
+    'https://robotikb.onrender.com'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200 // Za starije browsere
 };
 
 // Middleware
 app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(morgan('dev'));
+
+// Test route - dodaj na vrh da testiraš
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'TelCo Inventory Management API is running!',
+    timestamp: new Date().toISOString(),
+    port: PORT,
+    cors: corsOptions.origin
+  });
+});
 
 // Konfiguracija za upload fajlova
 const storage = multer.diskStorage({
@@ -45,7 +55,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // Limit na 10MB
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -71,8 +81,6 @@ createEmptyJsonFile('materials.json');
 createEmptyJsonFile('technicians.json');
 createEmptyJsonFile('workorders.json');
 createEmptyJsonFile('users.json');
-
-// Dodaj sledeći kod u server.js, pre definisanja ruta:
 
 // Osiguraj da svi potrebni direktorijumi postoje
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -105,7 +113,6 @@ const exportRoutes = require('./routes/export');
 const usersRoutes = require('./routes/users');
 const userEquipmentRouter = require('./routes/userEquipment');
 
-
 // Definisanje ruta
 app.use('/api/auth', authRoutes);
 app.use('/api/equipment', equipmentRoutes);
@@ -116,20 +123,16 @@ app.use('/api/export', exportRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/user-equipment', userEquipmentRouter);
 
-// Osnovna ruta
-app.get('/', (req, res) => {
-  res.json({ message: 'Dobrodošli na TelCo Inventory Management API' });
-});
-
 // Rukovanje greškama
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: 'Došlo je do greške na serveru!' });
 });
 
-// Pokretanje servera
-app.listen(PORT, () => {
+// Pokretanje servera - ISPRAVKA!
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server pokrenut na portu: ${PORT}`);
+  console.log(`CORS omogućen za: ${corsOptions.origin.join(', ')}`);
 });
 
 module.exports = app;
