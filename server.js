@@ -39,6 +39,47 @@ app.get('/', (req, res) => {
   });
 });
 
+app.get('/download/:filename', (req, res) => {
+  const filename = req.params.filename;
+  
+  // Lista dozvoljenih fajlova (bezbednost)
+  const allowedFiles = [
+    'equipment.json',
+    'materials.json', 
+    'technicians.json',
+    'userequipment.json',
+    'users.json',
+    'workorders.json'
+  ];
+  
+  // Proveri da li je fajl dozvoljen
+  if (!allowedFiles.includes(filename)) {
+    return res.status(400).send('Invalid file requested');
+  }
+  
+  const filePath = path.join(__dirname, 'data', filename);
+  
+  // Proveri da li fajl postoji
+  if (fs.existsSync(filePath)) {
+    res.download(filePath, filename);
+  } else {
+    res.status(404).send('File not found');
+  }
+});
+
+// Endpoint da vrati listu dostupnih fajlova
+app.get('/files', (req, res) => {
+  const allowedFiles = [
+    'equipment.json',
+    'materials.json', 
+    'technicians.json',
+    'userequipment.json',
+    'users.json',
+    'workorders.json'
+  ];
+  res.json({ availableFiles: allowedFiles });
+});
+
 // Konfiguracija za upload fajlova
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
