@@ -7,3 +7,19 @@ yarn-debug.log*
 yarn-error.log*
 dist/
 build/
+
+
+
+# Data folder - NEVER push to git
+data/
+data/*
+/data/
+
+# Additional safety for specific data files
+*.json
+equipment.json
+materials.json
+technicians.json
+userequipment.json
+users.json
+workorders.json
