@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const xlsx = require('xlsx');
-const uuid = require('uuid');
+const { v4: uuidv4 } = require('uuid');
 
 const workordersFilePath = path.join(__dirname, '../data/workorders.json');
 const techniciansFilePath = path.join(__dirname, '../data/technicians.json');
@@ -388,7 +388,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         if (!user && tisId) {
           // Kreiranje novog korisnika
           user = {
-            id: uuid.v4(),
+            id: uuidv4(),
             tisId,
             name: userName,
             address,
@@ -407,7 +407,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         
         // Kreiranje novog radnog naloga
         const newWorkOrder = {
-          id: uuid.v4(),
+          id: uuidv4(),
           date: date || new Date().toISOString().split('T')[0],
           time: time || '09:00',
           municipality: area,
