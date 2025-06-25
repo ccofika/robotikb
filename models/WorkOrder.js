@@ -26,6 +26,10 @@ const WorkOrderSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'Technician'
   },
+  technician2Id: {
+    type: Schema.Types.ObjectId,
+    ref: 'Technician'
+  },
   details: {
     type: String
   },
@@ -36,6 +40,13 @@ const WorkOrderSchema = new Schema({
     type: String,
     enum: ['zavrsen', 'nezavrsen', 'otkazan', 'odlozen'],
     default: 'nezavrsen'
+  },
+  statusChangedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'Technician'
+  },
+  statusChangedAt: {
+    type: Date
   },
   technology: {
     type: String,

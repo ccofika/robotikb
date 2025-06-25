@@ -93,6 +93,8 @@ router.get('/', async (req, res) => {
   try {
     const workOrders = await WorkOrder.find()
       .populate('technicianId', 'name _id')
+      .populate('technician2Id', 'name _id')
+      .populate('statusChangedBy', 'name _id')
       .populate('materials.material', 'type')
       .lean()
       .exec();
@@ -113,8 +115,16 @@ router.get('/technician/:technicianId', async (req, res) => {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
     
-    const technicianOrders = await WorkOrder.find({ technicianId })
+    const technicianOrders = await WorkOrder.find({ 
+      $or: [
+        { technicianId },
+        { technician2Id: technicianId }
+      ]
+    })
       .populate('materials.material', 'type')
+      .populate('technicianId', 'name')
+      .populate('technician2Id', 'name')
+      .populate('statusChangedBy', 'name')
       .lean()
       .exec();
     res.json(technicianOrders);
@@ -328,7 +338,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     for (const row of data) {
       try {
         // Izvlačenje podataka iz reda
-        const technicianName = row["Tehnicar 1"] || '';
+        const technicianName1 = row["Tehnicar 1"] || '';
+        const technicianName2 = row["Tehnicar 2"] || '';
         const area = row["Područje"] || '';
         const installDateTime = row["Početak instalacije"] || '';
         const technology = row["Tehnologija"] || '';
@@ -370,8 +381,12 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         
         // Pronalaženje tehničara po imenu
         let technicianId = null;
-        if (technicianName) {
-          technicianId = technicianByName[technicianName.toLowerCase()];
+        let technician2Id = null;
+        if (technicianName1) {
+          technicianId = technicianByName[technicianName1.toLowerCase()];
+        }
+        if (technicianName2) {
+          technician2Id = technicianByName[technicianName2.toLowerCase()];
         }
 
         // Provera da li radni nalog već postoji
@@ -425,6 +440,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
           address,
           type: packageName,
           technicianId,
+          technician2Id,
           details: requestType,
           comment: '',
           status: 'nezavrsen',
@@ -519,7 +535,7 @@ router.get('/template', (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { 
-      date, time, municipality, address, type, technicianId, details, comment,
+      date, time, municipality, address, type, technicianId, technician2Id, details, comment,
       technology, tisId, userName, userPhone, tisJobId, additionalJobs 
     } = req.body;
     
@@ -566,6 +582,7 @@ router.post('/', async (req, res) => {
       address,
       type,
       technicianId: technicianId || null,
+      technician2Id: technician2Id || null,
       details: details || '',
       comment: comment || '',
       status: 'nezavrsen',
@@ -660,7 +677,7 @@ router.put('/:id', async (req, res) => {
 router.put('/:id/technician-update', async (req, res) => {
   try {
     const { id } = req.params;
-    const { comment, status, postponeDate, postponeTime } = req.body;
+    const { comment, status, postponeDate, postponeTime, technicianId } = req.body;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
@@ -672,22 +689,33 @@ router.put('/:id/technician-update', async (req, res) => {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
     
+    // Provjeri da li tehničar ima pravo da mijenja ovaj radni nalog
+    if (technicianId && 
+        workOrder.technicianId && 
+        workOrder.technician2Id &&
+        workOrder.technicianId.toString() !== technicianId && 
+        workOrder.technician2Id.toString() !== technicianId) {
+      return res.status(403).json({ error: 'Nemate dozvolu za ažuriranje ovog radnog naloga' });
+    }
+    
     // Tehničar može da ažurira samo komentar, status i vreme odlaganja
     if (comment !== undefined) {
       workOrder.comment = comment;
     }
     
     // Ako je status promenjen, ažuriramo i to
-    if (status) {
+    if (status && status !== workOrder.status) {
       workOrder.status = status;
+      workOrder.statusChangedBy = technicianId;
+      workOrder.statusChangedAt = new Date();
       
       // Ako je status promenjen na "zavrsen", dodaj timestamp završetka
-      if (status === 'zavrsen' && workOrder.status !== 'zavrsen') {
+      if (status === 'zavrsen') {
         workOrder.completedAt = new Date();
         workOrder.verified = false; // Čeka verifikaciju admina
       } 
       // Ako je status promenjen na "odlozen", dodaj novo vreme i datum
-      else if (status === 'odlozen' && workOrder.status !== 'odlozen') {
+      else if (status === 'odlozen') {
         workOrder.postponedAt = new Date();
         
         // Ako su dostavljeni novi datum i vreme, ažuriramo ih
@@ -699,7 +727,7 @@ router.put('/:id/technician-update', async (req, res) => {
         }
       }
       // Ako je status "otkazan", dodaj timestamp otkazivanja
-      else if (status === 'otkazan' && workOrder.status !== 'otkazan') {
+      else if (status === 'otkazan') {
         workOrder.canceledAt = new Date();
       }
     }
