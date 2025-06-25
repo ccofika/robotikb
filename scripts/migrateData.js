@@ -255,40 +255,26 @@ const migrateWorkOrders = async (userIdMap, technicianIdMap) => {
   }
 };
 
-// Glavna funkcija za migraciju svih podataka
+// Glavna funkcija za migraciju
 const migrateAllData = async () => {
   try {
-    await connectDB();
+    console.log('🚀 Pokretanje migracije podataka...');
     
-    console.log('Započinjem migraciju podataka...');
+    await migrateTechnicians();
+    await migrateUsers();
+    await migrateMaterials();
+    await migrateEquipment();
+    await migrateWorkOrders();
     
-    // Migracija tehničara
-    const technicianIdMap = await migrateTechnicians();
-    
-    // Migracija korisnika
-    const userIdMap = await migrateUsers();
-    
-    // Migracija materijala
-    const materialIdMap = await migrateMaterials();
-    
-    // Migracija opreme
-    const equipmentIdMap = await migrateEquipment(technicianIdMap);
-    
-    // Migracija radnih naloga
-    const workOrderIdMap = await migrateWorkOrders(userIdMap, technicianIdMap);
-    
-    console.log('Migracija podataka uspešno završena!');
-    
-    // Zatvaranje konekcije
-    await mongoose.connection.close();
-    console.log('MongoDB konekcija zatvorena');
-    
+    console.log('✅ Migracija uspešno završena!');
     process.exit(0);
   } catch (error) {
-    console.error('Greška pri migraciji podataka:', error);
+    console.error('❌ Greška tokom migracije:', error);
     process.exit(1);
   }
 };
 
-// Pokretanje migracije
-migrateAllData(); 
+// Pokreni migraciju ako je skript pozvan direktno
+if (require.main === module) {
+  migrateAllData();
+} 

@@ -8,6 +8,7 @@ const xlsx = require('xlsx');
 const { v4: uuidv4 } = require('uuid');
 const mongoose = require('mongoose');
 const { WorkOrder, User, Technician, Equipment, Material } = require('../models');
+const { uploadImage, deleteImage } = require('../config/cloudinary');
 
 
 
@@ -72,7 +73,7 @@ const upload = multer({
 });
 
 const imageUpload = multer({
-  storage: imageStorage,
+  storage: multer.memoryStorage(), // Koristimo memory storage za Cloudinary
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
       cb(null, true);
@@ -81,7 +82,7 @@ const imageUpload = multer({
     }
   },
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB
+    fileSize: 10 * 1024 * 1024 // 10MB - povećano jer će Cloudinary kompresovati
   }
 });
 
@@ -92,6 +93,7 @@ router.get('/', async (req, res) => {
   try {
     const workOrders = await WorkOrder.find()
       .populate('technicianId', 'name _id')
+      .populate('materials.material', 'type')
       .lean()
       .exec();
       
@@ -111,7 +113,10 @@ router.get('/technician/:technicianId', async (req, res) => {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
     
-    const technicianOrders = await WorkOrder.find({ technicianId });
+    const technicianOrders = await WorkOrder.find({ technicianId })
+      .populate('materials.material', 'type')
+      .lean()
+      .exec();
     res.json(technicianOrders);
   } catch (error) {
     console.error('Greška pri dohvatanju radnih naloga tehničara:', error);
@@ -275,6 +280,7 @@ router.get('/:id', async (req, res) => {
     
     const workOrder = await WorkOrder.findById(id)
       .populate('technicianId')
+      .populate('materials.material', 'type')
       .lean()
       .exec();
     
@@ -615,6 +621,11 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ error: 'Neispravan format ID-a tehničara' });
     }
 
+    // Konvertuj datum u pravilni Date objekat ako je string
+    if (updateData.date && typeof updateData.date === 'string') {
+      updateData.date = new Date(updateData.date);
+    }
+
     console.log('Current work order:', workOrder);
     console.log('Processed update data:', updateData);
 
@@ -702,7 +713,7 @@ router.put('/:id/technician-update', async (req, res) => {
   }
 });
 
-// POST - Dodavanje slike radnom nalogu
+// POST - Dodavanje slike radnom nalogu (Cloudinary)
 router.post('/:id/images', imageUpload.single('image'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -712,48 +723,91 @@ router.post('/:id/images', imageUpload.single('image'), async (req, res) => {
     }
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      // Brisanje uploadvane slike ako ID nije ispravan
-      fs.unlink(req.file.path, err => {
-        if (err) console.error('Greška pri brisanju slike:', err);
-      });
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
     
     const workOrder = await WorkOrder.findById(id);
     
     if (!workOrder) {
-      // Brisanje uploadvane slike ako radni nalog ne postoji
-      fs.unlink(req.file.path, err => {
-        if (err) console.error('Greška pri brisanju slike:', err);
-      });
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
     
-    // URL do slike relativno u odnosu na server
-    const imageUrl = `/uploads/images/${path.basename(req.file.path)}`;
+    console.log('Pokušavam upload slike na Cloudinary za radni nalog:', id);
+    
+    // Upload slike na Cloudinary sa kompresijom
+    const cloudinaryResult = await uploadImage(req.file.buffer, id);
     
     if (!workOrder.images) {
       workOrder.images = [];
     }
     
+    // Dodaj Cloudinary URL u bazu podataka
+    const imageUrl = cloudinaryResult.secure_url;
     workOrder.images.push(imageUrl);
     
     const updatedWorkOrder = await workOrder.save();
     
+    console.log('Slika uspešno upload-ovana na Cloudinary:', imageUrl);
+    
     res.json({
-      message: 'Slika uspešno dodata',
+      message: 'Slika uspešno dodata na Cloudinary',
+      imageUrl: imageUrl,
       workOrder: updatedWorkOrder
     });
   } catch (error) {
-    console.error('Greška pri dodavanju slike radnom nalogu:', error);
-    res.status(500).json({ error: 'Greška pri dodavanju slike radnom nalogu' });
+    console.error('Greška pri dodavanju slike radnom nalogu na Cloudinary:', error);
+    res.status(500).json({ 
+      error: 'Greška pri dodavanju slike radnom nalogu', 
+      details: error.message 
+    });
+  }
+});
+
+// DELETE - Brisanje slike iz radnog naloga
+router.delete('/:id/images', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { imageUrl } = req.body;
     
-    // Brisanje uploadvane slike u slučaju greške
-    if (req.file) {
-      fs.unlink(req.file.path, err => {
-        if (err) console.error('Greška pri brisanju slike:', err);
-      });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
     }
+    
+    if (!imageUrl) {
+      return res.status(400).json({ error: 'URL slike je obavezan' });
+    }
+    
+    const workOrder = await WorkOrder.findById(id);
+    
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+    
+    // Ukloni sliku iz baze podataka
+    workOrder.images = workOrder.images.filter(img => img !== imageUrl);
+    
+    try {
+      // Izvuci public_id iz Cloudinary URL-a
+      const publicId = imageUrl.split('/').pop().split('.')[0];
+      const fullPublicId = `workorders/${publicId}`;
+      
+      // Obriši sliku sa Cloudinary
+      await deleteImage(fullPublicId);
+      console.log('Slika obrisana sa Cloudinary:', fullPublicId);
+    } catch (cloudinaryError) {
+      console.error('Greška pri brisanju slike sa Cloudinary:', cloudinaryError);
+      // Nastavi i bez brisanja sa Cloudinary
+    }
+    
+    const updatedWorkOrder = await workOrder.save();
+    
+    res.json({
+      message: 'Slika uspešno obrisana',
+      workOrder: updatedWorkOrder
+    });
+  } catch (error) {
+    console.error('Greška pri brisanju slike:', error);
+    res.status(500).json({ error: 'Greška pri brisanju slike' });
   }
 });
 

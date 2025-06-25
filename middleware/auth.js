@@ -30,7 +30,8 @@ const auth = async (req, res, next) => {
     
     // Dodaj tehničara u request
     req.user = {
-      id: technician._id,
+      _id: technician._id.toString(),
+      id: technician._id.toString(),
       name: technician.name,
       role: 'technician'
     };
@@ -65,7 +66,7 @@ const isTechnicianOwner = (req, res, next) => {
     return next();
   }
   
-  if (req.user.role === 'technician' && req.user.id === requestedTechId) {
+  if (req.user.role === 'technician' && (req.user._id === requestedTechId || req.user.id === requestedTechId)) {
     return next();
   }
   

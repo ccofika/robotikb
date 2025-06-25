@@ -34,13 +34,23 @@ router.get('/user/:userId', async (req, res) => {
 });
 
 // GET - Dohvati istoriju opreme po ID korisnika
-router.get('/user/:userId/history', (req, res) => {
-  const { userId } = req.params;
-  const userEquipment = readUserEquipmentFile();
-  
-  const history = userEquipment.filter(item => item.userId === userId);
-  
-  res.json(history);
+router.get('/user/:userId/history', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Dohvati opremu koja je trenutno ili bila dodeljena korisniku
+    const equipment = await Equipment.find({
+      $or: [
+        { assignedToUser: userId },
+        { location: `user-${userId}` }
+      ]
+    }).sort({ updatedAt: -1 });
+    
+    res.json(equipment);
+  } catch (error) {
+    console.error('Greška pri dohvatanju istorije opreme korisnika:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju istorije opreme korisnika' });
+  }
 });
 
 // POST - Dodaj novu opremu korisniku

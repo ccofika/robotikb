@@ -21,7 +21,7 @@ const EquipmentSchema = new Schema({
   },
   status: {
     type: String,
-    enum: ['available', 'assigned', 'installed', 'defective'],
+    enum: ['available', 'assigned', 'installed', 'defective', 'pending_confirmation'],
     default: 'available'
   },
   assignedTo: {
@@ -31,6 +31,22 @@ const EquipmentSchema = new Schema({
   assignedToUser: {
     type: String,
     ref: 'User'
+  },
+  awaitingConfirmation: {
+    type: Boolean,
+    default: false
+  },
+  confirmationStatus: {
+    type: String,
+    enum: ['pending', 'confirmed', 'rejected'],
+    default: 'pending'
+  },
+  rejectionReason: {
+    type: String,
+    default: ''
+  },
+  confirmationDate: {
+    type: Date
   }
 }, { timestamps: true });
 

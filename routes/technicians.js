@@ -518,7 +518,7 @@ router.post('/:id/equipment', async (req, res) => {
       return res.status(404).json({ error: 'Technician not found' });
     }
     
-    // Update all equipment items
+    // Update all equipment items - nova logika za potvrđivanje
     const updateResults = await Equipment.updateMany(
       { 
         serialNumber: { $in: serialNumbers },
@@ -528,7 +528,9 @@ router.post('/:id/equipment', async (req, res) => {
         $set: { 
           assignedTo: id,
           location: `tehnicar-${id}`,
-          status: 'assigned'
+          status: 'pending_confirmation',
+          awaitingConfirmation: true,
+          confirmationStatus: 'pending'
         }
       }
     );
@@ -538,7 +540,7 @@ router.post('/:id/equipment', async (req, res) => {
     }
     
     res.json({ 
-      message: `Successfully assigned ${updateResults.modifiedCount} equipment items`,
+      message: `Successfully assigned ${updateResults.modifiedCount} equipment items - awaiting technician confirmation`,
       modifiedCount: updateResults.modifiedCount
     });
   } catch (error) {
@@ -675,6 +677,113 @@ router.post('/:id/materials/return', async (req, res) => {
   } catch (error) {
     console.error('Greška pri razduživanju materijala:', error);
     res.status(500).json({ error: 'Greška pri razduživanju materijala' });
+  }
+});
+
+// GET - Dohvati opremu koja čeka potvrdu za tehničara
+router.get('/:id/equipment/pending', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format tehničara' });
+    }
+    
+    const pendingEquipment = await Equipment.find({
+      assignedTo: id,
+      awaitingConfirmation: true,
+      confirmationStatus: 'pending'
+    });
+    
+    res.json(pendingEquipment);
+  } catch (error) {
+    console.error('Greška pri dohvatanju opreme koja čeka potvrdu:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju opreme koja čeka potvrdu' });
+  }
+});
+
+// POST - Potvrdi opremu
+router.post('/:id/equipment/confirm', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { equipmentId } = req.body;
+    
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(equipmentId)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const equipment = await Equipment.findOne({
+      _id: equipmentId,
+      assignedTo: id,
+      awaitingConfirmation: true,
+      confirmationStatus: 'pending'
+    });
+    
+    if (!equipment) {
+      return res.status(404).json({ error: 'Oprema nije pronađena ili ne čeka potvrdu' });
+    }
+    
+    // Potvrdi opremu
+    equipment.awaitingConfirmation = false;
+    equipment.confirmationStatus = 'confirmed';
+    equipment.status = 'assigned';
+    equipment.confirmationDate = new Date();
+    
+    await equipment.save();
+    
+    res.json({ 
+      message: 'Oprema je uspešno potvrđena',
+      equipment: equipment
+    });
+  } catch (error) {
+    console.error('Greška pri potvrđivanju opreme:', error);
+    res.status(500).json({ error: 'Greška pri potvrđivanju opreme' });
+  }
+});
+
+// POST - Odbaci opremu
+router.post('/:id/equipment/reject', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { equipmentId, reason } = req.body;
+    
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(equipmentId)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({ error: 'Razlog odbijanja je obavezan' });
+    }
+    
+    const equipment = await Equipment.findOne({
+      _id: equipmentId,
+      assignedTo: id,
+      awaitingConfirmation: true,
+      confirmationStatus: 'pending'
+    });
+    
+    if (!equipment) {
+      return res.status(404).json({ error: 'Oprema nije pronađena ili ne čeka potvrdu' });
+    }
+    
+    // Odbaci opremu - vrati u magacin
+    equipment.awaitingConfirmation = false;
+    equipment.confirmationStatus = 'rejected';
+    equipment.status = 'available';
+    equipment.location = 'magacin';
+    equipment.assignedTo = null;
+    equipment.rejectionReason = reason.trim();
+    equipment.confirmationDate = new Date();
+    
+    await equipment.save();
+    
+    res.json({ 
+      message: 'Oprema je uspešno odbijena i vraćena u magacin',
+      equipment: equipment
+    });
+  } catch (error) {
+    console.error('Greška pri odbijanju opreme:', error);
+    res.status(500).json({ error: 'Greška pri odbijanju opreme' });
   }
 });
 
