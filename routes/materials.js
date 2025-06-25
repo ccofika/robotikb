@@ -1,134 +1,138 @@
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
-
-const materialsFilePath = path.join(__dirname, '../data/materials.json');
-
-// Middleware za čitanje materials.json fajla
-const readMaterialsFile = () => {
-  try {
-    const data = fs.readFileSync(materialsFilePath, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Greška pri čitanju materijala:', error);
-    return [];
-  }
-};
-
-// Middleware za čuvanje materials.json fajla
-const saveMaterialsFile = (data) => {
-  try {
-    fs.writeFileSync(materialsFilePath, JSON.stringify(data, null, 2), 'utf8');
-    return true;
-    } catch (error) {
-    console.error('Greška pri čuvanju materijala:', error);
-    return false;
-  }
-};
+const mongoose = require('mongoose');
+const { Material } = require('../models');
 
 // GET - Dohvati sve materijale
-router.get('/', (req, res) => {
-  const materials = readMaterialsFile();
-  res.json(materials);
+router.get('/', async (req, res) => {
+  try {
+    const materials = await Material.find();
+    res.json(materials);
+  } catch (error) {
+    console.error('Greška pri dohvatanju materijala:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju materijala' });
+  }
 });
 
 // GET - Dohvati materijal po ID-u
-router.get('/:id', (req, res) => {
-  const { id } = req.params;
-  const materials = readMaterialsFile();
-  const material = materials.find(material => material.id === id);
-  
-  if (!material) {
-    return res.status(404).json({ error: 'Materijal nije pronađen' });
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const material = await Material.findById(id);
+    
+    if (!material) {
+      return res.status(404).json({ error: 'Materijal nije pronađen' });
+    }
+    
+    res.json(material);
+  } catch (error) {
+    console.error('Greška pri dohvatanju materijala:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju materijala' });
   }
-  
-  res.json(material);
 });
 
 // POST - Dodaj novi materijal
-router.post('/', (req, res) => {
-  const { type, quantity } = req.body;
-  
-  if (!type || quantity === undefined) {
-    return res.status(400).json({ error: 'Vrsta i količina materijala su obavezna polja' });
+router.post('/', async (req, res) => {
+  try {
+    const { type, quantity } = req.body;
+    
+    if (!type || quantity === undefined) {
+      return res.status(400).json({ error: 'Vrsta i količina materijala su obavezna polja' });
+    }
+    
+    // Provera da li materijal već postoji
+    const existingMaterial = await Material.findOne({ 
+      type: { $regex: new RegExp(`^${type}$`, 'i') }
+    });
+    
+    if (existingMaterial) {
+      return res.status(400).json({ error: 'Materijal sa ovim nazivom već postoji' });
+    }
+    
+    const newMaterial = new Material({
+      type,
+      quantity: parseInt(quantity, 10)
+    });
+    
+    const savedMaterial = await newMaterial.save();
+    res.status(201).json(savedMaterial);
+  } catch (error) {
+    console.error('Greška pri kreiranju materijala:', error);
+    res.status(500).json({ error: 'Greška pri kreiranju materijala' });
   }
-  
-  const materials = readMaterialsFile();
-  
-  // Provera da li materijal već postoji
-  const existingMaterial = materials.find(material => 
-    material.type.toLowerCase() === type.toLowerCase()
-  );
-  
-  if (existingMaterial) {
-    return res.status(400).json({ error: 'Materijal sa ovim nazivom već postoji' });
-  }
-  
-  const newMaterial = {
-    id: Date.now().toString(),
-    type,
-    quantity: parseInt(quantity, 10)
-  };
-  
-  materials.push(newMaterial);
-  saveMaterialsFile(materials);
-  
-  res.status(201).json(newMaterial);
 });
 
 // PUT - Ažuriranje materijala
-router.put('/:id', (req, res) => {
-  const { id } = req.params;
-  const { type, quantity } = req.body;
-  
-  if ((!type && quantity === undefined) || parseInt(quantity, 10) < 0) {
-    return res.status(400).json({ error: 'Neispravni podaci za ažuriranje' });
-  }
-  
-  const materials = readMaterialsFile();
-  const index = materials.findIndex(material => material.id === id);
-  
-  if (index === -1) {
-    return res.status(404).json({ error: 'Materijal nije pronađen' });
-  }
-  
-  // Provera da li drugi materijal već koristi ovaj naziv
-  if (type && type !== materials[index].type) {
-    const duplicateType = materials.find(material => 
-      material.id !== id && material.type.toLowerCase() === type.toLowerCase()
-    );
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type, quantity } = req.body;
     
-    if (duplicateType) {
-      return res.status(400).json({ error: 'Materijal sa ovim nazivom već postoji' });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
     }
+    
+    if ((!type && quantity === undefined) || parseInt(quantity, 10) < 0) {
+      return res.status(400).json({ error: 'Neispravni podaci za ažuriranje' });
+    }
+    
+    const material = await Material.findById(id);
+    
+    if (!material) {
+      return res.status(404).json({ error: 'Materijal nije pronađen' });
+    }
+    
+    // Provera da li drugi materijal već koristi ovaj naziv
+    if (type && type !== material.type) {
+      const duplicateType = await Material.findOne({ 
+        _id: { $ne: id },
+        type: { $regex: new RegExp(`^${type}$`, 'i') }
+      });
+      
+      if (duplicateType) {
+        return res.status(400).json({ error: 'Materijal sa ovim nazivom već postoji' });
+      }
+      
+      material.type = type;
+    }
+    
+    if (quantity !== undefined) {
+      material.quantity = parseInt(quantity, 10);
+    }
+    
+    const updatedMaterial = await material.save();
+    res.json(updatedMaterial);
+  } catch (error) {
+    console.error('Greška pri ažuriranju materijala:', error);
+    res.status(500).json({ error: 'Greška pri ažuriranju materijala' });
   }
-  
-  materials[index] = { 
-    ...materials[index],
-    type: type || materials[index].type,
-    quantity: quantity !== undefined ? parseInt(quantity, 10) : materials[index].quantity
-  };
-  
-  saveMaterialsFile(materials);
-  
-  res.json(materials[index]);
 });
 
 // DELETE - Brisanje materijala
-router.delete('/:id', (req, res) => {
-  const { id } = req.params;
-  const materials = readMaterialsFile();
-  
-  const filteredMaterials = materials.filter(material => material.id !== id);
-  
-  if (filteredMaterials.length === materials.length) {
-    return res.status(404).json({ error: 'Materijal nije pronađen' });
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const deletedMaterial = await Material.findByIdAndDelete(id);
+    
+    if (!deletedMaterial) {
+      return res.status(404).json({ error: 'Materijal nije pronađen' });
+    }
+    
+    res.json({ message: 'Materijal uspešno obrisan' });
+  } catch (error) {
+    console.error('Greška pri brisanju materijala:', error);
+    res.status(500).json({ error: 'Greška pri brisanju materijala' });
   }
-  
-  saveMaterialsFile(filteredMaterials);
-  
-  res.json({ message: 'Materijal uspešno obrisan' });
 });
 
 module.exports = router;

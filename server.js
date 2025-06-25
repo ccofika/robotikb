@@ -5,6 +5,11 @@ const morgan = require('morgan');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
+const connectDB = require('./config/db');
+require('dotenv').config();
+
+// Povezivanje sa MongoDB
+connectDB();
 
 // Inicijalizacija Express aplikacije
 const app = express();
@@ -116,12 +121,6 @@ const createEmptyJsonFile = (filename, initialData = []) => {
   }
 };
 
-// Kreiranje početnih JSON fajlova
-createEmptyJsonFile('equipment.json');
-createEmptyJsonFile('materials.json');
-createEmptyJsonFile('technicians.json');
-createEmptyJsonFile('workorders.json');
-createEmptyJsonFile('users.json');
 
 // Osiguraj da svi potrebni direktorijumi postoje
 const uploadsDir = path.join(__dirname, 'uploads');

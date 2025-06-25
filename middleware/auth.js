@@ -1,34 +1,44 @@
 const jwt = require('jsonwebtoken');
-const fs = require('fs');
-const path = require('path');
-
-const techniciansFilePath = path.join(__dirname, '../data/technicians.json');
+const { Technician } = require('../models');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'telco-super-secret-key';
 
-const readTechniciansFile = () => {
+const auth = async (req, res, next) => {
   try {
-    const data = fs.readFileSync(techniciansFilePath, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Greška pri čitanju tehničara:', error);
-    return [];
-  }
-};
-
-const authenticateToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ error: 'Pristup odbijen. Token nije prosleđen.' });
-  }
-  
-  try {
+    // Dohvati token iz header-a
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ error: 'Pristup odbijen. Token nije obezbeđen.' });
+    }
+    
+    // Verifikuj token
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
+    
+    // Ako je admin, propusti dalje
+    if (decoded.role === 'admin') {
+      req.user = decoded;
+      return next();
+    }
+    
+    // Ako je tehničar, proveri da li postoji u bazi
+    const technician = await Technician.findById(decoded.id).select('-password');
+    
+    if (!technician) {
+      return res.status(401).json({ error: 'Pristup odbijen. Tehničar nije pronađen.' });
+    }
+    
+    // Dodaj tehničara u request
+    req.user = {
+      id: technician._id,
+      name: technician.name,
+      role: 'technician'
+    };
+    
     next();
   } catch (error) {
-    return res.status(403).json({ error: 'Neispravan ili istekao token.' });
+    console.error('Greška pri autentifikaciji:', error);
+    res.status(401).json({ error: 'Pristup odbijen. Neispravan token.' });
   }
 };
 
@@ -63,7 +73,7 @@ const isTechnicianOwner = (req, res, next) => {
 };
 
 module.exports = {
-  authenticateToken,
+  auth,
   isAdmin,
   isTechnicianOrAdmin,
   isTechnicianOwner

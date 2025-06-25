@@ -1,33 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
 const multer = require('multer');
 const xlsx = require('xlsx');
-
-const equipmentFilePath = path.join(__dirname, '../data/equipment.json');
-
-// Middleware za čitanje equipment.json fajla
-const readEquipmentFile = () => {
-  try {
-    const data = fs.readFileSync(equipmentFilePath, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Greška pri čitanju opreme:', error);
-    return [];
-  }
-};
-
-// Middleware za čuvanje equipment.json fajla
-const saveEquipmentFile = (data) => {
-  try {
-    fs.writeFileSync(equipmentFilePath, JSON.stringify(data, null, 2), 'utf8');
-    return true;
-  } catch (error) {
-    console.error('Greška pri čuvanju opreme:', error);
-    return false;
-  }
-};
+const path = require('path');
+const fs = require('fs');
+const mongoose = require('mongoose');
+const { Equipment } = require('../models');
 
 // Konfiguracija za multer (upload fajlova)
 const storage = multer.diskStorage({
@@ -88,51 +66,80 @@ const normalizeCategory = (category) => {
 };
 
 // GET - Dohvati sve komade opreme
-router.get('/', (req, res) => {
-  const equipment = readEquipmentFile();
-  res.json(equipment);
+router.get('/', async (req, res) => {
+  try {
+    const equipment = await Equipment.find();
+    res.json(equipment);
+  } catch (error) {
+    console.error('Greška pri dohvatanju opreme:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju opreme' });
+  }
 });
 
 // GET - Dohvati opremu za prikaz (samo magacin i tehničari)
-router.get('/display', (req, res) => {
-  const equipment = readEquipmentFile();
-  // Filtriraj opremu da prikaže samo onu iz magacina i kod tehničara
-  const displayEquipment = equipment.filter(item => 
-    item.location === 'magacin' || item.location.startsWith('tehnicar-')
-  );
-  res.json(displayEquipment);
+router.get('/display', async (req, res) => {
+  try {
+    // Filtriraj opremu da prikaže samo onu iz magacina i kod tehničara
+    const displayEquipment = await Equipment.find({
+      $or: [
+        { location: 'magacin' },
+        { assignedTo: { $ne: null } }
+      ]
+    });
+    res.json(displayEquipment);
+  } catch (error) {
+    console.error('Greška pri dohvatanju opreme za prikaz:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju opreme za prikaz' });
+  }
 });
 
 // GET - Dohvati sve kategorije opreme
-router.get('/categories', (req, res) => {
-  const equipment = readEquipmentFile();
-  const categories = [...new Set(equipment.map(item => item.category))];
-  res.json(categories);
+router.get('/categories', async (req, res) => {
+  try {
+    const categories = await Equipment.distinct('category');
+    res.json(categories);
+  } catch (error) {
+    console.error('Greška pri dohvatanju kategorija opreme:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju kategorija opreme' });
+  }
 });
 
 // GET - Dohvati opremu po kategoriji
-router.get('/category/:category', (req, res) => {
-  const { category } = req.params;
-  const equipment = readEquipmentFile();
-  const filteredEquipment = equipment.filter(item => item.category === category);
-  res.json(filteredEquipment);
+router.get('/category/:category', async (req, res) => {
+  try {
+    const { category } = req.params;
+    const filteredEquipment = await Equipment.find({ category });
+    res.json(filteredEquipment);
+  } catch (error) {
+    console.error('Greška pri dohvatanju opreme po kategoriji:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju opreme po kategoriji' });
+  }
 });
 
 // GET - Dohvati jedan komad opreme po ID-u
-router.get('/:id', (req, res) => {
-  const { id } = req.params;
-  const equipment = readEquipmentFile();
-  const item = equipment.find(item => item.id === id);
-  
-  if (!item) {
-    return res.status(404).json({ error: 'Oprema nije pronađena' });
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const item = await Equipment.findById(id);
+    
+    if (!item) {
+      return res.status(404).json({ error: 'Oprema nije pronađena' });
+    }
+    
+    res.json(item);
+  } catch (error) {
+    console.error('Greška pri dohvatanju opreme:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju opreme' });
   }
-  
-  res.json(item);
 });
 
 // POST - Dodaj novu opremu putem Excel fajla
-router.post('/upload', upload.single('file'), (req, res) => {
+router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Niste priložili fajl' });
@@ -147,8 +154,7 @@ router.post('/upload', upload.single('file'), (req, res) => {
       return res.status(400).json({ error: 'Excel fajl ne sadrži podatke' });
     }
 
-    const newEquipment = data.map(item => ({
-      id: String(Date.now() + Math.random()),
+    const newEquipmentItems = data.map(item => ({
       category: normalizeCategory(item.Kategorija || item.kategorija || ''),
       description: item.MODEL || item.Opis || '',
       serialNumber: String(item.SN || item["Fabrički broj"] || ''),
@@ -156,37 +162,38 @@ router.post('/upload', upload.single('file'), (req, res) => {
       status: 'available'
     }));
 
-    const existingEquipment = readEquipmentFile();
-    
     // Provera da li oprema sa istim serijskim brojevima već postoji
-    const filteredNewEquipment = newEquipment.filter(newItem => {
-      const isDuplicate = existingEquipment.some(existingItem => 
-        existingItem.serialNumber === newItem.serialNumber
-      );
-      return !isDuplicate;
-    });
+    const filteredNewEquipment = [];
+    
+    for (const newItem of newEquipmentItems) {
+      const existingItem = await Equipment.findOne({ serialNumber: newItem.serialNumber });
+      if (!existingItem && newItem.serialNumber) {
+        filteredNewEquipment.push(newItem);
+      }
+    }
 
-    const updatedEquipment = [...existingEquipment, ...filteredNewEquipment];
-    saveEquipmentFile(updatedEquipment);
+    // Dodavanje nove opreme u bazu
+    if (filteredNewEquipment.length > 0) {
+      await Equipment.insertMany(filteredNewEquipment);
+    }
 
     // Brisanje privremenog fajla
     fs.unlinkSync(req.file.path);
     
     res.status(201).json({
       message: `Uspešno dodato ${filteredNewEquipment.length} komada opreme`,
-      ignoredItems: newEquipment.length - filteredNewEquipment.length
+      ignoredItems: newEquipmentItems.length - filteredNewEquipment.length
     });
   } catch (error) {
-    console.error('Error processing Excel:', error);
+    console.error('Greška pri učitavanju Excel fajla:', error);
     res.status(500).json({ error: 'Greška pri učitavanju Excel fajla' });
   }
 });
 
 // POST - Dodaj pojedinačnu opremu
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const equipmentData = req.body;
-    const equipment = readEquipmentFile();
     
     // Validacija podataka
     if (!equipmentData.category || !equipmentData.description || !equipmentData.serialNumber) {
@@ -194,61 +201,217 @@ router.post('/', (req, res) => {
     }
     
     // Provera da li već postoji oprema sa istim serijskim brojem
-    if (equipment.some(item => item.serialNumber === equipmentData.serialNumber)) {
+    const existingEquipment = await Equipment.findOne({ serialNumber: equipmentData.serialNumber });
+    if (existingEquipment) {
       return res.status(400).json({ error: 'Oprema sa istim serijskim brojem već postoji' });
     }
     
-    const newEquipment = {
-      id: String(Date.now() + Math.random()),
+    const newEquipment = new Equipment({
       category: equipmentData.category,
       description: equipmentData.description,
       serialNumber: equipmentData.serialNumber,
-      location: 'magacin',
-      status: 'available'
-    };
+      location: equipmentData.location || 'magacin',
+      status: equipmentData.status || 'available'
+    });
     
-        equipment.push(newEquipment);
-    saveEquipmentFile(equipment);
-    
-    res.status(201).json(newEquipment);
+    const savedEquipment = await newEquipment.save();
+    res.status(201).json(savedEquipment);
   } catch (error) {
     console.error('Greška pri dodavanju opreme:', error);
     res.status(500).json({ error: 'Greška pri dodavanju opreme' });
   }
 });
 
-// PUT - Ažuriranje opreme po ID-u
-router.put('/:id', (req, res) => {
-  const { id } = req.params;
-  const equipmentData = req.body;
-  const equipment = readEquipmentFile();
-  
-  const index = equipment.findIndex(item => item.id === id);
-  
-  if (index === -1) {
-    return res.status(404).json({ error: 'Oprema nije pronađena' });
+// PUT - Ažuriranje opreme
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const equipment = await Equipment.findById(id);
+    
+    if (!equipment) {
+      return res.status(404).json({ error: 'Oprema nije pronađena' });
+    }
+    
+    // Provera da li drugi komad opreme već koristi ovaj serijski broj
+    if (updateData.serialNumber && updateData.serialNumber !== equipment.serialNumber) {
+      const duplicateSerial = await Equipment.findOne({ 
+        _id: { $ne: id },
+        serialNumber: updateData.serialNumber
+      });
+      
+      if (duplicateSerial) {
+        return res.status(400).json({ error: 'Oprema sa ovim serijskim brojem već postoji' });
+      }
+    }
+    
+    // Ažuriranje polja
+    if (updateData.category) equipment.category = updateData.category;
+    if (updateData.description) equipment.description = updateData.description;
+    if (updateData.serialNumber) equipment.serialNumber = updateData.serialNumber;
+    if (updateData.location) equipment.location = updateData.location;
+    if (updateData.status) equipment.status = updateData.status;
+    
+    const updatedEquipment = await equipment.save();
+    res.json(updatedEquipment);
+  } catch (error) {
+    console.error('Greška pri ažuriranju opreme:', error);
+    res.status(500).json({ error: 'Greška pri ažuriranju opreme' });
   }
-  
-  equipment[index] = { ...equipment[index], ...equipmentData };
-  saveEquipmentFile(equipment);
-  
-  res.json(equipment[index]);
 });
 
-// DELETE - Brisanje opreme po ID-u
-router.delete('/:id', (req, res) => {
-  const { id } = req.params;
-  const equipment = readEquipmentFile();
-  
-  const filteredEquipment = equipment.filter(item => item.id !== id);
-  
-  if (filteredEquipment.length === equipment.length) {
-    return res.status(404).json({ error: 'Oprema nije pronađena' });
+// DELETE - Brisanje opreme
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const deletedEquipment = await Equipment.findByIdAndDelete(id);
+    
+    if (!deletedEquipment) {
+      return res.status(404).json({ error: 'Oprema nije pronađena' });
+    }
+    
+    res.json({ message: 'Oprema uspešno obrisana' });
+  } catch (error) {
+    console.error('Greška pri brisanju opreme:', error);
+    res.status(500).json({ error: 'Greška pri brisanju opreme' });
   }
-  
-  saveEquipmentFile(filteredEquipment);
-  
-  res.json({ message: 'Oprema uspešno obrisana' });
+});
+
+// POST - Dodeli opremu tehničaru
+router.post('/assign-to-technician/:technicianId', async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+    const { equipmentIds } = req.body;
+    
+    if (!mongoose.Types.ObjectId.isValid(technicianId)) {
+      return res.status(400).json({ error: 'Neispravan ID tehničara' });
+    }
+    
+    if (!equipmentIds || !Array.isArray(equipmentIds) || equipmentIds.length === 0) {
+      return res.status(400).json({ error: 'Lista ID-jeva opreme je obavezna' });
+    }
+    
+    const results = {
+      successful: 0,
+      failed: 0,
+      failedItems: []
+    };
+    
+    // Ažuriranje svakog komada opreme
+    for (const equipmentId of equipmentIds) {
+      if (!mongoose.Types.ObjectId.isValid(equipmentId)) {
+        results.failed++;
+        results.failedItems.push({
+          id: equipmentId,
+          error: 'Neispravan ID opreme'
+        });
+        continue;
+      }
+      
+      const equipment = await Equipment.findById(equipmentId);
+      
+      if (!equipment) {
+        results.failed++;
+        results.failedItems.push({
+          id: equipmentId,
+          error: 'Oprema nije pronađena'
+        });
+        continue;
+      }
+      
+      if (equipment.location !== 'magacin' || equipment.status !== 'available') {
+        results.failed++;
+        results.failedItems.push({
+          id: equipmentId,
+          error: `Oprema nije dostupna, trenutni status: ${equipment.status}, lokacija: ${equipment.location}`
+        });
+        continue;
+      }
+      
+      // Ažuriranje opreme
+      equipment.assignedTo = technicianId;
+      equipment.location = 'tehnicar';
+      equipment.status = 'assigned';
+      
+      await equipment.save();
+      results.successful++;
+    }
+    
+    res.json({
+      message: `${results.successful} komada opreme uspešno dodeljeno tehničaru`,
+      ...results
+    });
+  } catch (error) {
+    console.error('Greška pri dodeljivanju opreme tehničaru:', error);
+    res.status(500).json({ error: 'Greška pri dodeljivanju opreme tehničaru' });
+  }
+});
+
+// POST - Vrati opremu u magacin
+router.post('/return-to-warehouse', async (req, res) => {
+  try {
+    const { equipmentIds } = req.body;
+    
+    if (!equipmentIds || !Array.isArray(equipmentIds) || equipmentIds.length === 0) {
+      return res.status(400).json({ error: 'Lista ID-jeva opreme je obavezna' });
+    }
+    
+    const results = {
+      successful: 0,
+      failed: 0,
+      failedItems: []
+    };
+    
+    // Ažuriranje svakog komada opreme
+    for (const equipmentId of equipmentIds) {
+      if (!mongoose.Types.ObjectId.isValid(equipmentId)) {
+        results.failed++;
+        results.failedItems.push({
+          id: equipmentId,
+          error: 'Neispravan ID opreme'
+        });
+        continue;
+      }
+      
+      const equipment = await Equipment.findById(equipmentId);
+      
+      if (!equipment) {
+        results.failed++;
+        results.failedItems.push({
+          id: equipmentId,
+          error: 'Oprema nije pronađena'
+        });
+        continue;
+      }
+      
+      // Ažuriranje opreme
+      equipment.assignedTo = null;
+      equipment.assignedToUser = null;
+      equipment.location = 'magacin';
+      equipment.status = 'available';
+      
+      await equipment.save();
+      results.successful++;
+    }
+    
+    res.json({
+      message: `${results.successful} komada opreme uspešno vraćeno u magacin`,
+      ...results
+    });
+  } catch (error) {
+    console.error('Greška pri vraćanju opreme u magacin:', error);
+    res.status(500).json({ error: 'Greška pri vraćanju opreme u magacin' });
+  }
 });
 
 module.exports = router;

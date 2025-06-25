@@ -6,11 +6,10 @@ const path = require('path');
 const multer = require('multer');
 const xlsx = require('xlsx');
 const { v4: uuidv4 } = require('uuid');
+const mongoose = require('mongoose');
+const { WorkOrder, User, Technician, Equipment, Material } = require('../models');
 
-const workordersFilePath = path.join(__dirname, '../data/workorders.json');
-const techniciansFilePath = path.join(__dirname, '../data/technicians.json');
-const usersFilePath = path.join(__dirname, '../data/users.json');
-const userEquipmentFilePath = path.join(__dirname, '../data/userEquipment.json');
+
 
 // Konfiguracija za upload
 const storage = multer.diskStorage({
@@ -86,203 +85,208 @@ const imageUpload = multer({
   }
 });
 
-// Middleware za čitanje workorders.json fajla
-const readWorkordersFile = () => {
-  try {
-    if (!fs.existsSync(workordersFilePath)) {
-      console.log('Fajl workorders.json ne postoji, kreiram prazan fajl.');
-      fs.writeFileSync(workordersFilePath, '[]', 'utf8');
-      return [];
-    }
-    
-    const data = fs.readFileSync(workordersFilePath, 'utf8');
-    if (!data || data.trim() === '') {
-      console.log('Fajl workorders.json je prazan, kreiram prazan niz.');
-      fs.writeFileSync(workordersFilePath, '[]', 'utf8');
-      return [];
-    }
-    
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Greška pri čitanju radnih naloga:', error);
-    // Ako je greška u parsiranju, resetujemo fajl
-    fs.writeFileSync(workordersFilePath, '[]', 'utf8');
-    return [];
-  }
-};
 
-// Middleware za čuvanje workorders.json fajla
-const saveWorkordersFile = (data) => {
-  try {
-    fs.writeFileSync(workordersFilePath, JSON.stringify(data, null, 2), 'utf8');
-    return true;
-  } catch (error) {
-    console.error('Greška pri čuvanju radnih naloga:', error);
-    return false;
-  }
-};
-
-// Middleware za čitanje technicians.json fajla
-const readTechniciansFile = () => {
-  try {
-    if (fs.existsSync(techniciansFilePath)) {
-      const data = fs.readFileSync(techniciansFilePath, 'utf8');
-      return JSON.parse(data);
-    }
-    return [];
-  } catch (error) {
-    console.error('Greška pri čitanju tehničara:', error);
-    return [];
-  }
-};
-
-// Middleware za čitanje users.json fajla
-const readUsersFile = () => {
-  try {
-    if (!fs.existsSync(usersFilePath)) {
-      console.log('Fajl users.json ne postoji, kreiram prazan fajl.');
-      fs.writeFileSync(usersFilePath, '[]', 'utf8');
-      return [];
-    }
-    
-    const data = fs.readFileSync(usersFilePath, 'utf8');
-    if (!data || data.trim() === '') {
-      console.log('Fajl users.json je prazan, kreiram prazan niz.');
-      fs.writeFileSync(usersFilePath, '[]', 'utf8');
-      return [];
-    }
-    
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Greška pri čitanju korisnika:', error);
-    // Ako je greška u parsiranju, resetujemo fajl
-    fs.writeFileSync(usersFilePath, '[]', 'utf8');
-    return [];
-  }
-};
-
-// Middleware za čuvanje users.json fajla
-const saveUsersFile = (data) => {
-  try {
-    fs.writeFileSync(usersFilePath, JSON.stringify(data, null, 2), 'utf8');
-    return true;
-  } catch (error) {
-    console.error('Greška pri čuvanju korisnika:', error);
-    return false;
-  }
-};
-
-const readUserEquipmentFile = () => {
-  try {
-    if (fs.existsSync(userEquipmentFilePath)) {
-      const data = fs.readFileSync(userEquipmentFilePath, 'utf8');
-      return JSON.parse(data);
-    }
-    return [];
-  } catch (error) {
-    console.error('Greška pri čitanju korisničke opreme:', error);
-    return [];
-  }
-};
 
 // GET - Dohvati sve radne naloge
-router.get('/', (req, res) => {
-  const workOrders = readWorkordersFile();
-  res.json(workOrders);
+router.get('/', async (req, res) => {
+  try {
+    const workOrders = await WorkOrder.find()
+      .populate('technicianId', 'name _id')
+      .lean()
+      .exec();
+      
+    res.json(workOrders);
+  } catch (error) {
+    console.error('Greška pri dohvatanju radnih naloga:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju radnih naloga' });
+  }
 });
 
 // GET - Dohvati radne naloge tehničara
-router.get('/technician/:technicianId', (req, res) => {
-  const { technicianId } = req.params;
-  const workOrders = readWorkordersFile();
-  
-  const technicianOrders = workOrders.filter(order => order.technicianId === technicianId);
-  
-  res.json(technicianOrders);
+router.get('/technician/:technicianId', async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(technicianId)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const technicianOrders = await WorkOrder.find({ technicianId });
+    res.json(technicianOrders);
+  } catch (error) {
+    console.error('Greška pri dohvatanju radnih naloga tehničara:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju radnih naloga tehničara' });
+  }
 });
 
 // GET - Dohvati nedodeljene radne naloge
-router.get('/unassigned', (req, res) => {
-  const workOrders = readWorkordersFile();
-  
-  const unassignedOrders = workOrders.filter(order => !order.technicianId || order.technicianId === '');
-  
-  res.json(unassignedOrders);
+router.get('/unassigned', async (req, res) => {
+  try {
+    const unassignedOrders = await WorkOrder.find({
+      $or: [
+        { technicianId: null },
+        { technicianId: { $exists: false } }
+      ]
+    })
+    .lean()
+    .exec();
+    res.json(unassignedOrders);
+  } catch (error) {
+    console.error('Greška pri dohvatanju nedodeljenih radnih naloga:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju nedodeljenih radnih naloga' });
+  }
 });
 
 // GET - Dohvati radne naloge za verifikaciju
-router.get('/verification', (req, res) => {
-  const workOrders = readWorkordersFile();
-  
-  const ordersForVerification = workOrders.filter(
-    order => order.status === 'zavrsen' && order.verified === false
-  );
-  
-  res.json(ordersForVerification);
+router.get('/verification', async (req, res) => {
+  try {
+    const ordersForVerification = await WorkOrder.find({
+      status: 'zavrsen',
+      verified: false
+    });
+    
+    res.json(ordersForVerification);
+  } catch (error) {
+    console.error('Greška pri dohvatanju radnih naloga za verifikaciju:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju radnih naloga za verifikaciju' });
+  }
 });
 
 
-router.post('/:id/used-equipment', (req, res) => {
-  const { id } = req.params;
-  const { equipment } = req.body;
-  
-  if (!Array.isArray(equipment)) {
-    return res.status(400).json({ error: 'Potrebno je dostaviti niz korišćene opreme' });
+router.post('/:id/used-equipment', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { equipment } = req.body;
+    
+    if (!Array.isArray(equipment)) {
+      return res.status(400).json({ error: 'Potrebno je dostaviti niz korišćene opreme' });
+    }
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const workOrder = await WorkOrder.findById(id);
+    
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+    
+    // Dodaj ili ažuriraj listu korišćene opreme za radni nalog
+    workOrder.usedEquipment = equipment;
+    
+    const updatedWorkOrder = await workOrder.save();
+    
+    res.json(updatedWorkOrder);
+  } catch (error) {
+    console.error('Greška pri ažuriranju korišćene opreme:', error);
+    res.status(500).json({ error: 'Greška pri ažuriranju korišćene opreme' });
   }
-  
-  const workOrders = readWorkordersFile();
-  const index = workOrders.findIndex(order => order.id === id);
-  
-  if (index === -1) {
-    return res.status(404).json({ error: 'Radni nalog nije pronađen' });
-  }
-  
-  // Dodaj ili ažuriraj listu korišćene opreme za radni nalog
-  workOrders[index].usedEquipment = equipment;
-  workOrders[index].updatedAt = new Date().toISOString();
-  
-  saveWorkordersFile(workOrders);
-  
-  res.json(workOrders[index]);
 });
 
-// Dodati GET endpoint za dohvatanje opreme korisnika za radni nalog
-router.get('/:id/user-equipment', (req, res) => {
-  const { id } = req.params;
-  const workOrders = readWorkordersFile();
-  const userEquipment = readUserEquipmentFile();
-  
-  const workOrder = workOrders.find(order => order.id === id);
-  if (!workOrder || !workOrder.userName) {
-    return res.json([]);
+// GET endpoint za dohvatanje opreme korisnika za radni nalog
+router.get('/:id/user-equipment', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    // Dohvati radni nalog
+    const workOrder = await WorkOrder.findById(id)
+      .populate({
+        path: 'installedEquipment.equipmentId',
+        model: 'Equipment'
+      })
+      .lean();
+      
+    if (!workOrder) {
+      return res.json([]);
+    }
+    
+    // Ako radni nalog ima installedEquipment, vrati te podatke
+    if (workOrder.installedEquipment && workOrder.installedEquipment.length > 0) {
+      // Izvuci samo podatke o opremi iz installedEquipment
+      const installedEquipmentData = workOrder.installedEquipment
+        .filter(item => item.equipmentId) // Filtriraj samo validne zapise
+        .map(item => ({
+          ...item.equipmentId,
+          installedAt: item.installedAt,
+          notes: item.notes || '',
+          id: item._id // Dodaj ID zapisa za eventualno uklanjanje
+        }));
+      
+      return res.json(installedEquipmentData);
+    }
+    
+    // Ako nema installedEquipment, pokušaj naći opremu po tisId korisnika
+    if (!workOrder.tisId) {
+      return res.json([]);
+    }
+    
+    // Pronađi opremu koja pripada korisniku
+    const equipment = await Equipment.find({
+      assignedToUser: workOrder.tisId,
+      status: 'installed'
+    });
+    
+    res.json(equipment);
+  } catch (error) {
+    console.error('Greška pri dohvatanju opreme korisnika:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju opreme korisnika' });
   }
-  
-  // Pronađi TIS ID korisnika
-  const tisId = workOrder.tisId;
-  if (!tisId) {
-    return res.json([]);
+});
+
+// GET endpoint za dohvatanje materijala za radni nalog
+router.get('/:id/materials', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    // Dohvati radni nalog sa materijalima
+    const workOrder = await WorkOrder.findById(id)
+      .populate('materials.material', 'type')
+      .lean()
+      .exec();
+    
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+    
+    res.json(workOrder.materials || []);
+  } catch (error) {
+    console.error('Greška pri dohvatanju materijala za radni nalog:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju materijala za radni nalog' });
   }
-  
-  // Pronađi opremu koja pripada korisniku
-  const equipment = userEquipment.filter(
-    item => item.userId === tisId && item.status === 'active'
-  );
-  
-  res.json(equipment);
 });
 
 // GET - Dohvati radni nalog po ID-u
-router.get('/:id', (req, res) => {
-  const { id } = req.params;
-  const workOrders = readWorkordersFile();
-  
-  const workOrder = workOrders.find(order => order.id === id);
-  
-  if (!workOrder) {
-    return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const workOrder = await WorkOrder.findById(id)
+      .populate('technicianId')
+      .lean()
+      .exec();
+    
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+    
+    res.json(workOrder);
+  } catch (error) {
+    console.error('Greška pri dohvatanju radnog naloga:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju radnog naloga' });
   }
-  
-  res.json(workOrder);
 });
 
 // POST - Dodaj nove radne naloge putem Excel fajla
@@ -301,14 +305,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Excel fajl ne sadrži podatke' });
     }
 
-    const workOrders = readWorkordersFile();
-    const technicians = readTechniciansFile();
-    const users = readUsersFile();
+    // Dohvatanje svih tehničara iz baze
+    const technicians = await Technician.find().lean();
     
     // Mapiranje tehničara po imenu
     const technicianByName = {};
     technicians.forEach(tech => {
-      technicianByName[tech.name.toLowerCase()] = tech.id;
+      technicianByName[tech.name.toLowerCase()] = tech._id;
     });
     
     const newWorkOrders = [];
@@ -333,20 +336,22 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         const requestType = row["Tip zahteva"] || '';
         
         // Parsiranje datuma i vremena
-        let date = '';
-        let time = '';
+        let date = new Date().toISOString().split('T')[0];
+        let time = '09:00';
         if (installDateTime) {
           try {
-            // Pokušavamo da parsiramo string kao datum
             const parts = installDateTime.split(' ');
             if (parts.length > 0) {
               const dateParts = parts[0].split('/');
               if (dateParts.length === 3) {
-                date = new Date(
+                const parsedDate = new Date(
                   parseInt(dateParts[2], 10),
                   parseInt(dateParts[1], 10) - 1,
                   parseInt(dateParts[0], 10)
                 );
+                if (!isNaN(parsedDate.getTime())) {
+                  date = parsedDate.toISOString().split('T')[0];
+                }
               }
             }
             if (parts.length > 1) {
@@ -358,58 +363,58 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         }
         
         // Pronalaženje tehničara po imenu
-        let technicianId = '';
+        let technicianId = null;
         if (technicianName) {
-          const techId = technicianByName[technicianName.toLowerCase()];
-          if (techId) {
-            technicianId = techId;
-          }
+          technicianId = technicianByName[technicianName.toLowerCase()];
         }
 
         // Provera da li radni nalog već postoji
-        const duplicateOrder = workOrders.find(order =>
-          order.date === (date || new Date().toISOString().split('T')[0]) &&
-          order.time === (time || '09:00') &&
-          order.municipality === area &&
-          order.address === address &&
-          order.type === packageName &&
-          order.tisId === tisId &&
-          order.tisJobId === tisJobId
-        );
+        const existingWorkOrder = await WorkOrder.findOne({
+          date,
+          time,
+          municipality: area,
+          address,
+          type: packageName,
+          tisId,
+          tisJobId
+        });
 
-        if (duplicateOrder) {
+        if (existingWorkOrder) {
           console.log('Radni nalog već postoji, preskačem:', { address, tisId, tisJobId });
-          continue; // Preskačemo kreiranje ovog radnog naloga
+          continue;
         }
         
         // Provera da li korisnik već postoji
-        let user = users.find(u => u.tisId === tisId);
-        
-        if (!user && tisId) {
-          // Kreiranje novog korisnika
-          user = {
-            id: uuidv4(),
-            tisId,
-            name: userName,
-            address,
-            phone: userPhone,
-            workOrders: []
-          };
-          users.push(user);
-          newUsers.push(user);
-        } else if (user) {
-          // Ažuriranje postojećeg korisnika
-          user.name = userName || user.name;
-          user.address = address || user.address;
-          user.phone = userPhone || user.phone;
-          existingUsers.push(user);
+        let user = null;
+        if (tisId) {
+          user = await User.findOne({ tisId });
+          
+          if (!user) {
+            // Kreiranje novog korisnika
+            const newUser = new User({
+              tisId,
+              name: userName,
+              address,
+              phone: userPhone,
+              workOrders: []
+            });
+            
+            user = await newUser.save();
+            newUsers.push(user);
+          } else {
+            // Ažuriranje postojećeg korisnika
+            user.name = userName || user.name;
+            user.address = address || user.address;
+            user.phone = userPhone || user.phone;
+            await user.save();
+            existingUsers.push(user);
+          }
         }
         
         // Kreiranje novog radnog naloga
-        const newWorkOrder = {
-          id: uuidv4(),
-          date: date || new Date().toISOString().split('T')[0],
-          time: time || '09:00',
+        const newWorkOrder = new WorkOrder({
+          date,
+          time,
           municipality: area,
           address,
           type: packageName,
@@ -425,15 +430,17 @@ router.post('/upload', upload.single('file'), async (req, res) => {
           additionalJobs,
           images: [],
           verified: false,
-          createdAt: new Date().toISOString()
-        };
+          user: user ? user._id : null
+        });
         
-        workOrders.push(newWorkOrder);
-        newWorkOrders.push(newWorkOrder);
+        const savedWorkOrder = await newWorkOrder.save();
+        newWorkOrders.push(savedWorkOrder);
         
         // Dodavanje radnog naloga korisniku
         if (user) {
-          user.workOrders.push(newWorkOrder.id);
+          await User.findByIdAndUpdate(user._id, {
+            $push: { workOrders: savedWorkOrder._id }
+          });
         }
         
       } catch (error) {
@@ -441,10 +448,6 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         errors.push(`Greška pri obradi reda: ${JSON.stringify(row)}`);
       }
     }
-    
-    // Čuvanje ažuriranih podataka
-    saveWorkordersFile(workOrders);
-    saveUsersFile(users);
     
     res.json({
       newWorkOrders,
@@ -455,7 +458,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     
   } catch (error) {
     console.error('Greška pri upload-u:', error);
-        res.status(500).json({ error: 'Greška pri obradi Excel fajla: ' + error.message });
+    res.status(500).json({ error: 'Greška pri obradi Excel fajla: ' + error.message });
   } finally {
     // Brisanje privremenog fajla
     if (req.file) {
@@ -507,256 +510,330 @@ router.get('/template', (req, res) => {
 });
 
 // POST - Dodaj pojedinačni radni nalog
-router.post('/', (req, res) => {
-  const { 
-    date, time, municipality, address, type, technicianId, details, comment,
-    technology, tisId, userName, userPhone, tisJobId, additionalJobs 
-  } = req.body;
-  
-  if (!date || !municipality || !address || !type) {
-    return res.status(400).json({ error: 'Datum, opština, adresa i tip su obavezna polja' });
-  }
-  
-  // Provera da li tehničar postoji
-  if (technicianId) {
-    const technicians = readTechniciansFile();
-    const technician = technicians.find(tech => tech.id === technicianId);
+router.post('/', async (req, res) => {
+  try {
+    const { 
+      date, time, municipality, address, type, technicianId, details, comment,
+      technology, tisId, userName, userPhone, tisJobId, additionalJobs 
+    } = req.body;
     
-    if (!technician) {
-      return res.status(400).json({ error: 'Tehničar nije pronađen' });
-    }
-  }
-  
-  const workOrders = readWorkordersFile();
-  const users = readUsersFile();
-  
-  const newWorkOrder = {
-    id: uuidv4(),
-    date,
-    time: time || '09:00',
-    municipality,
-    address,
-    type,
-    technicianId,
-    details: details || '',
-    comment: comment || '',
-    status: 'nezavrsen',
-    technology: technology || '',
-    tisId: tisId || '',
-    userName: userName || '',
-    userPhone: userPhone || '',
-    tisJobId: tisJobId || '',
-    additionalJobs: additionalJobs || '',
-    images: [],
-    verified: false,
-    createdAt: new Date().toISOString()
-  };
-  
-  workOrders.push(newWorkOrder);
-  
-  // Ako je prosleđen tisId, dodajemo radni nalog korisniku
-  if (tisId) {
-    // Proveravamo da li korisnik već postoji
-    let user = users.find(u => u.tisId === tisId);
-    
-    // Ako ne postoji, kreiramo novog korisnika
-    if (!user) {
-      user = {
-        id: uuidv4(),
-        tisId,
-        name: userName || '',
-        address: address || '',
-        phone: userPhone || '',
-        workOrders: [newWorkOrder.id]
-      };
-      users.push(user);
-    } else {
-      // Dodajemo radni nalog postojećem korisniku
-      user.workOrders.push(newWorkOrder.id);
+    if (!date || !municipality || !address || !type) {
+      return res.status(400).json({ error: 'Datum, opština, adresa i tip su obavezna polja' });
     }
     
-    saveUsersFile(users);
+    // Provera da li tehničar postoji
+    if (technicianId && mongoose.Types.ObjectId.isValid(technicianId)) {
+      const technician = await Technician.findById(technicianId);
+      if (!technician) {
+        return res.status(400).json({ error: 'Tehničar nije pronađen' });
+      }
+    }
+    
+    // Ako je prosleđen tisId, pronalazimo ili kreiramo korisnika
+    let userId = null;
+    
+    if (tisId) {
+      // Proveravamo da li korisnik već postoji
+      let user = await User.findOne({ tisId });
+      
+      // Ako ne postoji, kreiramo novog korisnika
+      if (!user) {
+        const newUser = new User({
+          tisId,
+          name: userName || '',
+          address: address || '',
+          phone: userPhone || '',
+          workOrders: []
+        });
+        
+        user = await newUser.save();
+      }
+      
+      userId = user._id;
+    }
+    
+    // Kreiranje novog radnog naloga
+    const newWorkOrder = new WorkOrder({
+      date,
+      time: time || '09:00',
+      municipality,
+      address,
+      type,
+      technicianId: technicianId || null,
+      details: details || '',
+      comment: comment || '',
+      status: 'nezavrsen',
+      technology: technology || '',
+      tisId: tisId || '',
+      userName: userName || '',
+      userPhone: userPhone || '',
+      tisJobId: tisJobId || '',
+      additionalJobs: additionalJobs || '',
+      images: [],
+      verified: false,
+      user: userId
+    });
+    
+    const savedWorkOrder = await newWorkOrder.save();
+    
+    // Ako je korisnik pronađen/kreiran, dodajemo radni nalog korisniku
+    if (userId) {
+      await User.findByIdAndUpdate(userId, {
+        $push: { workOrders: savedWorkOrder._id }
+      });
+    }
+    
+    res.status(201).json(savedWorkOrder);
+  } catch (error) {
+    console.error('Greška pri kreiranju radnog naloga:', error);
+    res.status(500).json({ error: 'Greška pri kreiranju radnog naloga' });
   }
-  
-  saveWorkordersFile(workOrders);
-  
-  res.status(201).json(newWorkOrder);
 });
 
-// PUT - Ažuriranje radnog naloga (admin)
-router.put('/:id', (req, res) => {
-  const { id } = req.params;
-  const updateData = req.body;
-  
-  const workOrders = readWorkordersFile();
-  const index = workOrders.findIndex(order => order.id === id);
-  
-  if (index === -1) {
-    return res.status(404).json({ error: 'Radni nalog nije pronađen' });
-  }
-  
-  // Provera da li tehničar postoji
-  if (updateData.technicianId) {
-    const technicians = readTechniciansFile();
-    const technician = technicians.find(tech => tech.id === updateData.technicianId);
+// PUT - Ažuriraj radni nalog
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
     
-    if (!technician && updateData.technicianId !== '') {
-      return res.status(400).json({ error: 'Tehničar nije pronađen' });
+    console.log('Received update data:', updateData);
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
     }
+
+    // Provera da li radni nalog postoji
+    const workOrder = await WorkOrder.findById(id);
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    // Provera i konverzija technicianId
+    if (updateData.technicianId === '') {
+      updateData.technicianId = null;
+    } else if (updateData.technicianId && !mongoose.Types.ObjectId.isValid(updateData.technicianId)) {
+      return res.status(400).json({ error: 'Neispravan format ID-a tehničara' });
+    }
+
+    console.log('Current work order:', workOrder);
+    console.log('Processed update data:', updateData);
+
+    // Pojednostavljeno ažuriranje
+    const updatedWorkOrder = await WorkOrder.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).populate('technicianId', 'name _id');
+
+    console.log('Updated work order:', updatedWorkOrder);
+
+    if (!updatedWorkOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen nakon ažuriranja' });
+    }
+
+    res.json(updatedWorkOrder);
+  } catch (error) {
+    console.error('Detalji greške:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    res.status(500).json({ 
+      error: 'Greška pri ažuriranju radnog naloga',
+      details: error.message 
+    });
   }
-  
-  workOrders[index] = {
-    ...workOrders[index],
-    ...updateData,
-    updatedAt: new Date().toISOString()
-  };
-  
-  saveWorkordersFile(workOrders);
-  
-  res.json(workOrders[index]);
 });
 
 // PUT - Ažuriranje radnog naloga (tehničar)
-router.put('/:id/technician-update', (req, res) => {
-  const { id } = req.params;
-  const { comment, status, postponeDate, postponeTime } = req.body;
-  
-  const workOrders = readWorkordersFile();
-  const index = workOrders.findIndex(order => order.id === id);
-  
-  if (index === -1) {
-    return res.status(404).json({ error: 'Radni nalog nije pronađen' });
-  }
-  
-  // Tehničar može da ažurira samo komentar, status i vreme odlaganja
-  const updatedWorkOrder = {
-    ...workOrders[index],
-    comment: comment !== undefined ? comment : workOrders[index].comment,
-    updatedAt: new Date().toISOString()
-  };
-  
-  // Ako je status promenjen, ažuriramo i to
-  if (status) {
-    updatedWorkOrder.status = status;
+router.put('/:id/technician-update', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { comment, status, postponeDate, postponeTime } = req.body;
     
-    // Ako je status promenjen na "zavrsen", dodaj timestamp završetka
-    if (status === 'zavrsen' && workOrders[index].status !== 'zavrsen') {
-      updatedWorkOrder.completedAt = new Date().toISOString();
-      updatedWorkOrder.verified = false; // Čeka verifikaciju admina
-    } 
-    // Ako je status promenjen na "odlozen", dodaj novo vreme i datum
-    else if (status === 'odlozen' && workOrders[index].status !== 'odlozen') {
-      updatedWorkOrder.postponedAt = new Date().toISOString();
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const workOrder = await WorkOrder.findById(id);
+    
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+    
+    // Tehničar može da ažurira samo komentar, status i vreme odlaganja
+    if (comment !== undefined) {
+      workOrder.comment = comment;
+    }
+    
+    // Ako je status promenjen, ažuriramo i to
+    if (status) {
+      workOrder.status = status;
       
-            // Ako su dostavljeni novi datum i vreme, ažuriramo ih
-      if (postponeDate) {
-        updatedWorkOrder.date = postponeDate;
+      // Ako je status promenjen na "zavrsen", dodaj timestamp završetka
+      if (status === 'zavrsen' && workOrder.status !== 'zavrsen') {
+        workOrder.completedAt = new Date();
+        workOrder.verified = false; // Čeka verifikaciju admina
+      } 
+      // Ako je status promenjen na "odlozen", dodaj novo vreme i datum
+      else if (status === 'odlozen' && workOrder.status !== 'odlozen') {
+        workOrder.postponedAt = new Date();
+        
+        // Ako su dostavljeni novi datum i vreme, ažuriramo ih
+        if (postponeDate) {
+          workOrder.date = postponeDate;
+        }
+        if (postponeTime) {
+          workOrder.time = postponeTime;
+        }
       }
-      if (postponeTime) {
-        updatedWorkOrder.time = postponeTime;
+      // Ako je status "otkazan", dodaj timestamp otkazivanja
+      else if (status === 'otkazan' && workOrder.status !== 'otkazan') {
+        workOrder.canceledAt = new Date();
       }
     }
-    // Ako je status "otkazan", dodaj timestamp otkazivanja
-    else if (status === 'otkazan' && workOrders[index].status !== 'otkazan') {
-      updatedWorkOrder.canceledAt = new Date().toISOString();
-    }
+    
+    const updatedWorkOrder = await workOrder.save();
+    
+    res.json(updatedWorkOrder);
+  } catch (error) {
+    console.error('Greška pri ažuriranju radnog naloga od strane tehničara:', error);
+    res.status(500).json({ error: 'Greška pri ažuriranju radnog naloga' });
   }
-  
-  workOrders[index] = updatedWorkOrder;
-  saveWorkordersFile(workOrders);
-  
-  res.json(updatedWorkOrder);
 });
 
 // POST - Dodavanje slike radnom nalogu
-router.post('/:id/images', imageUpload.single('image'), (req, res) => {
-  const { id } = req.params;
-  
-  if (!req.file) {
-    return res.status(400).json({ error: 'Slika nije priložena' });
-  }
-  
-  const workOrders = readWorkordersFile();
-  const index = workOrders.findIndex(order => order.id === id);
-  
-  if (index === -1) {
-    // Brisanje uploadvane slike ako radni nalog ne postoji
-    fs.unlink(req.file.path, err => {
-      if (err) console.error('Greška pri brisanju slike:', err);
+router.post('/:id/images', imageUpload.single('image'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'Slika nije priložena' });
+    }
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      // Brisanje uploadvane slike ako ID nije ispravan
+      fs.unlink(req.file.path, err => {
+        if (err) console.error('Greška pri brisanju slike:', err);
+      });
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const workOrder = await WorkOrder.findById(id);
+    
+    if (!workOrder) {
+      // Brisanje uploadvane slike ako radni nalog ne postoji
+      fs.unlink(req.file.path, err => {
+        if (err) console.error('Greška pri brisanju slike:', err);
+      });
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+    
+    // URL do slike relativno u odnosu na server
+    const imageUrl = `/uploads/images/${path.basename(req.file.path)}`;
+    
+    if (!workOrder.images) {
+      workOrder.images = [];
+    }
+    
+    workOrder.images.push(imageUrl);
+    
+    const updatedWorkOrder = await workOrder.save();
+    
+    res.json({
+      message: 'Slika uspešno dodata',
+      workOrder: updatedWorkOrder
     });
-    return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+  } catch (error) {
+    console.error('Greška pri dodavanju slike radnom nalogu:', error);
+    res.status(500).json({ error: 'Greška pri dodavanju slike radnom nalogu' });
+    
+    // Brisanje uploadvane slike u slučaju greške
+    if (req.file) {
+      fs.unlink(req.file.path, err => {
+        if (err) console.error('Greška pri brisanju slike:', err);
+      });
+    }
   }
-  
-  // URL do slike relativno u odnosu na server
-  const imageUrl = `/uploads/images/${path.basename(req.file.path)}`;
-  
-  if (!workOrders[index].images) {
-    workOrders[index].images = [];
-  }
-  
-  workOrders[index].images.push(imageUrl);
-  workOrders[index].updatedAt = new Date().toISOString();
-  
-  saveWorkordersFile(workOrders);
-  
-  res.json({
-    message: 'Slika uspešno dodata',
-    workOrder: workOrders[index]
-  });
 });
 
 // PUT - Verifikacija radnog naloga od strane admina
-router.put('/:id/verify', (req, res) => {
-  const { id } = req.params;
-  
-  const workOrders = readWorkordersFile();
-  const index = workOrders.findIndex(order => order.id === id);
-  
-  if (index === -1) {
-    return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+router.put('/:id/verify', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const workOrder = await WorkOrder.findById(id);
+    
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+    
+    if (workOrder.status !== 'zavrsen') {
+      return res.status(400).json({ error: 'Samo završeni radni nalozi mogu biti verifikovani' });
+    }
+    
+    workOrder.verified = true;
+    workOrder.verifiedAt = new Date();
+    
+    const updatedWorkOrder = await workOrder.save();
+    
+    res.json({
+      message: 'Radni nalog je uspešno verifikovan',
+      workOrder: updatedWorkOrder
+    });
+  } catch (error) {
+    console.error('Greška pri verifikaciji radnog naloga:', error);
+    res.status(500).json({ error: 'Greška pri verifikaciji radnog naloga' });
   }
-  
-  if (workOrders[index].status !== 'zavrsen') {
-    return res.status(400).json({ error: 'Samo završeni radni nalozi mogu biti verifikovani' });
-  }
-  
-  workOrders[index].verified = true;
-  workOrders[index].verifiedAt = new Date().toISOString();
-  
-  saveWorkordersFile(workOrders);
-  
-  res.json({
-    message: 'Radni nalog je uspešno verifikovan',
-    workOrder: workOrders[index]
-  });
 });
 
 // POST - Ažuriranje utrošenog materijala za radni nalog
-router.post('/:id/used-materials', (req, res) => {
-  const { id } = req.params;
-  const { materials } = req.body;
-  
-  if (!Array.isArray(materials)) {
-    return res.status(400).json({ error: 'Potrebno je dostaviti niz utrošenih materijala' });
+router.post('/:id/used-materials', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { materials } = req.body;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    if (!Array.isArray(materials)) {
+      return res.status(400).json({ error: 'Potrebno je dostaviti niz materijala' });
+    }
+    
+    // Validacija materijala
+    for (const material of materials) {
+      if (!material.material || !mongoose.Types.ObjectId.isValid(material.material)) {
+        return res.status(400).json({ error: 'Neispravan ID materijala' });
+      }
+      if (!material.quantity || material.quantity <= 0) {
+        return res.status(400).json({ error: 'Količina mora biti veća od 0' });
+      }
+    }
+    
+    const workOrder = await WorkOrder.findById(id);
+    
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+    
+    // Ažuriranje utrošenih materijala
+    workOrder.materials = materials;
+    
+    const updatedWorkOrder = await workOrder.save();
+    
+    res.json({
+      message: 'Uspešno ažurirani utrošeni materijali',
+      workOrder: updatedWorkOrder
+    });
+  } catch (error) {
+    console.error('Greška pri ažuriranju materijala:', error);
+    res.status(500).json({ error: 'Greška pri ažuriranju materijala' });
   }
-  
-  const workOrders = readWorkordersFile();
-  const workOrderIndex = workOrders.findIndex(order => order.id === id);
-  
-  if (workOrderIndex === -1) {
-    return res.status(404).json({ error: 'Radni nalog nije pronađen' });
-  }
-  
-  // Dodaj ili ažuriraj listu utrošenih materijala
-  workOrders[workOrderIndex].usedMaterials = materials;
-  workOrders[workOrderIndex].materialsUpdatedAt = new Date().toISOString();
-  
-  saveWorkordersFile(workOrders);
-  
-  res.json({
-    message: 'Uspešno ažurirani utrošeni materijali',
-    workOrder: workOrders[workOrderIndex]
-  });
 });
 
 // POST - Ažuriranje utrošene opreme za radni nalog
@@ -788,138 +865,156 @@ router.post('/:id/used-equipment', (req, res) => {
 });
 
 // DELETE - Brisanje radnog naloga
-router.delete('/:id', (req, res) => {
-  const { id } = req.params;
-  const workOrders = readWorkordersFile();
-  const users = readUsersFile();
-  
-  const initialLength = workOrders.length;
-  const workOrder = workOrders.find(order => order.id === id);
-  
-  if (!workOrder) {
-    return res.status(404).json({ error: 'Radni nalog nije pronađen' });
-  }
-  
-  const filteredWorkOrders = workOrders.filter(order => order.id !== id);
-  
-  // Uklanjanje referenci na radni nalog iz korisnika
-  if (workOrder.tisId) {
-    const user = users.find(u => u.tisId === workOrder.tisId);
-    if (user) {
-      user.workOrders = user.workOrders.filter(orderId => orderId !== id);
-      saveUsersFile(users);
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
     }
+    
+    const workOrder = await WorkOrder.findById(id);
+    
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+    
+    // Uklanjanje referenci na radni nalog iz korisnika
+    if (workOrder.user) {
+      await User.findByIdAndUpdate(workOrder.user, {
+        $pull: { workOrders: id }
+      });
+    } else if (workOrder.tisId) {
+      // Alternativni način ako koristimo tisId
+      const user = await User.findOne({ tisId: workOrder.tisId });
+      if (user) {
+        await User.findByIdAndUpdate(user._id, {
+          $pull: { workOrders: id }
+        });
+      }
+    }
+    
+    // Brisanje radnog naloga
+    await WorkOrder.findByIdAndDelete(id);
+    
+    res.json({ message: 'Radni nalog uspešno obrisan' });
+  } catch (error) {
+    console.error('Greška pri brisanju radnog naloga:', error);
+    res.status(500).json({ error: 'Greška pri brisanju radnog naloga' });
   }
-  
-  saveWorkordersFile(filteredWorkOrders);
-  
-  res.json({ message: 'Radni nalog uspešno obrisan' });
 });
 
 // GET - Dohvati statistiku radnih naloga
-router.get('/statistics/summary', (req, res) => {
-  const workOrders = readWorkordersFile();
-  const technicians = readTechniciansFile();
-  
-  // Ukupan broj radnih naloga
-  const total = workOrders.length;
-  
-  // Broj po statusima
-  const completed = workOrders.filter(order => order.status === 'zavrsen').length;
-  const pending = workOrders.filter(order => order.status === 'nezavrsen').length;
-  const postponed = workOrders.filter(order => order.status === 'odlozen').length;
-  const canceled = workOrders.filter(order => order.status === 'otkazan').length;
-  
-  // Broj verifikovanih
-  const verified = workOrders.filter(order => order.verified).length;
-  
-  // Po tipovima
-  const byType = {};
+router.get('/statistics/summary', async (req, res) => {
+  try {
+    // Dohvatanje svih radnih naloga i tehničara
+    const workOrders = await WorkOrder.find();
+    const technicians = await Technician.find().select('name phone email');
+    
+    // Ukupan broj radnih naloga
+    const total = workOrders.length;
+    
+    // Broj po statusima
+    const completed = workOrders.filter(order => order.status === 'zavrsen').length;
+    const pending = workOrders.filter(order => order.status === 'nezavrsen').length;
+    const postponed = workOrders.filter(order => order.status === 'odlozen').length;
+    const canceled = workOrders.filter(order => order.status === 'otkazan').length;
+    
+    // Broj verifikovanih
+    const verified = workOrders.filter(order => order.verified).length;
+    
+    // Po tipovima
+    const byType = {};
     workOrders.forEach(order => {
-    if (!byType[order.type]) {
-      byType[order.type] = 0;
-    }
-    byType[order.type]++;
-  });
-  
-  // Po opštinama
-  const byMunicipality = {};
-  workOrders.forEach(order => {
-    if (!byMunicipality[order.municipality]) {
-      byMunicipality[order.municipality] = 0;
-    }
-    byMunicipality[order.municipality]++;
-  });
-  
-  // Po tehnologiji
-  const byTechnology = {};
-  workOrders.forEach(order => {
-    if (order.technology) {
-      if (!byTechnology[order.technology]) {
-        byTechnology[order.technology] = 0;
+      if (!byType[order.type]) {
+        byType[order.type] = 0;
       }
-      byTechnology[order.technology]++;
-    }
-  });
-  
-  // Po tehničarima
-  const byTechnician = {};
-  workOrders.forEach(order => {
-    if (order.technicianId) {
-      if (!byTechnician[order.technicianId]) {
-        byTechnician[order.technicianId] = {
-          total: 0,
-          completed: 0,
-          pending: 0,
-          postponed: 0,
-          canceled: 0,
-          verified: 0
-        };
+      byType[order.type]++;
+    });
+    
+    // Po opštinama
+    const byMunicipality = {};
+    workOrders.forEach(order => {
+      if (!byMunicipality[order.municipality]) {
+        byMunicipality[order.municipality] = 0;
       }
-      byTechnician[order.technicianId].total++;
-      
-      if (order.status === 'zavrsen') {
-        byTechnician[order.technicianId].completed++;
-        if (order.verified) {
-          byTechnician[order.technicianId].verified++;
+      byMunicipality[order.municipality]++;
+    });
+    
+    // Po tehnologiji
+    const byTechnology = {};
+    workOrders.forEach(order => {
+      if (order.technology) {
+        if (!byTechnology[order.technology]) {
+          byTechnology[order.technology] = 0;
         }
-      } else if (order.status === 'nezavrsen') {
-        byTechnician[order.technicianId].pending++;
-      } else if (order.status === 'odlozen') {
-        byTechnician[order.technicianId].postponed++;
-      } else if (order.status === 'otkazan') {
-        byTechnician[order.technicianId].canceled++;
+        byTechnology[order.technology]++;
       }
-    }
-  });
-  
-  // Dodajemo imena tehničara u statistiku
-  const technicianDetails = {};
-  technicians.forEach(tech => {
-    technicianDetails[tech.id] = {
-      name: tech.name,
-      phone: tech.phone || null,
-      email: tech.email || null
-    };
-  });
-  
-  // Nedodeljeni radni nalozi
-  const unassigned = workOrders.filter(order => !order.technicianId || order.technicianId === '').length;
-  
-  res.json({
-    total,
-    completed,
-    pending,
-    postponed,
-    canceled,
-    verified,
-    unassigned,
-    byType,
-    byMunicipality,
-    byTechnology,
-    byTechnician,
-    technicianDetails
-  });
+    });
+    
+    // Po tehničarima
+    const byTechnician = {};
+    workOrders.forEach(order => {
+      if (order.technicianId) {
+        const techId = order.technicianId.toString();
+        if (!byTechnician[techId]) {
+          byTechnician[techId] = {
+            total: 0,
+            completed: 0,
+            pending: 0,
+            postponed: 0,
+            canceled: 0,
+            verified: 0
+          };
+        }
+        byTechnician[techId].total++;
+        
+        if (order.status === 'zavrsen') {
+          byTechnician[techId].completed++;
+          if (order.verified) {
+            byTechnician[techId].verified++;
+          }
+        } else if (order.status === 'nezavrsen') {
+          byTechnician[techId].pending++;
+        } else if (order.status === 'odlozen') {
+          byTechnician[techId].postponed++;
+        } else if (order.status === 'otkazan') {
+          byTechnician[techId].canceled++;
+        }
+      }
+    });
+    
+    // Dodajemo imena tehničara u statistiku
+    const technicianDetails = {};
+    technicians.forEach(tech => {
+      technicianDetails[tech._id.toString()] = {
+        name: tech.name,
+        phone: tech.phone || null,
+        email: tech.email || null
+      };
+    });
+    
+    // Nedodeljeni radni nalozi
+    const unassigned = workOrders.filter(order => !order.technicianId).length;
+    
+    res.json({
+      total,
+      completed,
+      pending,
+      postponed,
+      canceled,
+      verified,
+      unassigned,
+      byType,
+      byMunicipality,
+      byTechnology,
+      byTechnician,
+      technicianDetails
+    });
+  } catch (error) {
+    console.error('Greška pri dohvatanju statistike radnih naloga:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju statistike radnih naloga' });
+  }
 });
 
 module.exports = router;

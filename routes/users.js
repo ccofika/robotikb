@@ -1,241 +1,256 @@
 // Kreirati u direktorijumu: routes/users.js
 const express = require('express');
 const router = express.Router();
-const fs = require('fs');
-const path = require('path');
-
-const usersFilePath = path.join(__dirname, '../data/users.json');
-const workordersFilePath = path.join(__dirname, '../data/workorders.json');
-
-// Middleware za čitanje users.json fajla
-const readUsersFile = () => {
-  try {
-    if (fs.existsSync(usersFilePath)) {
-      const data = fs.readFileSync(usersFilePath, 'utf8');
-      return JSON.parse(data);
-    }
-    return [];
-  } catch (error) {
-    console.error('Greška pri čitanju korisnika:', error);
-    return [];
-  }
-};
-
-// Middleware za čuvanje users.json fajla
-const saveUsersFile = (data) => {
-  try {
-    fs.writeFileSync(usersFilePath, JSON.stringify(data, null, 2), 'utf8');
-    return true;
-  } catch (error) {
-    console.error('Greška pri čuvanju korisnika:', error);
-    return false;
-  }
-};
-
-// Middleware za čitanje workorders.json fajla
-const readWorkordersFile = () => {
-  try {
-    if (fs.existsSync(workordersFilePath)) {
-      const data = fs.readFileSync(workordersFilePath, 'utf8');
-      return JSON.parse(data);
-    }
-    return [];
-  } catch (error) {
-    console.error('Greška pri čitanju radnih naloga:', error);
-    return [];
-  }
-};
+const { User, WorkOrder } = require('../models');
+const mongoose = require('mongoose');
 
 // GET - Dohvati sve korisnike
-router.get('/', (req, res) => {
-  const users = readUsersFile();
-  res.json(users);
+router.get('/', async (req, res) => {
+  try {
+    const users = await User.find();
+    res.json(users);
+  } catch (error) {
+    console.error('Greška pri dohvatanju korisnika:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju korisnika' });
+  }
 });
 
 // GET - Dohvati korisnika po ID-u
-router.get('/:id', (req, res) => {
-  const { id } = req.params;
-  const users = readUsersFile();
-  
-  const user = users.find(user => user.id === id);
-  
-  if (!user) {
-    return res.status(404).json({ error: 'Korisnik nije pronađen' });
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const user = await User.findById(id);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'Korisnik nije pronađen' });
+    }
+    
+    res.json(user);
+  } catch (error) {
+    console.error('Greška pri dohvatanju korisnika:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju korisnika' });
   }
-  
-  res.json(user);
 });
 
 // GET - Dohvati korisnika po TIS ID-u
-router.get('/tis/:tisId', (req, res) => {
-  const { tisId } = req.params;
-  const users = readUsersFile();
-  
-  const user = users.find(user => user.tisId === tisId);
-  
-  if (!user) {
-    return res.status(404).json({ error: 'Korisnik nije pronađen' });
+router.get('/tis/:tisId', async (req, res) => {
+  try {
+    const { tisId } = req.params;
+    const user = await User.findOne({ tisId });
+    
+    if (!user) {
+      return res.status(404).json({ error: 'Korisnik nije pronađen' });
+    }
+    
+    res.json(user);
+  } catch (error) {
+    console.error('Greška pri dohvatanju korisnika:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju korisnika' });
   }
-  
-  res.json(user);
 });
 
 // GET - Pretraži korisnike po bilo kom polju
-router.get('/search/:term', (req, res) => {
-  const { term } = req.params;
-  const users = readUsersFile();
-  
-  const filteredUsers = users.filter(user => {
-    return (
-      user.name.toLowerCase().includes(term.toLowerCase()) ||
-      user.address.toLowerCase().includes(term.toLowerCase()) ||
-      user.phone.toLowerCase().includes(term.toLowerCase()) ||
-      user.tisId.toString().includes(term)
-    );
-  });
-  
-  res.json(filteredUsers);
+router.get('/search/:term', async (req, res) => {
+  try {
+    const { term } = req.params;
+    
+    const filteredUsers = await User.find({
+      $or: [
+        { name: { $regex: term, $options: 'i' } },
+        { address: { $regex: term, $options: 'i' } },
+        { phone: { $regex: term, $options: 'i' } },
+        { tisId: { $regex: term, $options: 'i' } }
+      ]
+    });
+    
+    res.json(filteredUsers);
+  } catch (error) {
+    console.error('Greška pri pretraživanju korisnika:', error);
+    res.status(500).json({ error: 'Greška pri pretraživanju korisnika' });
+  }
 });
 
 // GET - Dohvati radne naloge korisnika
-router.get('/:id/workorders', (req, res) => {
-  const { id } = req.params;
-  const users = readUsersFile();
-  const workOrders = readWorkordersFile();
-  
-  const user = users.find(user => user.id === id);
-  
-  if (!user) {
-    return res.status(404).json({ error: 'Korisnik nije pronađen' });
+router.get('/:id/workorders', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const user = await User.findById(id);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'Korisnik nije pronađen' });
+    }
+    
+    const userWorkOrders = await WorkOrder.find({ user: id })
+      .populate('technicianId', 'name _id')
+      .sort({ date: -1 })
+      .lean();
+    
+    res.json(userWorkOrders);
+  } catch (error) {
+    console.error('Greška pri dohvatanju radnih naloga korisnika:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju radnih naloga korisnika' });
   }
-  
-  const userWorkOrders = workOrders.filter(order => user.workOrders.includes(order.id));
-  
-  res.json(userWorkOrders);
 });
 
 // POST - Kreiraj novog korisnika
-router.post('/', (req, res) => {
-  const { tisId, name, address, phone } = req.body;
-  
-  if (!tisId || !name || !address) {
-    return res.status(400).json({ error: 'TIS ID, ime i adresa su obavezni' });
+router.post('/', async (req, res) => {
+  try {
+    const { tisId, name, address, phone } = req.body;
+    
+    if (!tisId || !name || !address) {
+      return res.status(400).json({ error: 'TIS ID, ime i adresa su obavezni' });
+    }
+    
+    // Provera da li već postoji korisnik sa datim TIS ID-om
+    const existingUser = await User.findOne({ tisId });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Korisnik sa datim TIS ID-om već postoji' });
+    }
+    
+    const newUser = new User({
+      tisId,
+      name,
+      address,
+      phone: phone || '',
+      workOrders: []
+    });
+    
+    const savedUser = await newUser.save();
+    res.status(201).json(savedUser);
+  } catch (error) {
+    console.error('Greška pri kreiranju korisnika:', error);
+    res.status(500).json({ error: 'Greška pri kreiranju korisnika' });
   }
-  
-  const users = readUsersFile();
-  
-  // Provera da li već postoji korisnik sa datim TIS ID-om
-  const existingUser = users.find(user => user.tisId === tisId);
-  if (existingUser) {
-    return res.status(400).json({ error: 'Korisnik sa datim TIS ID-om već postoji' });
-  }
-  
-  const newUser = {
-    id: Date.now().toString(),
-    tisId,
-    name,
-    address,
-    phone: phone || '',
-    workOrders: []
-  };
-  
-  users.push(newUser);
-  saveUsersFile(users);
-  
-  res.status(201).json(newUser);
 });
 
 // PUT - Ažuriraj korisnika
-router.put('/:id', (req, res) => {
-  const { id } = req.params;
-  const { tisId, name, address, phone } = req.body;
-  
-  const users = readUsersFile();
-  const index = users.findIndex(user => user.id === id);
-  
-  if (index === -1) {
-    return res.status(404).json({ error: 'Korisnik nije pronađen' });
-  }
-  
-  // Ako se TIS ID menja, provera da li je jedinstven
-  if (tisId && tisId !== users[index].tisId) {
-    const duplicateTisId = users.some(user => user.tisId === tisId && user.id !== id);
-    if (duplicateTisId) {
-      return res.status(400).json({ error: 'TIS ID mora biti jedinstven' });
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tisId, name, address, phone } = req.body;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
     }
+    
+    const user = await User.findById(id);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'Korisnik nije pronađen' });
+    }
+    
+    // Ako se TIS ID menja, provera da li je jedinstven
+    if (tisId && tisId !== user.tisId) {
+      const duplicateTisId = await User.findOne({ tisId, _id: { $ne: id } });
+      if (duplicateTisId) {
+        return res.status(400).json({ error: 'TIS ID mora biti jedinstven' });
+      }
+    }
+    
+    user.tisId = tisId || user.tisId;
+    user.name = name || user.name;
+    user.address = address || user.address;
+    user.phone = phone !== undefined ? phone : user.phone;
+    
+    const updatedUser = await user.save();
+    res.json(updatedUser);
+  } catch (error) {
+    console.error('Greška pri ažuriranju korisnika:', error);
+    res.status(500).json({ error: 'Greška pri ažuriranju korisnika' });
   }
-  
-  users[index] = {
-    ...users[index],
-    tisId: tisId || users[index].tisId,
-    name: name || users[index].name,
-    address: address || users[index].address,
-    phone: phone !== undefined ? phone : users[index].phone
-  };
-  
-  saveUsersFile(users);
-  
-  res.json(users[index]);
 });
 
 // DELETE - Obriši korisnika
-router.delete('/:id', (req, res) => {
-  const { id } = req.params;
-  const users = readUsersFile();
-  
-  const initialLength = users.length;
-  const filteredUsers = users.filter(user => user.id !== id);
-  
-  if (filteredUsers.length === initialLength) {
-    return res.status(404).json({ error: 'Korisnik nije pronađen' });
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const deletedUser = await User.findByIdAndDelete(id);
+    
+    if (!deletedUser) {
+      return res.status(404).json({ error: 'Korisnik nije pronađen' });
+    }
+    
+    // Možemo razmotriti brisanje i povezanih workOrders
+    
+    res.json({ message: 'Korisnik uspešno obrisan' });
+  } catch (error) {
+    console.error('Greška pri brisanju korisnika:', error);
+    res.status(500).json({ error: 'Greška pri brisanju korisnika' });
   }
-  
-  saveUsersFile(filteredUsers);
-  
-  res.json({ message: 'Korisnik uspešno obrisan' });
 });
 
 // POST - Dodaj radni nalog korisniku
-router.post('/:id/workorders/:workOrderId', (req, res) => {
-  const { id, workOrderId } = req.params;
-  const users = readUsersFile();
-  const workOrders = readWorkordersFile();
-  
-  const userIndex = users.findIndex(user => user.id === id);
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'Korisnik nije pronađen' });
+router.post('/:id/workorders/:workOrderId', async (req, res) => {
+  try {
+    const { id, workOrderId } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(workOrderId)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: 'Korisnik nije pronađen' });
+    }
+    
+    const workOrder = await WorkOrder.findById(workOrderId);
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+    
+    // Proveri da li radni nalog već postoji kod korisnika
+    if (!user.workOrders.includes(workOrderId)) {
+      user.workOrders.push(workOrderId);
+      await user.save();
+    }
+    
+    res.json(user);
+  } catch (error) {
+    console.error('Greška pri dodavanju radnog naloga korisniku:', error);
+    res.status(500).json({ error: 'Greška pri dodavanju radnog naloga korisniku' });
   }
-  
-  const workOrderExists = workOrders.some(order => order.id === workOrderId);
-  if (!workOrderExists) {
-    return res.status(404).json({ error: 'Radni nalog nije pronađen' });
-  }
-  
-  if (!users[userIndex].workOrders.includes(workOrderId)) {
-    users[userIndex].workOrders.push(workOrderId);
-    saveUsersFile(users);
-  }
-  
-  res.json(users[userIndex]);
 });
 
 // DELETE - Ukloni radni nalog sa korisnika
-router.delete('/:id/workorders/:workOrderId', (req, res) => {
-  const { id, workOrderId } = req.params;
-  const users = readUsersFile();
-  
-  const userIndex = users.findIndex(user => user.id === id);
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'Korisnik nije pronađen' });
+router.delete('/:id/workorders/:workOrderId', async (req, res) => {
+  try {
+    const { id, workOrderId } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(workOrderId)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ error: 'Korisnik nije pronađen' });
+    }
+    
+    // Ukloni radni nalog iz niza workOrders
+    user.workOrders = user.workOrders.filter(
+      orderId => orderId.toString() !== workOrderId
+    );
+    
+    await user.save();
+    res.json(user);
+  } catch (error) {
+    console.error('Greška pri uklanjanju radnog naloga sa korisnika:', error);
+    res.status(500).json({ error: 'Greška pri uklanjanju radnog naloga sa korisnika' });
   }
-  
-  users[userIndex].workOrders = users[userIndex].workOrders.filter(
-    orderId => orderId !== workOrderId
-  );
-  
-  saveUsersFile(users);
-  
-  res.json(users[userIndex]);
 });
 
 module.exports = router;
