@@ -4,6 +4,8 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Equipment = require('../models/Equipment');
 const WorkOrder = require('../models/WorkOrder');
+const Technician = require('../models/Technician');
+const { logEquipmentAdded, logEquipmentRemoved } = require('../utils/logger');
 
 // GET - Dohvati svu opremu kod korisnika
 router.get('/', async (req, res) => {
@@ -130,6 +132,16 @@ router.post('/', async (req, res) => {
     await workOrder.save();
     console.log('Work order updated with installed equipment:', workOrder);
 
+    // Log equipment addition
+    try {
+      const technician = await Technician.findById(technicianId);
+      if (technician) {
+        await logEquipmentAdded(technicianId, technician.name, workOrder, equipment);
+      }
+    } catch (logError) {
+      console.error('Greška pri logovanju dodavanja opreme:', logError);
+    }
+
     res.status(201).json(equipment);
   } catch (error) {
     console.error('Error adding equipment:', error);
@@ -212,6 +224,16 @@ router.put('/:id/remove', async (req, res) => {
     }
     
     await workOrder.save();
+    
+    // Log equipment removal
+    try {
+      const technician = await Technician.findById(technicianId);
+      if (technician) {
+        await logEquipmentRemoved(technicianId, technician.name, workOrder, equipment, isWorking, removalReason);
+      }
+    } catch (logError) {
+      console.error('Greška pri logovanju uklanjanja opreme:', logError);
+    }
     
     res.json({ 
       message: 'Oprema uspešno uklonjena', 

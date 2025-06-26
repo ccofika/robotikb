@@ -9,6 +9,17 @@ const { v4: uuidv4 } = require('uuid');
 const mongoose = require('mongoose');
 const { WorkOrder, User, Technician, Equipment, Material } = require('../models');
 const { uploadImage, deleteImage } = require('../config/cloudinary');
+const { 
+  logCommentAdded, 
+  logWorkOrderStatusChanged, 
+  logImageAdded, 
+  logImageRemoved,
+  logMaterialAdded,
+  logMaterialRemoved,
+  logWorkOrderCreated,
+  logWorkOrderAssigned,
+  logWorkOrderUpdated
+} = require('../utils/logger');
 
 
 
@@ -606,6 +617,17 @@ router.post('/', async (req, res) => {
       });
     }
     
+    // Log work order creation - admin should be passed from frontend via req.user or similar
+    try {
+      const adminId = req.body.adminId; // This should be passed from frontend
+      const adminName = req.body.adminName || 'Admin'; // This should be passed from frontend
+      if (adminId) {
+        await logWorkOrderCreated(adminId, adminName, savedWorkOrder);
+      }
+    } catch (logError) {
+      console.error('Greška pri logovanju kreiranja radnog naloga:', logError);
+    }
+    
     res.status(201).json(savedWorkOrder);
   } catch (error) {
     console.error('Greška pri kreiranju radnog naloga:', error);
@@ -646,6 +668,11 @@ router.put('/:id', async (req, res) => {
     console.log('Current work order:', workOrder);
     console.log('Processed update data:', updateData);
 
+    // Check if technician is being assigned
+    const oldTechnicianId = workOrder.technicianId;
+    const newTechnicianId = updateData.technicianId;
+    const technicianAssigned = !oldTechnicianId && newTechnicianId;
+
     // Pojednostavljeno ažuriranje
     const updatedWorkOrder = await WorkOrder.findByIdAndUpdate(
       id,
@@ -657,6 +684,30 @@ router.put('/:id', async (req, res) => {
 
     if (!updatedWorkOrder) {
       return res.status(404).json({ error: 'Radni nalog nije pronađen nakon ažuriranja' });
+    }
+
+    // Log work order assignment
+    if (technicianAssigned && updatedWorkOrder.technicianId) {
+      try {
+        const adminId = updateData.adminId; // This should be passed from frontend
+        const adminName = updateData.adminName || 'Admin'; // This should be passed from frontend
+        if (adminId) {
+          await logWorkOrderAssigned(adminId, adminName, updatedWorkOrder, updatedWorkOrder.technicianId.name);
+        }
+      } catch (logError) {
+        console.error('Greška pri logovanju dodele radnog naloga:', logError);
+      }
+    }
+
+    // Log work order update (general)
+    try {
+      const adminId = updateData.adminId; // This should be passed from frontend
+      const adminName = updateData.adminName || 'Admin'; // This should be passed from frontend
+      if (adminId) {
+        await logWorkOrderUpdated(adminId, adminName, updatedWorkOrder);
+      }
+    } catch (logError) {
+      console.error('Greška pri logovanju ažuriranja radnog naloga:', logError);
     }
 
     res.json(updatedWorkOrder);
@@ -698,9 +749,23 @@ router.put('/:id/technician-update', async (req, res) => {
       return res.status(403).json({ error: 'Nemate dozvolu za ažuriranje ovog radnog naloga' });
     }
     
+    // Dohvati tehničara za logging
+    let technician = null;
+    if (technicianId) {
+      technician = await Technician.findById(technicianId);
+    }
+    
+    const oldStatus = workOrder.status;
+    const oldComment = workOrder.comment;
+    
     // Tehničar može da ažurira samo komentar, status i vreme odlaganja
-    if (comment !== undefined) {
+    if (comment !== undefined && comment !== oldComment) {
       workOrder.comment = comment;
+      
+      // Log comment addition
+      if (technician && comment.trim() !== '') {
+        await logCommentAdded(technicianId, technician.name, workOrder, comment);
+      }
     }
     
     // Ako je status promenjen, ažuriramo i to
@@ -708,6 +773,11 @@ router.put('/:id/technician-update', async (req, res) => {
       workOrder.status = status;
       workOrder.statusChangedBy = technicianId;
       workOrder.statusChangedAt = new Date();
+      
+      // Log status change
+      if (technician) {
+        await logWorkOrderStatusChanged(technicianId, technician.name, workOrder, oldStatus, status);
+      }
       
       // Ako je status promenjen na "zavrsen", dodaj timestamp završetka
       if (status === 'zavrsen') {
@@ -745,6 +815,7 @@ router.put('/:id/technician-update', async (req, res) => {
 router.post('/:id/images', imageUpload.single('image'), async (req, res) => {
   try {
     const { id } = req.params;
+    const { technicianId } = req.body;
     
     if (!req.file) {
       return res.status(400).json({ error: 'Slika nije priložena' });
@@ -775,6 +846,18 @@ router.post('/:id/images', imageUpload.single('image'), async (req, res) => {
     
     const updatedWorkOrder = await workOrder.save();
     
+    // Log image addition
+    if (technicianId) {
+      try {
+        const technician = await Technician.findById(technicianId);
+        if (technician) {
+          await logImageAdded(technicianId, technician.name, workOrder, req.file.originalname, imageUrl);
+        }
+      } catch (logError) {
+        console.error('Greška pri logovanju dodavanja slike:', logError);
+      }
+    }
+    
     console.log('Slika uspešno upload-ovana na Cloudinary:', imageUrl);
     
     res.json({
@@ -795,7 +878,7 @@ router.post('/:id/images', imageUpload.single('image'), async (req, res) => {
 router.delete('/:id/images', async (req, res) => {
   try {
     const { id } = req.params;
-    const { imageUrl } = req.body;
+    const { imageUrl, technicianId } = req.body;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
@@ -810,6 +893,9 @@ router.delete('/:id/images', async (req, res) => {
     if (!workOrder) {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
+    
+    // Extract image name from URL for logging
+    const imageName = imageUrl.split('/').pop().split('.')[0];
     
     // Ukloni sliku iz baze podataka
     workOrder.images = workOrder.images.filter(img => img !== imageUrl);
@@ -828,6 +914,18 @@ router.delete('/:id/images', async (req, res) => {
     }
     
     const updatedWorkOrder = await workOrder.save();
+    
+    // Log image removal
+    if (technicianId) {
+      try {
+        const technician = await Technician.findById(technicianId);
+        if (technician) {
+          await logImageRemoved(technicianId, technician.name, workOrder, imageName, imageUrl);
+        }
+      } catch (logError) {
+        console.error('Greška pri logovanju brisanja slike:', logError);
+      }
+    }
     
     res.json({
       message: 'Slika uspešno obrisana',
@@ -877,7 +975,7 @@ router.put('/:id/verify', async (req, res) => {
 router.post('/:id/used-materials', async (req, res) => {
   try {
     const { id } = req.params;
-    const { materials } = req.body;
+    const { materials, technicianId } = req.body;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
@@ -903,10 +1001,59 @@ router.post('/:id/used-materials', async (req, res) => {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
     
+    // Store old materials for comparison
+    const oldMaterials = workOrder.materials || [];
+    
     // Ažuriranje utrošenih materijala
     workOrder.materials = materials;
     
     const updatedWorkOrder = await workOrder.save();
+    
+    // Log material additions
+    if (technicianId) {
+      try {
+        const technician = await Technician.findById(technicianId);
+        if (technician) {
+          // Compare old and new materials to log only new additions
+          for (const newMaterial of materials) {
+            const existingMaterial = oldMaterials.find(
+              old => old.material.toString() === newMaterial.material.toString()
+            );
+            
+            const newQuantity = newMaterial.quantity;
+            const oldQuantity = existingMaterial ? existingMaterial.quantity : 0;
+            
+            if (newQuantity > oldQuantity) {
+              // Material was added
+              const materialDoc = await Material.findById(newMaterial.material);
+              if (materialDoc) {
+                await logMaterialAdded(
+                  technicianId, 
+                  technician.name, 
+                  workOrder, 
+                  materialDoc, 
+                  newQuantity - oldQuantity
+                );
+              }
+            } else if (newQuantity < oldQuantity) {
+              // Material was removed
+              const materialDoc = await Material.findById(newMaterial.material);
+              if (materialDoc) {
+                await logMaterialRemoved(
+                  technicianId, 
+                  technician.name, 
+                  workOrder, 
+                  materialDoc, 
+                  oldQuantity - newQuantity
+                );
+              }
+            }
+          }
+        }
+      } catch (logError) {
+        console.error('Greška pri logovanju dodavanja materijala:', logError);
+      }
+    }
     
     res.json({
       message: 'Uspešno ažurirani utrošeni materijali',

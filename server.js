@@ -152,6 +152,7 @@ const workordersRoutes = require('./routes/workorders');
 const exportRoutes = require('./routes/export');
 const usersRoutes = require('./routes/users');
 const userEquipmentRouter = require('./routes/userEquipment');
+const logsRoutes = require('./routes/logs');
 
 // Definisanje ruta
 app.use('/api/auth', authRoutes);
@@ -162,6 +163,7 @@ app.use('/api/workorders', workordersRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/user-equipment', userEquipmentRouter);
+app.use('/api/logs', logsRoutes);
 
 // Rukovanje greškama
 app.use((err, req, res, next) => {
