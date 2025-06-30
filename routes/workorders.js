@@ -619,13 +619,15 @@ router.post('/', async (req, res) => {
     
     // Log work order creation - admin should be passed from frontend via req.user or similar
     try {
-      const adminId = req.body.adminId; // This should be passed from frontend
-      const adminName = req.body.adminName || 'Admin'; // This should be passed from frontend
-      if (adminId) {
+      const adminId = req.body.adminId || null; // This should be passed from frontend
+      const adminName = req.body.adminName || 'Sistem Administrator'; // This should be passed from frontend
+      // Proveravamo da li je adminId valjan ObjectId pre logovanja
+      if (adminId && mongoose.Types.ObjectId.isValid(adminId)) {
         await logWorkOrderCreated(adminId, adminName, savedWorkOrder);
       }
     } catch (logError) {
       console.error('Greška pri logovanju kreiranja radnog naloga:', logError);
+      // Ne prekidamo izvršavanje zbog greške u logovanju
     }
     
     res.status(201).json(savedWorkOrder);
@@ -691,7 +693,7 @@ router.put('/:id', async (req, res) => {
       try {
         const adminId = updateData.adminId; // This should be passed from frontend
         const adminName = updateData.adminName || 'Admin'; // This should be passed from frontend
-        if (adminId) {
+        if (adminId && mongoose.Types.ObjectId.isValid(adminId)) {
           await logWorkOrderAssigned(adminId, adminName, updatedWorkOrder, updatedWorkOrder.technicianId.name);
         }
       } catch (logError) {
@@ -703,7 +705,7 @@ router.put('/:id', async (req, res) => {
     try {
       const adminId = updateData.adminId; // This should be passed from frontend
       const adminName = updateData.adminName || 'Admin'; // This should be passed from frontend
-      if (adminId) {
+      if (adminId && mongoose.Types.ObjectId.isValid(adminId)) {
         await logWorkOrderUpdated(adminId, adminName, updatedWorkOrder);
       }
     } catch (logError) {
@@ -1004,6 +1006,95 @@ router.post('/:id/used-materials', async (req, res) => {
     // Store old materials for comparison
     const oldMaterials = workOrder.materials || [];
     
+    // Proveravamo i ažuriramo tehničarov inventar pre čuvanja workorder-a
+    if (technicianId) {
+      const technician = await Technician.findById(technicianId);
+      if (!technician) {
+        return res.status(404).json({ error: 'Tehničar nije pronađen' });
+      }
+      
+      // Prolazimo kroz sve materijale i ažuriramo tehničarov inventar
+      for (const materialItem of materials) {
+        const existingOldMaterial = oldMaterials.find(
+          old => old.material.toString() === materialItem.material.toString()
+        );
+        
+        const newQuantity = materialItem.quantity;
+        const oldQuantity = existingOldMaterial ? existingOldMaterial.quantity : 0;
+        const quantityDiff = newQuantity - oldQuantity;
+        
+        if (quantityDiff !== 0) {
+          // Pronađi materijal kod tehničara
+          const techMaterialIndex = technician.materials.findIndex(
+            tm => tm.materialId.toString() === materialItem.material.toString()
+          );
+          
+          if (quantityDiff > 0) {
+            // Dodaje se materijal - treba oduzeti iz tehničarovog inventara
+            if (techMaterialIndex === -1) {
+              return res.status(400).json({ 
+                error: `Tehničar nema materijal ${materialItem.material} u svom inventaru` 
+              });
+            }
+            
+            const techMaterial = technician.materials[techMaterialIndex];
+            if (techMaterial.quantity < quantityDiff) {
+              const materialDoc = await Material.findById(materialItem.material);
+              return res.status(400).json({ 
+                error: `Tehničar nema dovoljno materijala ${materialDoc ? materialDoc.type : materialItem.material}. Dostupno: ${techMaterial.quantity}, potrebno: ${quantityDiff}` 
+              });
+            }
+            
+            // Oduzmi iz tehničarovog inventara
+            techMaterial.quantity -= quantityDiff;
+            if (techMaterial.quantity === 0) {
+              technician.materials.splice(techMaterialIndex, 1);
+            }
+          } else if (quantityDiff < 0) {
+            // Uklanja se materijal - treba vratiti u tehničarov inventar
+            const returnQuantity = Math.abs(quantityDiff);
+            
+            if (techMaterialIndex === -1) {
+              // Tehničar nema ovaj materijal - dodaj ga
+              technician.materials.push({
+                materialId: materialItem.material,
+                quantity: returnQuantity
+              });
+            } else {
+              // Tehničar već ima ovaj materijal - uvećaj količinu
+              technician.materials[techMaterialIndex].quantity += returnQuantity;
+            }
+          }
+        }
+      }
+      
+      // Proveravamo materijale koji su u potpunosti uklonjeni iz workorder-a
+      for (const oldMaterial of oldMaterials) {
+        const stillExists = materials.find(
+          mat => mat.material.toString() === oldMaterial.material.toString()
+        );
+        
+        if (!stillExists) {
+          // Materijal je u potpunosti uklonjen - vrati ga u tehničarov inventar
+          const techMaterialIndex = technician.materials.findIndex(
+            tm => tm.materialId.toString() === oldMaterial.material.toString()
+          );
+          
+          if (techMaterialIndex === -1) {
+            technician.materials.push({
+              materialId: oldMaterial.material,
+              quantity: oldMaterial.quantity
+            });
+          } else {
+            technician.materials[techMaterialIndex].quantity += oldMaterial.quantity;
+          }
+        }
+      }
+      
+      // Sačuvaj tehničara sa ažuriranim inventarom
+      await technician.save();
+    }
+    
     // Ažuriranje utrošenih materijala
     workOrder.materials = materials;
     
@@ -1014,7 +1105,7 @@ router.post('/:id/used-materials', async (req, res) => {
       try {
         const technician = await Technician.findById(technicianId);
         if (technician) {
-          // Compare old and new materials to log only new additions
+          // Compare old and new materials to log changes
           for (const newMaterial of materials) {
             const existingMaterial = oldMaterials.find(
               old => old.material.toString() === newMaterial.material.toString()
@@ -1036,7 +1127,7 @@ router.post('/:id/used-materials', async (req, res) => {
                 );
               }
             } else if (newQuantity < oldQuantity) {
-              // Material was removed
+              // Material was reduced
               const materialDoc = await Material.findById(newMaterial.material);
               if (materialDoc) {
                 await logMaterialRemoved(
@@ -1045,6 +1136,27 @@ router.post('/:id/used-materials', async (req, res) => {
                   workOrder, 
                   materialDoc, 
                   oldQuantity - newQuantity
+                );
+              }
+            }
+          }
+          
+          // Log materials that were completely removed from workorder
+          for (const oldMaterial of oldMaterials) {
+            const stillExists = materials.find(
+              mat => mat.material.toString() === oldMaterial.material.toString()
+            );
+            
+            if (!stillExists) {
+              // Material was completely removed from workorder
+              const materialDoc = await Material.findById(oldMaterial.material);
+              if (materialDoc) {
+                await logMaterialRemoved(
+                  technicianId, 
+                  technician.name, 
+                  workOrder, 
+                  materialDoc, 
+                  oldMaterial.quantity
                 );
               }
             }
