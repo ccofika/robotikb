@@ -17,7 +17,7 @@ router.post('/login', async (req, res) => {
     }
     
     // Admin login za demo (u produkciji bi bio u bazi)
-    if (name.toLowerCase() === 'admin' && password === 'admin') {
+    if (name.toLowerCase() === 'admin' && password === 'Robotik2023!') {
       const adminId = 'admin';
       const token = jwt.sign(
         { _id: adminId, name: 'Administrator', role: 'admin' },
