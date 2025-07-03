@@ -859,7 +859,6 @@ router.post('/test-geocoding-bulk', async (req, res) => {
     const results = [];
     
     for (const address of addresses) {
-      console.log(`\n🔍 Processing: ${address}`);
       const startTime = Date.now();
       
       try {
@@ -913,24 +912,19 @@ setInterval(() => {
 // Helper function to get coordinates for address using multiple geocoding services
 async function getCoordinatesForAddress(address) {
   if (!address || address.trim() === '') {
-    console.log('❌ Empty address provided, using default Belgrade center');
     return { lat: 44.8150, lng: 20.4550 }; // Belgrade center
   }
-
-  console.log(`\n🌍 === GEOCODING ADDRESS: "${address}" ===`);
 
   // Create unique cache key that includes address and timestamp to prevent over-caching
   const cacheKey = `${address.toLowerCase().trim()}_${Date.now() % 300000}`; // 5-minute rotation
   if (geocodeCache.has(cacheKey)) {
     const cached = geocodeCache.get(cacheKey);
-    console.log(`💾 Using cached coordinates for: ${address} -> ${cached.lat}, ${cached.lng}`);
     return cached;
   }
 
   // STEP 1: Try comprehensive Belgrade street database first
   const belgradeMatch = getBelgradeStreetCoordinates(address);
   if (belgradeMatch) {
-    console.log(`✅ SUCCESS via Belgrade database: ${belgradeMatch.lat}, ${belgradeMatch.lng}`);
     geocodeCache.set(cacheKey, belgradeMatch);
     return belgradeMatch;
   }
@@ -939,17 +933,14 @@ async function getCoordinatesForAddress(address) {
   const formattedAddresses = createMultipleFormats(address);
   
   for (const formattedAddress of formattedAddresses) {
-    console.log(`🔍 Trying format: "${formattedAddress}"`);
-    
     try {
       const nominatimResult = await tryNominatimGeocoding(formattedAddress);
       if (nominatimResult && isInBelgradeArea(nominatimResult)) {
-        console.log(`✅ SUCCESS via Nominatim: ${nominatimResult.lat}, ${nominatimResult.lng}`);
         geocodeCache.set(cacheKey, nominatimResult);
         return nominatimResult;
       }
     } catch (error) {
-      console.log(`❌ Nominatim failed for format: ${formattedAddress}`);
+      // Continue to next format
     }
     
     // Small delay between requests to be respectful to the API
@@ -960,17 +951,15 @@ async function getCoordinatesForAddress(address) {
   try {
     const cyrillicResult = await tryWithCyrillic(address);
     if (cyrillicResult && isInBelgradeArea(cyrillicResult)) {
-      console.log(`✅ SUCCESS via Cyrillic: ${cyrillicResult.lat}, ${cyrillicResult.lng}`);
       geocodeCache.set(cacheKey, cyrillicResult);
       return cyrillicResult;
     }
   } catch (error) {
-    console.log(`❌ Cyrillic geocoding failed`);
+    // Continue to fallback
   }
 
   // STEP 4: Final fallback with better distribution
   const fallback = getFallbackCoordinates(address);
-  console.log(`⚠️ Using fallback coordinates: ${fallback.lat}, ${fallback.lng}`);
   geocodeCache.set(cacheKey, fallback);
   return fallback;
 }
@@ -978,7 +967,6 @@ async function getCoordinatesForAddress(address) {
 // Comprehensive Belgrade street coordinates database
 function getBelgradeStreetCoordinates(address) {
   const addressLower = address.toLowerCase().trim();
-  console.log(`🏢 Checking Belgrade street database for: "${address}"`);
   
   // Parse Belgrade address format: "Beograd,AREA,STREET NUMBER"
   let neighborhood = '';
@@ -999,8 +987,6 @@ function getBelgradeStreetCoordinates(address) {
       }
     }
   }
-  
-  console.log(`📍 Parsed - Neighborhood: "${neighborhood}", Street: "${street}", Number: ${houseNumber}`);
   
   // Comprehensive Belgrade street database with real coordinates
   const belgradeStreets = {
@@ -1090,13 +1076,11 @@ function getBelgradeStreetCoordinates(address) {
     if (neighborhood.includes(area) || addressLower.includes(area)) {
       areaData = data;
       matchedArea = area;
-      console.log(`✅ Found area in database: "${area}"`);
       break;
     }
   }
   
   if (!areaData) {
-    console.log(`❌ Area not found in Belgrade database`);
     return null;
   }
   
@@ -1108,7 +1092,6 @@ function getBelgradeStreetCoordinates(address) {
     if (street.includes(streetName) || addressLower.includes(streetName)) {
       streetCoords = coords;
       matchedStreet = streetName;
-      console.log(`✅ Found street in database: "${streetName}"`);
       break;
     }
   }
@@ -1136,13 +1119,6 @@ function getBelgradeStreetCoordinates(address) {
     lat: baseCoords.lat + houseVariation.lat + microVariation.lat,
     lng: baseCoords.lng + houseVariation.lng + microVariation.lng
   };
-  
-  console.log(`🎯 Belgrade database result:`);
-  console.log(`   📍 Area: ${matchedArea} (${areaData.center.lat}, ${areaData.center.lng})`);
-  console.log(`   📍 Street: ${matchedStreet || 'center'} (${baseCoords.lat}, ${baseCoords.lng})`);
-  console.log(`   📍 House variation: ${houseVariation.lat.toFixed(6)}, ${houseVariation.lng.toFixed(6)}`);
-  console.log(`   📍 Micro variation: ${microVariation.lat.toFixed(6)}, ${microVariation.lng.toFixed(6)}`);
-  console.log(`   📍 Final: ${finalCoords.lat}, ${finalCoords.lng}`);
   
   return finalCoords;
 }
@@ -1185,7 +1161,6 @@ function createMultipleFormats(address) {
   // Always include original as last resort
   formats.push(original);
   
-  console.log(`📝 Created ${formats.length} address formats:`, formats);
   return formats;
 }
 
@@ -1241,7 +1216,6 @@ async function tryNominatimGeocoding(address) {
           displayName.includes('serbia') || displayName.includes('srbija')) {
         
         if (isInBelgradeArea(coordinates)) {
-          console.log(`   ✅ Good Belgrade match found!`);
           return coordinates;
         }
       }
@@ -1255,7 +1229,6 @@ async function tryNominatimGeocoding(address) {
     };
     
     if (isInBelgradeArea(firstCoords)) {
-      console.log(`   ⚠️ Using first result in Belgrade area`);
       return firstCoords;
     }
   }
@@ -1283,7 +1256,6 @@ async function tryWithCyrillic(address) {
   }
   
   if (cyrillicAddress !== address) {
-    console.log(`🔤 Trying Cyrillic: ${cyrillicAddress}`);
     return await tryNominatimGeocoding(cyrillicAddress);
   }
   
@@ -1294,9 +1266,6 @@ async function tryWithCyrillic(address) {
 function getDirectCoordinates(address) {
   const originalAddress = address;
   const addressLower = address.toLowerCase().trim();
-  
-  console.log(`🔍 Checking direct coordinates for: "${originalAddress}"`);
-  console.log(`🔍 Lowercase version: "${addressLower}"`);
   
   // Parse Belgrade address format: "Beograd,AREA,STREET NUMBER"
   let neighborhood = '';
@@ -1317,8 +1286,6 @@ function getDirectCoordinates(address) {
       }
     }
   }
-  
-  console.log(`📍 Parsed - Neighborhood: "${neighborhood}", Street: "${street}", Number: ${houseNumber}`);
   
   // Belgrade areas with base coordinates
   const belgradeAreas = {
@@ -1361,13 +1328,11 @@ function getDirectCoordinates(address) {
     if (neighborhood.includes(area) || addressLower.includes(area)) {
       baseCoords = coords;
       areaName = area;
-      console.log(`✅ Found area match: "${area}"`);
       break;
     }
   }
   
   if (!baseCoords) {
-    console.log(`❌ No area match found`);
     return null;
   }
   
@@ -1376,7 +1341,6 @@ function getDirectCoordinates(address) {
   for (const [streetName, offset] of Object.entries(streetOffsets)) {
     if (street.includes(streetName) || addressLower.includes(streetName)) {
       streetOffset = offset;
-      console.log(`✅ Found street match: "${streetName}"`);
       break;
     }
   }
@@ -1396,12 +1360,6 @@ function getDirectCoordinates(address) {
     lat: baseCoords.lat + streetOffset.latOffset + houseVariation + microVariation.lat,
     lng: baseCoords.lng + streetOffset.lngOffset + houseVariation + microVariation.lng
   };
-  
-  console.log(`🎯 Final coordinates: ${finalCoords.lat}, ${finalCoords.lng}`);
-  console.log(`   Base: ${baseCoords.lat}, ${baseCoords.lng}`);
-  console.log(`   Street offset: ${streetOffset.latOffset}, ${streetOffset.lngOffset}`);
-  console.log(`   House variation: ${houseVariation}`);
-  console.log(`   Micro variation: ${microVariation.lat}, ${microVariation.lng}`);
   
   return finalCoords;
 }
@@ -1444,8 +1402,6 @@ function formatBelgradeAddress(address) {
     .replace(/\s+/g, ' ')
     .trim();
   
-  console.log(`Original address: "${address}" -> Formatted: "${formatted}"`);
-  
   return formatted;
 }
 
@@ -1458,8 +1414,6 @@ function isInBelgradeArea(coordinates) {
 
 // Intelligent fallback coordinates based on address analysis
 function getFallbackCoordinates(address) {
-  console.log(`🎯 Generating fallback coordinates for: ${address}`);
-  
   // Analyze address to get better area-based coordinates
   const addressLower = address.toLowerCase();
   let baseCoords = { lat: 44.8150, lng: 20.4550 }; // Default Belgrade center
@@ -1486,7 +1440,6 @@ function getFallbackCoordinates(address) {
     if (addressLower.includes(area)) {
       baseCoords = coords;
       areaName = coords.name;
-      console.log(`📍 Matched area: ${areaName}`);
       break;
     }
   }
@@ -1523,11 +1476,6 @@ function getFallbackCoordinates(address) {
     lat: baseCoords.lat + latVariation,
     lng: baseCoords.lng + lngVariation
   };
-  
-  console.log(`🎯 Fallback result for ${areaName}:`);
-  console.log(`   📍 Base: ${baseCoords.lat}, ${baseCoords.lng}`);
-  console.log(`   📍 Variations: lat=${latVariation.toFixed(6)}, lng=${lngVariation.toFixed(6)}`);
-  console.log(`   📍 Final: ${result.lat}, ${result.lng}`);
   
   return result;
 }
