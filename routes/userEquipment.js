@@ -28,7 +28,21 @@ router.get('/user/:userId', async (req, res) => {
       assignedToUser: userId,
       status: 'installed'
     });
-    res.json(equipment);
+    
+    // Formatiraj podatke za frontend
+    const formattedEquipment = equipment.map(eq => ({
+      id: eq._id,
+      equipmentType: eq.category,  // Mapiranje category -> equipmentType
+      equipmentDescription: eq.description,  // Mapiranje description -> equipmentDescription
+      serialNumber: eq.serialNumber,
+      status: eq.status,
+      installedAt: eq.installedAt || eq.createdAt,
+      location: eq.location,
+      // Dodaj i originalne podatke za kompatibilnost
+      ...eq.toObject()
+    }));
+    
+    res.json(formattedEquipment);
   } catch (error) {
     console.error('Greška pri dohvatanju opreme korisnika:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju opreme korisnika' });
@@ -48,7 +62,21 @@ router.get('/user/:userId/history', async (req, res) => {
       ]
     }).sort({ updatedAt: -1 });
     
-    res.json(equipment);
+    // Formatiraj podatke za frontend
+    const formattedEquipment = equipment.map(eq => ({
+      id: eq._id,
+      equipmentType: eq.category,  // Mapiranje category -> equipmentType
+      equipmentDescription: eq.description,  // Mapiranje description -> equipmentDescription
+      serialNumber: eq.serialNumber,
+      status: eq.assignedToUser ? 'active' : 'removed',  // Mapiranje statusa
+      installedAt: eq.installedAt || eq.createdAt,  // Koristimo installedAt ili createdAt kao fallback
+      removedAt: eq.removedAt,  // Koristimo removedAt polje
+      condition: eq.status === 'defective' ? 'defective' : 'working',  // Stanje opreme
+      location: eq.location,
+      originalStatus: eq.status  // Zadrži originalni status za debug
+    }));
+    
+    res.json(formattedEquipment);
   } catch (error) {
     console.error('Greška pri dohvatanju istorije opreme korisnika:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju istorije opreme korisnika' });
@@ -94,6 +122,7 @@ router.post('/', async (req, res) => {
     equipment.assignedToUser = userId;
     equipment.location = `user-${userId}`;
     equipment.status = 'installed'; // Promena statusa na 'installed' umesto 'assigned'
+    equipment.installedAt = new Date(); // Dodaj datum instalacije
     // NAPOMENA: equipment.assignedTo ostaje isti (tehničar i dalje "drži" opremu)
     
     await equipment.save();
@@ -196,6 +225,7 @@ router.put('/:id/remove', async (req, res) => {
       equipment.location = `tehnicar-${technicianId}`;
       equipment.status = 'assigned'; // Promena: 'assigned' umesto 'available' - oprema se vraća tehničaru
       equipment.assignedToUser = null; // Ukloni dodelu korisniku
+      equipment.removedAt = new Date(); // Dodaj datum uklanjanja
       // NAPOMENA: equipment.assignedTo ostaje isti (tehničar i dalje drži opremu)
     } else {
       // Ako je oprema neispravna, potpuno je ukloni iz inventara
@@ -203,6 +233,7 @@ router.put('/:id/remove', async (req, res) => {
       equipment.status = 'defective';
       equipment.assignedToUser = null;
       equipment.assignedTo = null; // Ukloni i dodelu tehničaru jer je oprema neispravna
+      equipment.removedAt = new Date(); // Dodaj datum uklanjanja
     }
     
     await equipment.save();

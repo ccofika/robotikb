@@ -80,8 +80,12 @@ router.get('/:id/equipment', async (req, res) => {
     
     console.log('Technician found:', technician.name);
     
-    // Dohvati svu opremu koja je dodeljena tehničaru
-    const equipment = await Equipment.find({ assignedTo: id });
+    // Dohvati samo opremu koju tehničar fizički poseduje (nije instalirana kod korisnika)
+    const equipment = await Equipment.find({ 
+      assignedTo: id,
+      assignedToUser: null,  // Oprema nije dodeljena korisniku
+      status: { $in: ['assigned', 'available'] }  // Oprema je dostupna tehničaru
+    });
     
     console.log('Raw equipment query result:');
     console.log('Total equipment found:', equipment.length);
@@ -98,7 +102,7 @@ router.get('/:id/equipment', async (req, res) => {
       });
     });
     
-    console.log('Sending equipment response to frontend');
+    console.log('Sending equipment response to frontend - showing only equipment physically with technician');
     res.json(equipment);
   } catch (error) {
     console.error('Greška pri dohvatanju opreme tehničara:', error);

@@ -32,6 +32,12 @@ const EquipmentSchema = new Schema({
     type: String,
     ref: 'User'
   },
+  installedAt: {
+    type: Date
+  },
+  removedAt: {
+    type: Date
+  },
   awaitingConfirmation: {
     type: Boolean,
     default: false

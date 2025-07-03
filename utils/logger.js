@@ -90,7 +90,7 @@ const logMaterialRemoved = async (technicianId, technicianName, workOrder, mater
 const logEquipmentAdded = async (technicianId, technicianName, workOrder, equipment) => {
   return createLog({
     action: 'equipment_added',
-    description: `Dodao/dodala opremu: ${equipment.type} - ${equipment.description || equipment.brand} (S/N: ${equipment.serialNumber})`,
+    description: `Dodao/dodala opremu: ${equipment.category} - ${equipment.description} (S/N: ${equipment.serialNumber})`,
     performedBy: technicianId,
     performedByName: technicianName,
     workOrderId: workOrder._id,
@@ -103,9 +103,9 @@ const logEquipmentAdded = async (technicianId, technicianName, workOrder, equipm
     },
     equipmentDetails: {
       equipmentId: equipment._id,
-      equipmentType: equipment.type,
+      equipmentType: equipment.category,  // Promenio sa type na category
       serialNumber: equipment.serialNumber,
-      description: equipment.description || equipment.brand
+      description: equipment.description
     }
   });
 };
@@ -113,7 +113,7 @@ const logEquipmentAdded = async (technicianId, technicianName, workOrder, equipm
 const logEquipmentRemoved = async (technicianId, technicianName, workOrder, equipment, isWorking, removalReason) => {
   return createLog({
     action: 'equipment_removed',
-    description: `Uklonio/uklonila opremu: ${equipment.type} - ${equipment.description || equipment.brand} (S/N: ${equipment.serialNumber})${isWorking ? ' - oprema ispravna' : ' - oprema neispravna'}`,
+    description: `Uklonio/uklonila opremu: ${equipment.category} - ${equipment.description} (S/N: ${equipment.serialNumber})${isWorking ? ' - oprema ispravna' : ' - oprema neispravna'}`,
     performedBy: technicianId,
     performedByName: technicianName,
     workOrderId: workOrder._id,
@@ -126,9 +126,9 @@ const logEquipmentRemoved = async (technicianId, technicianName, workOrder, equi
     },
     equipmentDetails: {
       equipmentId: equipment._id,
-      equipmentType: equipment.type,
+      equipmentType: equipment.category,  // Promenio sa type na category
       serialNumber: equipment.serialNumber,
-      description: equipment.description || equipment.brand,
+      description: equipment.description,
       isWorking: isWorking,
       removalReason: removalReason
     }
