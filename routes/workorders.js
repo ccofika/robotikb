@@ -842,9 +842,15 @@ router.post('/:id/images', imageUpload.single('image'), async (req, res) => {
       workOrder.images = [];
     }
     
-    // Dodaj Cloudinary URL u bazu podataka
+    // Dodaj Cloudinary URL i originalni naziv u bazu podataka
     const imageUrl = cloudinaryResult.secure_url;
-    workOrder.images.push(imageUrl);
+    const imageObject = {
+      url: imageUrl,
+      originalName: req.file.originalname,
+      uploadedAt: new Date(),
+      uploadedBy: technicianId
+    };
+    workOrder.images.push(imageObject);
     
     const updatedWorkOrder = await workOrder.save();
     
@@ -899,8 +905,15 @@ router.delete('/:id/images', async (req, res) => {
     // Extract image name from URL for logging
     const imageName = imageUrl.split('/').pop().split('.')[0];
     
-    // Ukloni sliku iz baze podataka
-    workOrder.images = workOrder.images.filter(img => img !== imageUrl);
+    // Ukloni sliku iz baze podataka (radi sa novom i starom strukturom)
+    workOrder.images = workOrder.images.filter(img => {
+      // Novi format - objekat sa url propertijem
+      if (typeof img === 'object' && img.url) {
+        return img.url !== imageUrl;
+      }
+      // Stari format - direktno string URL
+      return img !== imageUrl;
+    });
     
     try {
       // Izvuci public_id iz Cloudinary URL-a

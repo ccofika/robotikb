@@ -69,7 +69,22 @@ const WorkOrderSchema = new Schema({
     type: String
   },
   images: [{
-    type: String
+    url: {
+      type: String,
+      required: true
+    },
+    originalName: {
+      type: String,
+      required: true
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now
+    },
+    uploadedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'Technician'
+    }
   }],
   verified: {
     type: Boolean,
