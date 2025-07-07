@@ -116,6 +116,25 @@ router.get('/category/:category', async (req, res) => {
   }
 });
 
+// GET - Dohvati opremu po serijskom broju
+router.get('/serial/:serialNumber', async (req, res) => {
+  try {
+    const { serialNumber } = req.params;
+    
+    // Traži po serijskom broju
+    const item = await Equipment.findOne({ serialNumber });
+    
+    if (!item) {
+      return res.status(404).json({ error: 'Oprema nije pronađena' });
+    }
+    
+    res.json(item);
+  } catch (error) {
+    console.error('Greška pri dohvatanju opreme:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju opreme' });
+  }
+});
+
 // GET - Dohvati jedan komad opreme po ID-u
 router.get('/:id', async (req, res) => {
   try {

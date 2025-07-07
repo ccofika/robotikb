@@ -60,10 +60,37 @@ function mapEquipmentTypeToEnum(category) {
 // GET - Dohvati svu opremu kod korisnika
 router.get('/', async (req, res) => {
   try {
+    console.log('Fetching all installed user equipment');
+    
+    // Tražimo opremu gde location počinje sa "user-"
     const equipment = await Equipment.find({ 
-      assignedToUser: { $exists: true, $ne: null } 
+      location: { $regex: /^user-/ },
+      status: 'installed'
+    }).sort({ updatedAt: -1 });
+    
+    console.log(`Found ${equipment.length} equipment items installed at users`);
+    
+    // Formatiraj podatke za frontend
+    const formattedEquipment = equipment.map(eq => {
+      // Izvuci ID korisnika iz location polja (format: "user-ID")
+      const userTisId = eq.location.startsWith('user-') ? eq.location.substring(5) : null;
+      
+      return {
+        _id: eq._id,
+        id: eq._id,
+        category: eq.category,
+        equipmentType: eq.category,
+        description: eq.description,
+        equipmentDescription: eq.description,
+        serialNumber: eq.serialNumber,
+        status: eq.status,
+        userTisId: userTisId, // Dodaj tisId korisnika
+        installedAt: eq.installedAt || eq.createdAt,
+        location: eq.location
+      };
     });
-    res.json(equipment);
+    
+    res.json(formattedEquipment);
   } catch (error) {
     console.error('Greška pri dohvatanju opreme:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju opreme' });
@@ -74,22 +101,49 @@ router.get('/', async (req, res) => {
 router.get('/user/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
+    console.log('Fetching equipment for user ID:', userId);
+    
+    // Prvo probamo da nađemo korisnika po MongoDB ID-u
+    let user = null;
+    if (mongoose.Types.ObjectId.isValid(userId)) {
+      user = await mongoose.model('User').findById(userId);
+    }
+    
+    // Ako nismo našli korisnika po MongoDB ID-u, probamo po tisId
+    if (!user) {
+      user = await mongoose.model('User').findOne({ tisId: userId });
+    }
+    
+    if (!user) {
+      console.log(`User not found with ID: ${userId}`);
+      return res.json([]);
+    }
+    
+    console.log(`Found user: ${user.name}, tisId: ${user.tisId}`);
+    
+    // Tražimo opremu gde je location = "user-tisId"
     const equipment = await Equipment.find({ 
-      assignedToUser: userId,
+      location: `user-${user.tisId}`,
       status: 'installed'
     });
     
+    console.log(`Found ${equipment.length} equipment items for user ${user.name} (tisId: ${user.tisId})`);
+    
     // Formatiraj podatke za frontend
     const formattedEquipment = equipment.map(eq => ({
+      _id: eq._id,
       id: eq._id,
-      equipmentType: eq.category,  // Mapiranje category -> equipmentType
-      equipmentDescription: eq.description,  // Mapiranje description -> equipmentDescription
+      equipmentType: eq.category,
+      category: eq.category,
+      equipmentDescription: eq.description,
+      description: eq.description,
       serialNumber: eq.serialNumber,
       status: eq.status,
+      userId: user._id, // MongoDB ID korisnika
+      userTisId: user.tisId, // TIS ID korisnika
+      userName: user.name, // Ime korisnika
       installedAt: eq.installedAt || eq.createdAt,
-      location: eq.location,
-      // Dodaj i originalne podatke za kompatibilnost
-      ...eq.toObject()
+      location: eq.location
     }));
     
     res.json(formattedEquipment);

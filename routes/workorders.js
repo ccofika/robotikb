@@ -1127,10 +1127,16 @@ router.put('/:id/verify', async (req, res) => {
       return res.status(400).json({ error: 'Samo završeni radni nalozi mogu biti verifikovani' });
     }
     
-    workOrder.verified = true;
-    workOrder.verifiedAt = new Date();
-    
-    const updatedWorkOrder = await workOrder.save();
+    // Umesto save() koji pokreće validaciju, koristimo findByIdAndUpdate
+    // koji će ažurirati samo navedena polja
+    const updatedWorkOrder = await WorkOrder.findByIdAndUpdate(
+      id,
+      { 
+        verified: true,
+        verifiedAt: new Date()
+      },
+      { new: true } // Vraća ažurirani dokument
+    );
     
     res.json({
       message: 'Radni nalog je uspešno verifikovan',
