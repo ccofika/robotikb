@@ -4,6 +4,8 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
+const mongoose = require('mongoose');
+const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 
 const workordersFilePath = path.join(__dirname, '../data/workorders.json');
 const techniciansFilePath = path.join(__dirname, '../data/technicians.json');
@@ -864,5 +866,265 @@ const getEquipmentCurrentStatus = (userEquipment, userId, serialNumber) => {
   // Vraćamo najnoviji zapis
   return equipmentHistory[0];
 };
+
+// GET - Dohvati statistiku za izabrani period iz WorkOrderEvidence
+router.get('/evidence-preview', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    if (!startDate || !endDate) {
+      return res.status(400).json({ error: 'Start date i end date su obavezni' });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    // Filtriranje WorkOrderEvidence po datumu
+    const evidenceRecords = await WorkOrderEvidence.find({
+      executionDate: {
+        $gte: start,
+        $lte: end
+      }
+    });
+
+    // Brojanje jedinstvenih tehničara
+    const technicians = new Set();
+    evidenceRecords.forEach(record => {
+      if (record.technician1) technicians.add(record.technician1);
+      if (record.technician2) technicians.add(record.technician2);
+    });
+    
+    // Skupljanje instalirane opreme
+    const totalInstalledEquipment = evidenceRecords.reduce((acc, record) => {
+      return acc + (record.installedEquipment ? record.installedEquipment.length : 0);
+    }, 0);
+
+    // Skupljanje uklonjene opreme
+    const totalRemovedEquipment = evidenceRecords.reduce((acc, record) => {
+      return acc + (record.removedEquipment ? record.removedEquipment.length : 0);
+    }, 0);
+
+    res.json({
+      workOrders: evidenceRecords.length,
+      technicians: technicians.size,
+      materials: 0, // Nema direktno materijale u WorkOrderEvidence
+      equipment: totalInstalledEquipment + totalRemovedEquipment
+    });
+    
+  } catch (error) {
+    console.error('Greška pri generisanju WorkOrderEvidence statistike:', error);
+    res.status(500).json({ error: 'Greška pri generisanju statistike' });
+  }
+});
+
+// POST - Kreiranje Excel evidencije iz WorkOrderEvidence podataka
+router.post('/evidencija-new', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+    
+    if (!startDate || !endDate) {
+      return res.status(400).json({ error: 'Start date i end date su obavezni' });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+
+    // Dohvatanje WorkOrderEvidence podataka
+    const evidenceRecords = await WorkOrderEvidence.find({
+      executionDate: {
+        $gte: start,
+        $lte: end
+      }
+    }).sort({ executionDate: 1 });
+
+    if (evidenceRecords.length === 0) {
+      return res.status(400).json({ error: 'Nema radnih naloga u izabranom periodu' });
+    }
+
+    // Kreiramo novi workbook
+    const workbook = xlsx.utils.book_new();
+
+    // Priprema podataka za evidenciju
+    const evidencijaData = [];
+    
+    // Header red 1 - prazan
+    evidencijaData.push([]);
+    
+    // Header red 2 - naslov i kategorije opreme
+    evidencijaData.push([
+      null, null, null, null, null, null,
+      'Spcifikacija instalacija:',
+      'Instalacije - Regija Beograd',
+      null, null, null, null, null,
+      'ONT/HFC', null,
+      'Hybrid', null,
+      'STB/CAM', null,
+      'STB/CAM', null,
+      'STB/CAM', null,
+      'Kartica', null,
+      'Kartica', null,
+      'Kartica', null,
+      'Mini node', null,
+      'DEMONT, N-ispravno,R-neispravno'
+    ]);
+    
+    // Header red 3 - prazan
+    evidencijaData.push([]);
+    
+    // Header red 4 - kolone
+    evidencijaData.push([
+      'Datum', 'STATUS', 'Napomena', 'ID zahteva', 'ID korisnika', 'Vrsta Naloga',
+      'Mesto', 'Adresa', 'Korisnik', 'Napomena', 'Status korisnika',
+      'Tehnicar 1', 'Tehnicar 2',
+      'Serijski broj', 'N/R',  // ONT/HFC
+      'Serijski broj', 'N/R',  // Hybrid
+      'Serijski broj', 'N/R',  // STB/CAM 1
+      'Serijski broj', 'N/R',  // STB/CAM 2
+      'Serijski broj', 'N/R',  // STB/CAM 3
+      'Serijski broj', 'N/R',  // Kartica 1
+      'Serijski broj', 'N/R',  // Kartica 2
+      'Serijski broj', 'N/R',  // Kartica 3
+      'Serijski broj', 'N/R',  // Mini node
+      'Serijski broj', 'N/R'   // Demontaža
+    ]);
+
+    // Dodavanje podataka za svaki WorkOrderEvidence zapis
+    evidenceRecords.forEach(evidence => {
+      // Konvertujemo datum u Excel format (broj dana od 1900-01-01)
+      const excelDate = Math.floor((new Date(evidence.executionDate) - new Date('1900-01-01')) / (24 * 60 * 60 * 1000)) + 1;
+      
+      // Osnovni podaci
+      const row = [
+        excelDate,                                    // Datum
+        evidence.status || 'U TOKU',                  // STATUS
+        evidence.notes || '',                         // Napomena
+        evidence.tisJobId || '',                      // ID zahteva
+        evidence.tisId || '',                         // ID korisnika
+        evidence.orderType || '',                     // Vrsta Naloga
+        evidence.municipality || '',                  // Mesto
+        evidence.address || '',                       // Adresa
+        evidence.customerName || '',                  // Korisnik
+        evidence.servicePackage || '',                // Napomena (servicePackage)
+        evidence.customerStatus || '',                // Status korisnika
+        evidence.technician1 || '',                   // Tehnicar 1
+        evidence.technician2 || ''                    // Tehnicar 2
+      ];
+
+      // Kreiranje mapiranja za kategorije opreme sa više slotova
+      const equipmentSlots = {
+        'ONT/HFC': { startIndex: 13, maxSlots: 1, equipment: [] },
+        'Hybrid': { startIndex: 15, maxSlots: 1, equipment: [] },
+        'STB/CAM': { startIndex: 17, maxSlots: 3, equipment: [] },
+        'Kartica': { startIndex: 23, maxSlots: 3, equipment: [] },
+        'Mini node': { startIndex: 29, maxSlots: 1, equipment: [] }
+      };
+
+      // Popunjavanje instaliranih uređaja
+      if (evidence.installedEquipment && evidence.installedEquipment.length > 0) {
+        evidence.installedEquipment.forEach(equipment => {
+          const category = equipment.equipmentType;
+          if (equipmentSlots[category]) {
+            equipmentSlots[category].equipment.push({
+              serialNumber: equipment.serialNumber || '',
+              condition: equipment.condition || 'N'
+            });
+          }
+        });
+      }
+
+      // Dodavanje uređaja u odgovarajuće kolone
+      Object.keys(equipmentSlots).forEach(category => {
+        const slot = equipmentSlots[category];
+        for (let i = 0; i < slot.maxSlots; i++) {
+          const equipmentIndex = slot.startIndex + (i * 2);
+          const conditionIndex = equipmentIndex + 1;
+          
+          if (slot.equipment[i]) {
+            row[equipmentIndex] = slot.equipment[i].serialNumber;
+            row[conditionIndex] = slot.equipment[i].condition;
+          } else {
+            row[equipmentIndex] = '';
+            row[conditionIndex] = '';
+          }
+        }
+      });
+
+      // Dodavanje demontirane opreme (samo prva stavka)
+      if (evidence.removedEquipment && evidence.removedEquipment.length > 0) {
+        const firstRemoved = evidence.removedEquipment[0];
+        row[31] = firstRemoved.serialNumber || '';
+        row[32] = firstRemoved.condition || 'R';
+      } else {
+        row[31] = '';
+        row[32] = '';
+      }
+
+      evidencijaData.push(row);
+    });
+
+    // Kreiranje worksheeta
+    const ws = xlsx.utils.aoa_to_sheet(evidencijaData);
+
+    // Spajanje ćelija za zaglavlje
+    if (!ws['!merges']) ws['!merges'] = [];
+    
+    // Spajanje ćelija za "Specifikacija instalacija"
+    ws['!merges'].push({ s: { r: 1, c: 6 }, e: { r: 1, c: 7 } });
+    
+    // Spajanje ćelija za kategorije opreme
+    ws['!merges'].push({ s: { r: 1, c: 13 }, e: { r: 1, c: 14 } }); // ONT/HFC
+    ws['!merges'].push({ s: { r: 1, c: 15 }, e: { r: 1, c: 16 } }); // Hybrid
+    ws['!merges'].push({ s: { r: 1, c: 17 }, e: { r: 1, c: 18 } }); // STB/CAM 1
+    ws['!merges'].push({ s: { r: 1, c: 19 }, e: { r: 1, c: 20 } }); // STB/CAM 2
+    ws['!merges'].push({ s: { r: 1, c: 21 }, e: { r: 1, c: 22 } }); // STB/CAM 3
+    ws['!merges'].push({ s: { r: 1, c: 23 }, e: { r: 1, c: 24 } }); // Kartica 1
+    ws['!merges'].push({ s: { r: 1, c: 25 }, e: { r: 1, c: 26 } }); // Kartica 2
+    ws['!merges'].push({ s: { r: 1, c: 27 }, e: { r: 1, c: 28 } }); // Kartica 3
+    ws['!merges'].push({ s: { r: 1, c: 29 }, e: { r: 1, c: 30 } }); // Mini node
+    ws['!merges'].push({ s: { r: 1, c: 31 }, e: { r: 1, c: 32 } }); // Demontaža
+
+    // Postavljanje širine kolona
+    const colWidths = [
+      { width: 12 }, // Datum
+      { width: 15 }, // STATUS
+      { width: 30 }, // Napomena
+      { width: 12 }, // ID zahteva
+      { width: 12 }, // ID korisnika
+      { width: 15 }, // Vrsta Naloga
+      { width: 15 }, // Mesto
+      { width: 40 }, // Adresa
+      { width: 25 }, // Korisnik
+      { width: 40 }, // Napomena
+      { width: 15 }, // Status korisnika
+      { width: 15 }, // Tehnicar 1
+      { width: 15 }, // Tehnicar 2
+      // Oprema kolone
+      ...Array(20).fill({ width: 18 }) // 20 kolona za opremu
+    ];
+    ws['!cols'] = colWidths;
+
+    // Dodavanje worksheeta u workbook
+    xlsx.utils.book_append_sheet(workbook, ws, "SPECIFIKACIJA RADOVA");
+
+    // Generisanje Excel fajla
+    const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    
+    // Postavljamo headere za download
+    const startDateStr = new Date(startDate).toLocaleDateString('sr-RS');
+    const filename = `${startDateStr}.evidencija.xlsx`;
+    
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+    
+  } catch (error) {
+    console.error('Greška pri generisanju WorkOrderEvidence evidencije:', error);
+    res.status(500).json({ 
+      error: 'Greška pri generisanju evidencije: ' + error.message
+    });
+  }
+});
 
 module.exports = router;

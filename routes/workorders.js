@@ -8,6 +8,7 @@ const xlsx = require('xlsx');
 const { v4: uuidv4 } = require('uuid');
 const mongoose = require('mongoose');
 const { WorkOrder, User, Technician, Equipment, Material } = require('../models');
+const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const { uploadImage, deleteImage } = require('../config/cloudinary');
 const { 
   logCommentAdded, 
@@ -20,6 +21,83 @@ const {
   logWorkOrderAssigned,
   logWorkOrderUpdated
 } = require('../utils/logger');
+
+// Funkcija za kreiranje WorkOrderEvidence zapisa
+async function createWorkOrderEvidence(workOrder) {
+  try {
+    // Kreiranje osnovnog WorkOrderEvidence zapisa
+    const evidenceData = {
+      workOrderId: workOrder._id,
+      tisJobId: workOrder.tisJobId || '',
+      tisId: workOrder.tisId || '',
+      customerName: workOrder.userName || '',
+      customerStatus: 'Nov korisnik', // Default vrednost, može se ažurirati
+      municipality: workOrder.municipality || '',
+      address: workOrder.address || '',
+      technician1: '', // Biće popunjeno kada se dodeli tehničar
+      technician2: '',
+      status: workOrder.status === 'zavrsen' ? 'ZAVRŠENO' : 'U TOKU',
+      executionDate: workOrder.date || new Date(),
+      notes: workOrder.comment || '',
+      orderType: workOrder.type || '',
+      servicePackage: workOrder.additionalJobs || '',
+      technology: workOrder.technology || 'other',
+      verified: workOrder.verified || false,
+      installedEquipment: [],
+      removedEquipment: [],
+      changeHistory: []
+    };
+
+    // Dodeli imena tehničara ako postoje
+    if (workOrder.technicianId) {
+      const technician = await Technician.findById(workOrder.technicianId);
+      if (technician) {
+        evidenceData.technician1 = technician.name;
+      }
+    }
+
+    if (workOrder.technician2Id) {
+      const technician2 = await Technician.findById(workOrder.technician2Id);
+      if (technician2) {
+        evidenceData.technician2 = technician2.name;
+      }
+    }
+
+    const evidence = new WorkOrderEvidence(evidenceData);
+    await evidence.save();
+    
+    console.log('WorkOrderEvidence kreiran za WorkOrder:', workOrder._id);
+    return evidence;
+  } catch (error) {
+    console.error('Greška pri kreiranju WorkOrderEvidence:', error);
+    throw error;
+  }
+}
+
+// Funkcija za ažuriranje WorkOrderEvidence zapisa
+async function updateWorkOrderEvidence(workOrderId, updateData) {
+  try {
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId });
+    if (!evidence) {
+      console.log('WorkOrderEvidence nije pronađen za WorkOrder:', workOrderId);
+      return null;
+    }
+
+    // Ažuriranje osnovnih podataka
+    Object.keys(updateData).forEach(key => {
+      if (evidence[key] !== undefined) {
+        evidence[key] = updateData[key];
+      }
+    });
+
+    await evidence.save();
+    console.log('WorkOrderEvidence ažuriran za WorkOrder:', workOrderId);
+    return evidence;
+  } catch (error) {
+    console.error('Greška pri ažuriranju WorkOrderEvidence:', error);
+    throw error;
+  }
+}
 
 
 
@@ -469,6 +547,14 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         const savedWorkOrder = await newWorkOrder.save();
         newWorkOrders.push(savedWorkOrder);
         
+        // Kreiranje WorkOrderEvidence zapisa
+        try {
+          await createWorkOrderEvidence(savedWorkOrder);
+        } catch (evidenceError) {
+          console.error('Greška pri kreiranju WorkOrderEvidence:', evidenceError);
+          // Ne prekidamo proces zbog greške u evidenciji
+        }
+        
         // Dodavanje radnog naloga korisniku
         if (user) {
           await User.findByIdAndUpdate(user._id, {
@@ -610,6 +696,14 @@ router.post('/', async (req, res) => {
     
     const savedWorkOrder = await newWorkOrder.save();
     
+    // Kreiranje WorkOrderEvidence zapisa
+    try {
+      await createWorkOrderEvidence(savedWorkOrder);
+    } catch (evidenceError) {
+      console.error('Greška pri kreiranju WorkOrderEvidence:', evidenceError);
+      // Ne prekidamo proces zbog greške u evidenciji
+    }
+    
     // Ako je korisnik pronađen/kreiran, dodajemo radni nalog korisniku
     if (userId) {
       await User.findByIdAndUpdate(userId, {
@@ -686,6 +780,46 @@ router.put('/:id', async (req, res) => {
 
     if (!updatedWorkOrder) {
       return res.status(404).json({ error: 'Radni nalog nije pronađen nakon ažuriranja' });
+    }
+
+    // Ažuriranje WorkOrderEvidence zapisa
+    try {
+      const evidenceUpdateData = {
+        municipality: updatedWorkOrder.municipality,
+        address: updatedWorkOrder.address,
+        status: updatedWorkOrder.status === 'zavrsen' ? 'ZAVRŠENO' : 
+                updatedWorkOrder.status === 'otkazan' ? 'OTKAZANO' : 
+                updatedWorkOrder.status === 'odlozen' ? 'ODLOŽENO' : 'U TOKU',
+        executionDate: updatedWorkOrder.date,
+        notes: updatedWorkOrder.comment || '',
+        orderType: updatedWorkOrder.type,
+        servicePackage: updatedWorkOrder.additionalJobs || '',
+        technology: updatedWorkOrder.technology,
+        verified: updatedWorkOrder.verified,
+        customerName: updatedWorkOrder.userName || '',
+        tisJobId: updatedWorkOrder.tisJobId || '',
+        tisId: updatedWorkOrder.tisId || ''
+      };
+
+      // Dodeli imena tehničara ako postoje
+      if (updatedWorkOrder.technicianId) {
+        const technician = await Technician.findById(updatedWorkOrder.technicianId);
+        if (technician) {
+          evidenceUpdateData.technician1 = technician.name;
+        }
+      }
+
+      if (updatedWorkOrder.technician2Id) {
+        const technician2 = await Technician.findById(updatedWorkOrder.technician2Id);
+        if (technician2) {
+          evidenceUpdateData.technician2 = technician2.name;
+        }
+      }
+
+      await updateWorkOrderEvidence(updatedWorkOrder._id, evidenceUpdateData);
+    } catch (evidenceError) {
+      console.error('Greška pri ažuriranju WorkOrderEvidence:', evidenceError);
+      // Ne prekidamo proces zbog greške u evidenciji
     }
 
     // Log work order assignment
@@ -805,6 +939,28 @@ router.put('/:id/technician-update', async (req, res) => {
     }
     
     const updatedWorkOrder = await workOrder.save();
+    
+    // Ažuriranje WorkOrderEvidence zapisa
+    try {
+      const evidenceUpdateData = {
+        status: updatedWorkOrder.status === 'zavrsen' ? 'ZAVRŠENO' : 
+                updatedWorkOrder.status === 'otkazan' ? 'OTKAZANO' : 
+                updatedWorkOrder.status === 'odlozen' ? 'ODLOŽENO' : 'U TOKU',
+        notes: updatedWorkOrder.comment || '',
+        verified: updatedWorkOrder.verified
+      };
+
+      if (updatedWorkOrder.status === 'zavrsen') {
+        evidenceUpdateData.executionDate = new Date();
+      } else if (updatedWorkOrder.status === 'odlozen') {
+        evidenceUpdateData.executionDate = updatedWorkOrder.date;
+      }
+
+      await updateWorkOrderEvidence(updatedWorkOrder._id, evidenceUpdateData);
+    } catch (evidenceError) {
+      console.error('Greška pri ažuriranju WorkOrderEvidence:', evidenceError);
+      // Ne prekidamo proces zbog greške u evidenciji
+    }
     
     res.json(updatedWorkOrder);
   } catch (error) {
@@ -1368,6 +1524,230 @@ router.get('/statistics/summary', async (req, res) => {
   } catch (error) {
     console.error('Greška pri dohvatanju statistike radnih naloga:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju statistike radnih naloga' });
+  }
+});
+
+// POST - Dodavanje instaliranog uređaja u WorkOrderEvidence
+router.post('/:id/installed-equipment', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { equipmentType, serialNumber, condition, notes } = req.body;
+    
+    console.log('Received request for installed equipment:', { id, equipmentType, serialNumber, condition, notes });
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    if (!equipmentType || !serialNumber) {
+      return res.status(400).json({ error: 'Tip uređaja i serijski broj su obavezni' });
+    }
+
+    console.log('Looking for WorkOrderEvidence with workOrderId:', id);
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+    console.log('Found evidence:', evidence ? 'Yes' : 'No');
+    
+    if (!evidence) {
+      return res.status(404).json({ error: 'WorkOrderEvidence nije pronađen' });
+    }
+
+    const equipmentData = {
+      equipmentType,
+      serialNumber,
+      condition: condition || 'N',
+      installedAt: new Date(),
+      notes: notes || ''
+    };
+
+    console.log('Adding equipment data:', equipmentData);
+    console.log('Current installedEquipment length:', evidence.installedEquipment.length);
+    
+    evidence.installedEquipment.push(equipmentData);
+    
+    console.log('New installedEquipment length:', evidence.installedEquipment.length);
+    
+    const savedEvidence = await evidence.save();
+    console.log('Evidence saved successfully');
+
+    res.json({
+      message: 'Uređaj uspešno dodat u listu instaliranih',
+      evidence: savedEvidence
+    });
+  } catch (error) {
+    console.error('Greška pri dodavanju instaliranog uređaja:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Greška pri dodavanju instaliranog uređaja',
+      details: error.message
+    });
+  }
+});
+
+// POST - Dodavanje uklonjenog uređaja u WorkOrderEvidence
+router.post('/:id/removed-equipment', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { equipmentType, serialNumber, condition, reason, notes } = req.body;
+    
+    console.log('Received request for removed equipment:', { id, equipmentType, serialNumber, condition, reason, notes });
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    if (!equipmentType || !serialNumber || !condition) {
+      return res.status(400).json({ error: 'Tip uređaja, serijski broj i stanje su obavezni' });
+    }
+
+    console.log('Looking for WorkOrderEvidence with workOrderId:', id);
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+    console.log('Found evidence:', evidence ? 'Yes' : 'No');
+    
+    if (!evidence) {
+      return res.status(404).json({ error: 'WorkOrderEvidence nije pronađen' });
+    }
+
+    const equipmentData = {
+      equipmentType,
+      serialNumber,
+      condition,
+      removedAt: new Date(),
+      reason: reason || 'Ostalo',
+      notes: notes || ''
+    };
+
+    console.log('Adding removed equipment data:', equipmentData);
+    console.log('Current removedEquipment length:', evidence.removedEquipment.length);
+    
+    evidence.removedEquipment.push(equipmentData);
+    
+    console.log('New removedEquipment length:', evidence.removedEquipment.length);
+    
+    const savedEvidence = await evidence.save();
+    console.log('Evidence saved successfully');
+
+    res.json({
+      message: 'Uređaj uspešno dodat u listu uklonjenih',
+      evidence: savedEvidence
+    });
+  } catch (error) {
+    console.error('Greška pri dodavanju uklonjenog uređaja:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Greška pri dodavanju uklonjenog uređaja',
+      details: error.message 
+    });
+  }
+});
+
+// PUT - Ažuriranje statusa korisnika u WorkOrderEvidence
+router.put('/:id/customer-status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { customerStatus } = req.body;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    if (!customerStatus) {
+      return res.status(400).json({ error: 'Status korisnika je obavezan' });
+    }
+
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+    if (!evidence) {
+      return res.status(404).json({ error: 'WorkOrderEvidence nije pronađen' });
+    }
+
+    evidence.customerStatus = customerStatus;
+    await evidence.save();
+
+    res.json({
+      message: 'Status korisnika uspešno ažuriran',
+      evidence: evidence
+    });
+  } catch (error) {
+    console.error('Greška pri ažuriranju statusa korisnika:', error);
+    res.status(500).json({ error: 'Greška pri ažuriranju statusa korisnika' });
+  }
+});
+
+// GET - Dohvati WorkOrderEvidence za radni nalog
+router.get('/:id/evidence', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+    if (!evidence) {
+      return res.status(404).json({ error: 'WorkOrderEvidence nije pronađen' });
+    }
+
+    res.json(evidence);
+  } catch (error) {
+    console.error('Greška pri dohvatanju WorkOrderEvidence:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju WorkOrderEvidence' });
+  }
+});
+
+// DELETE - Uklanjanje instaliranog uređaja iz WorkOrderEvidence
+router.delete('/:id/installed-equipment/:equipmentId', async (req, res) => {
+  try {
+    const { id, equipmentId } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+    if (!evidence) {
+      return res.status(404).json({ error: 'WorkOrderEvidence nije pronađen' });
+    }
+
+    evidence.installedEquipment = evidence.installedEquipment.filter(
+      eq => eq._id.toString() !== equipmentId
+    );
+    await evidence.save();
+
+    res.json({
+      message: 'Uređaj uspešno uklonjen iz liste instaliranih',
+      evidence: evidence
+    });
+  } catch (error) {
+    console.error('Greška pri uklanjanju instaliranog uređaja:', error);
+    res.status(500).json({ error: 'Greška pri uklanjanju instaliranog uređaja' });
+  }
+});
+
+// DELETE - Uklanjanje uklonjenog uređaja iz WorkOrderEvidence
+router.delete('/:id/removed-equipment/:equipmentId', async (req, res) => {
+  try {
+    const { id, equipmentId } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+    if (!evidence) {
+      return res.status(404).json({ error: 'WorkOrderEvidence nije pronađen' });
+    }
+
+    evidence.removedEquipment = evidence.removedEquipment.filter(
+      eq => eq._id.toString() !== equipmentId
+    );
+    await evidence.save();
+
+    res.json({
+      message: 'Uređaj uspešno uklonjen iz liste uklonjenih',
+      evidence: evidence
+    });
+  } catch (error) {
+    console.error('Greška pri uklanjanju uklonjenog uređaja:', error);
+    res.status(500).json({ error: 'Greška pri uklanjanju uklonjenog uređaja' });
   }
 });
 

@@ -4,8 +4,58 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Equipment = require('../models/Equipment');
 const WorkOrder = require('../models/WorkOrder');
+const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const Technician = require('../models/Technician');
 const { logEquipmentAdded, logEquipmentRemoved } = require('../utils/logger');
+
+// Mapiranje kategorija opreme na validne enum vrednosti
+function mapEquipmentTypeToEnum(category) {
+  const categoryLower = (category || '').toLowerCase().trim();
+  
+  // Mapiranje postojećih kategorija na enum vrednosti
+  const mapping = {
+    'ont': 'ONT/HFC',
+    'hfc': 'ONT/HFC',
+    'ont/hfc': 'ONT/HFC',
+    'hybrid': 'Hybrid',
+    'stb': 'STB/CAM',
+    'cam': 'STB/CAM',
+    'stb/cam': 'STB/CAM',
+    'kartica': 'Kartica',
+    'mini node': 'Mini node',
+    'mininode': 'Mini node',
+    'modem': 'ONT/HFC',
+    'router': 'Hybrid',
+    'telefon': 'STB/CAM',
+    'tv': 'STB/CAM',
+    'decoder': 'STB/CAM'
+  };
+  
+  // Pokušaj direktno mapiranje
+  if (mapping[categoryLower]) {
+    return mapping[categoryLower];
+  }
+  
+  // Pokušaj pattern matching
+  if (categoryLower.includes('ont') || categoryLower.includes('hfc') || categoryLower.includes('modem')) {
+    return 'ONT/HFC';
+  }
+  if (categoryLower.includes('hybrid') || categoryLower.includes('router')) {
+    return 'Hybrid';
+  }
+  if (categoryLower.includes('stb') || categoryLower.includes('cam') || categoryLower.includes('tv') || categoryLower.includes('decoder')) {
+    return 'STB/CAM';
+  }
+  if (categoryLower.includes('kartica') || categoryLower.includes('card')) {
+    return 'Kartica';
+  }
+  if (categoryLower.includes('mini') || categoryLower.includes('node')) {
+    return 'Mini node';
+  }
+  
+  // Default fallback
+  return 'ONT/HFC';
+}
 
 // GET - Dohvati svu opremu kod korisnika
 router.get('/', async (req, res) => {
@@ -161,6 +211,49 @@ router.post('/', async (req, res) => {
     await workOrder.save();
     console.log('Work order updated with installed equipment:', workOrder);
 
+    // Ažuriranje WorkOrderEvidence sa instaliranim uređajem
+    try {
+      const evidence = await WorkOrderEvidence.findOne({ workOrderId });
+      if (evidence) {
+        const mappedEquipmentType = mapEquipmentTypeToEnum(equipment.category);
+        console.log(`Mapping equipment category '${equipment.category}' to '${mappedEquipmentType}'`);
+        
+        const equipmentData = {
+          equipmentType: mappedEquipmentType,
+          serialNumber: equipment.serialNumber || '',
+          condition: equipment.status === 'defective' ? 'R' : 'N',
+          installedAt: new Date(),
+          notes: `Instalirano od tehničara - ${equipment.description || ''}`
+        };
+
+        console.log('Equipment data to be added:', equipmentData);
+        
+        // Logika za uklanjanje duplikata i premestanje između array-eva
+        const serialNumber = equipmentData.serialNumber;
+        
+        // 1. Ukloni iz removedEquipment ako postoji (vraćamo uređaj u upotrebu)
+        evidence.removedEquipment = evidence.removedEquipment.filter(
+          removedEq => removedEq.serialNumber !== serialNumber
+        );
+        
+        // 2. Proveri da li već postoji u installedEquipment i ukloni postojeći
+        evidence.installedEquipment = evidence.installedEquipment.filter(
+          installedEq => installedEq.serialNumber !== serialNumber
+        );
+        
+        // 3. Dodaj novi zapis u installedEquipment
+        evidence.installedEquipment.push(equipmentData);
+        
+        await evidence.save();
+        console.log('WorkOrderEvidence updated with installed equipment - duplicates removed');
+      } else {
+        console.log('WorkOrderEvidence not found for workOrderId:', workOrderId);
+      }
+    } catch (evidenceError) {
+      console.error('Greška pri ažuriranju WorkOrderEvidence:', evidenceError);
+      // Ne prekidamo proces zbog greške u evidenciji
+    }
+
     // Log equipment addition
     try {
       const technician = await Technician.findById(technicianId);
@@ -255,6 +348,50 @@ router.put('/:id/remove', async (req, res) => {
     }
     
     await workOrder.save();
+    
+    // Ažuriranje WorkOrderEvidence sa uklonjenim uređajem
+    try {
+      const evidence = await WorkOrderEvidence.findOne({ workOrderId });
+      if (evidence) {
+        const mappedEquipmentType = mapEquipmentTypeToEnum(equipment.category);
+        console.log(`Mapping equipment category '${equipment.category}' to '${mappedEquipmentType}' for removal`);
+        
+        const equipmentData = {
+          equipmentType: mappedEquipmentType,
+          serialNumber: equipment.serialNumber || '',
+          condition: isWorking ? 'N' : 'R', // N-ispravno, R-neispravno
+          removedAt: new Date(),
+          reason: isWorking ? 'Zamena' : 'Kvar',
+          notes: removalReason || `Uklonjeno od tehničara - ${equipment.description || ''}`
+        };
+
+        console.log('Removed equipment data to be added:', equipmentData);
+        
+        // Logika za uklanjanje duplikata i premestanje između array-eva
+        const serialNumber = equipmentData.serialNumber;
+        
+        // 1. Ukloni iz installedEquipment ako postoji (premestamo uređaj u removed)
+        evidence.installedEquipment = evidence.installedEquipment.filter(
+          installedEq => installedEq.serialNumber !== serialNumber
+        );
+        
+        // 2. Proveri da li već postoji u removedEquipment i ukloni postojeći
+        evidence.removedEquipment = evidence.removedEquipment.filter(
+          removedEq => removedEq.serialNumber !== serialNumber
+        );
+        
+        // 3. Dodaj novi zapis u removedEquipment
+        evidence.removedEquipment.push(equipmentData);
+        
+        await evidence.save();
+        console.log('WorkOrderEvidence updated with removed equipment - duplicates removed');
+      } else {
+        console.log('WorkOrderEvidence not found for workOrderId:', workOrderId);
+      }
+    } catch (evidenceError) {
+      console.error('Greška pri ažuriranju WorkOrderEvidence:', evidenceError);
+      // Ne prekidamo proces zbog greške u evidenciji
+    }
     
     // Log equipment removal
     try {
