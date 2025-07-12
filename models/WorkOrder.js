@@ -51,6 +51,46 @@ const WorkOrderSchema = new Schema({
   postponedUntil: {
     type: Date
   },
+  postponeHistory: [{
+    postponedAt: {
+      type: Date,
+      default: Date.now
+    },
+    fromDate: {
+      type: Date
+    },
+    fromTime: {
+      type: String
+    },
+    toDate: {
+      type: Date
+    },
+    toTime: {
+      type: String
+    },
+    comment: {
+      type: String,
+      required: true
+    },
+    postponedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'Technician'
+    }
+  }],
+  cancelHistory: [{
+    canceledAt: {
+      type: Date,
+      default: Date.now
+    },
+    comment: {
+      type: String,
+      required: true
+    },
+    canceledBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'Technician'
+    }
+  }],
   technology: {
     type: String,
     enum: ['HFC', 'GPON', 'VDSL', 'other'],

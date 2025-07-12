@@ -872,7 +872,7 @@ router.put('/:id', async (req, res) => {
 router.put('/:id/technician-update', async (req, res) => {
   try {
     const { id } = req.params;
-    const { comment, status, postponeDate, postponeTime, technicianId } = req.body;
+    const { comment, status, postponeDate, postponeTime, postponeComment, cancelComment, technicianId } = req.body;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
@@ -930,6 +930,13 @@ router.put('/:id/technician-update', async (req, res) => {
       } 
       // Ako je status promenjen na "odlozen", dodaj novo vreme i datum
       else if (status === 'odlozen') {
+        // Validacija: komentar za odlaganje je obavezan
+        if (!postponeComment || postponeComment.trim() === '') {
+          return res.status(400).json({ 
+            error: 'Komentar za odlaganje radnog naloga je obavezan' 
+          });
+        }
+        
         workOrder.postponedAt = new Date();
         
         // Ako su dostavljeni novi datum i vreme, ažuriramo ih i validiramo
@@ -957,10 +964,43 @@ router.put('/:id/technician-update', async (req, res) => {
           workOrder.time = postponeTime;
           workOrder.postponedUntil = postponedDateTime;
         }
+        
+        // Dodaj podatke o odlaganju u historiju
+        if (!workOrder.postponeHistory) {
+          workOrder.postponeHistory = [];
+        }
+        
+        workOrder.postponeHistory.push({
+          postponedAt: new Date(),
+          fromDate: workOrder.date,
+          fromTime: workOrder.time,
+          toDate: postponeDate,
+          toTime: postponeTime,
+          comment: postponeComment,
+          postponedBy: technicianId
+        });
       }
       // Ako je status "otkazan", dodaj timestamp otkazivanja
       else if (status === 'otkazan') {
+        // Validacija: komentar za otkazivanje je obavezan
+        if (!cancelComment || cancelComment.trim() === '') {
+          return res.status(400).json({ 
+            error: 'Komentar za otkazivanje radnog naloga je obavezan' 
+          });
+        }
+        
         workOrder.canceledAt = new Date();
+        
+        // Dodaj podatke o otkazivanju u historiju
+        if (!workOrder.cancelHistory) {
+          workOrder.cancelHistory = [];
+        }
+        
+        workOrder.cancelHistory.push({
+          canceledAt: new Date(),
+          comment: cancelComment,
+          canceledBy: technicianId
+        });
       }
     }
     
