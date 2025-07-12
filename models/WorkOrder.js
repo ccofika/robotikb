@@ -48,6 +48,9 @@ const WorkOrderSchema = new Schema({
   statusChangedAt: {
     type: Date
   },
+  postponedUntil: {
+    type: Date
+  },
   technology: {
     type: String,
     enum: ['HFC', 'GPON', 'VDSL', 'other'],

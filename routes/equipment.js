@@ -5,7 +5,7 @@ const xlsx = require('xlsx');
 const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
-const { Equipment } = require('../models');
+const { Equipment, Log } = require('../models');
 
 // Konfiguracija za multer (upload fajlova)
 const storage = multer.diskStorage({
@@ -257,6 +257,9 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Oprema nije pronađena' });
     }
     
+    // Sačuvaj stari status da možemo proveriti da li se menja
+    const oldStatus = equipment.status;
+    
     // Provera da li drugi komad opreme već koristi ovaj serijski broj
     if (updateData.serialNumber && updateData.serialNumber !== equipment.serialNumber) {
       const duplicateSerial = await Equipment.findOne({ 
@@ -276,10 +279,57 @@ router.put('/:id', async (req, res) => {
     if (updateData.location) equipment.location = updateData.location;
     if (updateData.status) equipment.status = updateData.status;
     
+    // Specijalna logika za defektnu opremu
+    if (updateData.status === 'defective' && oldStatus !== 'defective') {
+      console.log('🔧 Equipment status changed to defective - applying automatic transition');
+      
+      // Automatski postavi potrebne vrednosti za defektnu opremu
+      equipment.location = 'defective';
+      equipment.removedAt = updateData.removedAt || new Date();
+      equipment.assignedTo = null;
+      equipment.assignedToUser = null;
+      
+      console.log('📅 Equipment marked as defective:', {
+        id: equipment._id,
+        serialNumber: equipment.serialNumber,
+        category: equipment.category,
+        removedAt: equipment.removedAt
+      });
+      
+      // Kreiraj log entry za označavanje kao defektno
+      try {
+        await new Log({
+          action: 'equipment_marked_defective',
+          equipmentDetails: {
+            equipmentId: equipment._id,
+            serialNumber: equipment.serialNumber,
+            category: equipment.category,
+            description: equipment.description,
+            reason: 'Manually marked as defective',
+            isWorking: false
+          },
+          performedByName: 'System (Equipment Edit)',
+          timestamp: new Date()
+        }).save();
+        
+        console.log('📝 Log entry created for defective equipment');
+      } catch (logError) {
+        console.error('⚠️ Failed to create log entry:', logError);
+        // Ne prekidamo proces ako log ne uspe
+      }
+    }
+    
     const updatedEquipment = await equipment.save();
+    
+    console.log('✅ Equipment updated successfully:', {
+      id: updatedEquipment._id,
+      status: updatedEquipment.status,
+      location: updatedEquipment.location
+    });
+    
     res.json(updatedEquipment);
   } catch (error) {
-    console.error('Greška pri ažuriranju opreme:', error);
+    console.error('❌ Greška pri ažuriranju opreme:', error);
     res.status(500).json({ error: 'Greška pri ažuriranju opreme' });
   }
 });

@@ -21,6 +21,7 @@ const {
   logWorkOrderAssigned,
   logWorkOrderUpdated
 } = require('../utils/logger');
+const { testScheduler } = require('../services/workOrderScheduler');
 
 // Funkcija za kreiranje WorkOrderEvidence zapisa
 async function createWorkOrderEvidence(workOrder) {
@@ -756,6 +757,13 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ error: 'Neispravan format ID-a tehničara' });
     }
 
+    // Provera i konverzija technician2Id
+    if (updateData.technician2Id === '') {
+      updateData.technician2Id = null;
+    } else if (updateData.technician2Id && !mongoose.Types.ObjectId.isValid(updateData.technician2Id)) {
+      return res.status(400).json({ error: 'Neispravan format ID-a drugog tehničara' });
+    }
+
     // Konvertuj datum u pravilni Date objekat ako je string
     if (updateData.date && typeof updateData.date === 'string') {
       updateData.date = new Date(updateData.date);
@@ -924,12 +932,30 @@ router.put('/:id/technician-update', async (req, res) => {
       else if (status === 'odlozen') {
         workOrder.postponedAt = new Date();
         
-        // Ako su dostavljeni novi datum i vreme, ažuriramo ih
-        if (postponeDate) {
+        // Ako su dostavljeni novi datum i vreme, ažuriramo ih i validiramo
+        if (postponeDate && postponeTime) {
+          // Kreiraj postponedUntil datetime objekat
+          const postponedDateTime = new Date(`${postponeDate}T${postponeTime}:00`);
+          const currentTime = new Date();
+          const maxAllowedTime = new Date(currentTime.getTime() + (48 * 60 * 60 * 1000)); // 48 sati
+          
+          // Validacija: ne sme biti odložen za više od 48 sati
+          if (postponedDateTime > maxAllowedTime) {
+            return res.status(400).json({ 
+              error: 'Radni nalog ne može biti odložen za više od 48 sati. Otkažite radni nalog.' 
+            });
+          }
+          
+          // Validacija: ne sme biti odložen u prošlost
+          if (postponedDateTime <= currentTime) {
+            return res.status(400).json({ 
+              error: 'Radni nalog ne može biti odložen u prošlost.' 
+            });
+          }
+          
           workOrder.date = postponeDate;
-        }
-        if (postponeTime) {
           workOrder.time = postponeTime;
+          workOrder.postponedUntil = postponedDateTime;
         }
       }
       // Ako je status "otkazan", dodaj timestamp otkazivanja
@@ -1754,6 +1780,17 @@ router.delete('/:id/removed-equipment/:equipmentId', async (req, res) => {
   } catch (error) {
     console.error('Greška pri uklanjanju uklonjenog uređaja:', error);
     res.status(500).json({ error: 'Greška pri uklanjanju uklonjenog uređaja' });
+  }
+});
+
+// Test endpoint za ručno pokretanje scheduler-a
+router.post('/test-scheduler', async (req, res) => {
+  try {
+    await testScheduler();
+    res.json({ message: 'Scheduler test completed - check console logs' });
+  } catch (error) {
+    console.error('Error running scheduler test:', error);
+    res.status(500).json({ error: 'Error running scheduler test' });
   }
 });
 

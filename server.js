@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const connectDB = require('./config/db');
+const { startWorkOrderScheduler } = require('./services/workOrderScheduler');
 require('dotenv').config();
 
 // Povezivanje sa MongoDB
@@ -177,6 +178,9 @@ app.use((err, req, res, next) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server pokrenut na portu: ${PORT}`);
   console.log(`CORS omogućen za: ${corsOptions.origin.join(', ')}`);
+  
+  // Pokretanje scheduler-a za radne naloge
+  startWorkOrderScheduler();
 });
 
 module.exports = app;
