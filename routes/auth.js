@@ -16,11 +16,31 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Korisničko ime i lozinka su obavezni' });
     }
     
-    // Admin login za demo (u produkciji bi bio u bazi)
+    // Admin login - proveri da li postoji admin u bazi
     if (name.toLowerCase() === 'admin' && password === 'Robotik2023!') {
-      const adminId = 'admin';
+      // Pokušaj da nađeš admin korisnika u bazi
+      let admin = await Technician.findOne({ name: 'Administrator', isAdmin: true });
+      
+      // Ako ne postoji, kreiraj ga
+      if (!admin) {
+        const hashedPassword = await bcrypt.hash('Robotik2023!', 10);
+        
+        admin = new Technician({
+          name: 'Administrator',
+          password: hashedPassword,
+          isAdmin: true,
+          gmail: '',
+          profileImage: '',
+          materials: [],
+          equipment: []
+        });
+        
+        await admin.save();
+        console.log('Created admin user');
+      }
+      
       const token = jwt.sign(
-        { _id: adminId, name: 'Administrator', role: 'admin' },
+        { _id: admin._id, name: admin.name, role: 'admin' },
         JWT_SECRET,
         { expiresIn: '24h' }
       );
@@ -30,9 +50,11 @@ router.post('/login', async (req, res) => {
       return res.json({
         message: 'Uspešno prijavljivanje',
         user: {
-          _id: adminId,
-          name: 'Administrator',
-          role: 'admin'
+          _id: admin._id,
+          name: admin.name,
+          role: 'admin',
+          gmail: admin.gmail,
+          profileImage: admin.profileImage
         },
         token
       });

@@ -2,7 +2,30 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
+const multer = require('multer');
+const jwt = require('jsonwebtoken');
 const { Technician, Equipment, Material } = require('../models');
+const { uploadImage } = require('../config/cloudinary');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'telco-super-secret-key';
+
+// Helper funkcija da dobije korisnika iz tokena
+const getUserFromToken = async (req) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return null;
+  
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    // Pokušaj da nađeš korisnika u bazi po imenu (za admin) ili ID-u
+    if (decoded.role === 'admin') {
+      return await Technician.findOne({ name: decoded.name, isAdmin: true });
+    } else {
+      return await Technician.findById(decoded.id || decoded._id);
+    }
+  } catch (error) {
+    return null;
+  }
+};
 
 // GET - Dohvati sve tehničare
 router.get('/', async (req, res) => {
@@ -200,22 +223,33 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, password } = req.body;
+    const { name, password, gmail, profileImage } = req.body;
     
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ error: 'Neispravan ID format' });
-    }
+    // Ako se pokušava ažurirati sa "admin" ID-om, pronađi pravog korisnika iz tokena
+    let technician;
     
-    const technician = await Technician.findById(id);
-    
-    if (!technician) {
-      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    if (id === 'admin') {
+      // Dobij korisnika iz JWT tokena
+      technician = await getUserFromToken(req);
+      if (!technician) {
+        return res.status(401).json({ error: 'Neautorizovan pristup' });
+      }
+    } else {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ error: 'Neispravan ID format' });
+      }
+      
+      technician = await Technician.findById(id);
+      
+      if (!technician) {
+        return res.status(404).json({ error: 'Tehničar nije pronađen' });
+      }
     }
     
     // Ako se menja ime, proveriti da li već postoji tehničar sa tim imenom
     if (name && name !== technician.name) {
       const existingTechnician = await Technician.findOne({
-        _id: { $ne: id },
+        _id: { $ne: technician._id },
         name: { $regex: new RegExp(`^${name}$`, 'i') }
       });
       
@@ -230,6 +264,16 @@ router.put('/:id', async (req, res) => {
     if (password) {
       const salt = await bcrypt.genSalt(10);
       technician.password = await bcrypt.hash(password, salt);
+    }
+    
+    // Ažuriraj Gmail adresu
+    if (gmail !== undefined) {
+      technician.gmail = gmail;
+    }
+    
+    // Ažuriraj profilnu sliku
+    if (profileImage !== undefined) {
+      technician.profileImage = profileImage;
     }
     
     const updatedTechnician = await technician.save();
@@ -788,6 +832,71 @@ router.post('/:id/equipment/reject', async (req, res) => {
   } catch (error) {
     console.error('Greška pri odbijanju opreme:', error);
     res.status(500).json({ error: 'Greška pri odbijanju opreme' });
+  }
+});
+
+// Multer konfiguracija za profile slike
+const profileImageStorage = multer.memoryStorage();
+const profileImageUpload = multer({
+  storage: profileImageStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Samo slike su dozvoljene'), false);
+    }
+  }
+});
+
+// POST - Upload profilne slike
+router.post('/upload-profile-image', profileImageUpload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Slika nije uploadovana' });
+    }
+
+    // Upload sliku na Cloudinary sa custom transformacijom za profile
+    const result = await new Promise((resolve, reject) => {
+      const uploadStream = require('cloudinary').v2.uploader.upload_stream(
+        {
+          folder: 'profile_images',
+          resource_type: 'image',
+          public_id: `profile_${Date.now()}`,
+          transformation: [
+            {
+              width: 400,
+              height: 400,
+              crop: 'fill',
+              gravity: 'face', // Fokus na lice ako je moguće
+              quality: 'auto:good',
+              format: 'webp'
+            }
+          ]
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary upload greška:', error);
+            reject(error);
+          } else {
+            console.log('Cloudinary upload uspešan:', result.secure_url);
+            resolve(result);
+          }
+        }
+      );
+      
+      uploadStream.end(req.file.buffer);
+    });
+
+    res.json({
+      url: result.secure_url,
+      publicId: result.public_id
+    });
+  } catch (error) {
+    console.error('Greška pri upload-u profilne slike:', error);
+    res.status(500).json({ error: 'Greška pri upload-u profilne slike' });
   }
 });
 

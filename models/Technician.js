@@ -28,6 +28,16 @@ const TechnicianSchema = new Schema({
   isAdmin: {
     type: Boolean,
     default: false
+  },
+  gmail: {
+    type: String,
+    required: false,
+    default: ''
+  },
+  profileImage: {
+    type: String,
+    required: false,
+    default: ''
   }
 }, { timestamps: true });
 
