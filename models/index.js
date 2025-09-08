@@ -5,6 +5,7 @@ const Equipment = require('./Equipment');
 const WorkOrder = require('./WorkOrder');
 const WorkOrderEvidence = require('./WorkOrderEvidence');
 const Log = require('./Log');
+const DismissedWorkOrder = require('./DismissedWorkOrder');
 
 module.exports = {
   User,
@@ -13,5 +14,6 @@ module.exports = {
   Equipment,
   WorkOrder,
   WorkOrderEvidence,
-  Log
+  Log,
+  DismissedWorkOrder
 }; 

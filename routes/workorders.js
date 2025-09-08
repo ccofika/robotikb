@@ -26,21 +26,23 @@ const { testScheduler } = require('../services/workOrderScheduler');
 // Funkcija za kreiranje WorkOrderEvidence zapisa
 async function createWorkOrderEvidence(workOrder) {
   try {
-    // Kreiranje osnovnog WorkOrderEvidence zapisa
+    // Kreiranje osnovnog WorkOrderEvidence zapisa sa bezbedom za postojeće workorder objekte
     const evidenceData = {
       workOrderId: workOrder._id,
-      tisJobId: workOrder.tisJobId || '',
-      tisId: workOrder.tisId || '',
-      customerName: workOrder.userName || '',
-      customerStatus: 'Nov korisnik', // Default vrednost, može se ažurirati
-      municipality: workOrder.municipality || '',
-      address: workOrder.address || '',
+      tisJobId: workOrder.tisJobId || `generated-${Date.now()}`,
+      tisId: workOrder.tisId || `tisid-${Date.now()}`,
+      customerName: workOrder.userName || 'Nepoznat korisnik',
+      customerStatus: 'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme)',
+      municipality: workOrder.municipality || 'Nepoznata opština',
+      address: workOrder.address || 'Nepoznata adresa',
       technician1: '', // Biće popunjeno kada se dodeli tehničar
       technician2: '',
-      status: workOrder.status === 'zavrsen' ? 'ZAVRŠENO' : 'U TOKU',
-      executionDate: workOrder.date || new Date(),
+      status: workOrder.status === 'zavrsen' ? 'ZAVRŠENO' : 
+              workOrder.status === 'otkazan' ? 'OTKAZANO' : 
+              workOrder.status === 'odlozen' ? 'ODLOŽENO' : 'U TOKU',
+      executionDate: workOrder.date ? new Date(workOrder.date) : new Date(),
       notes: workOrder.comment || '',
-      orderType: workOrder.type || '',
+      orderType: workOrder.type || 'Nespecifikovano',
       servicePackage: workOrder.additionalJobs || '',
       technology: workOrder.technology || 'other',
       verified: workOrder.verified || false,
@@ -49,20 +51,40 @@ async function createWorkOrderEvidence(workOrder) {
       changeHistory: []
     };
 
-    // Dodeli imena tehničara ako postoje
+    // Dodeli imena tehničara ako postoje i ako su validni ObjectId
     if (workOrder.technicianId) {
-      const technician = await Technician.findById(workOrder.technicianId);
-      if (technician) {
-        evidenceData.technician1 = technician.name;
+      try {
+        // Proveri da li je technicianId string ili objekat
+        const technicianId = workOrder.technicianId._id || workOrder.technicianId;
+        if (mongoose.Types.ObjectId.isValid(technicianId)) {
+          const technician = await Technician.findById(technicianId);
+          if (technician) {
+            evidenceData.technician1 = technician.name;
+          }
+        }
+      } catch (techError) {
+        console.warn('Greška pri pronalaženju tehničara 1:', techError.message);
+        evidenceData.technician1 = 'Nepoznat tehničar';
       }
     }
 
     if (workOrder.technician2Id) {
-      const technician2 = await Technician.findById(workOrder.technician2Id);
-      if (technician2) {
-        evidenceData.technician2 = technician2.name;
+      try {
+        // Proveri da li je technician2Id string ili objekat
+        const technician2Id = workOrder.technician2Id._id || workOrder.technician2Id;
+        if (mongoose.Types.ObjectId.isValid(technician2Id)) {
+          const technician2 = await Technician.findById(technician2Id);
+          if (technician2) {
+            evidenceData.technician2 = technician2.name;
+          }
+        }
+      } catch (tech2Error) {
+        console.warn('Greška pri pronalaženju tehničara 2:', tech2Error.message);
+        evidenceData.technician2 = 'Nepoznat tehničar';
       }
     }
+
+    console.log('Kreiram WorkOrderEvidence sa podacima:', JSON.stringify(evidenceData, null, 2));
 
     const evidence = new WorkOrderEvidence(evidenceData);
     await evidence.save();
@@ -71,6 +93,7 @@ async function createWorkOrderEvidence(workOrder) {
     return evidence;
   } catch (error) {
     console.error('Greška pri kreiranju WorkOrderEvidence:', error);
+    console.error('Stack trace:', error.stack);
     throw error;
   }
 }
@@ -369,6 +392,46 @@ router.get('/:id/materials', async (req, res) => {
   }
 });
 
+// GET - Preuzimanje šablona (mora biti pre /:id rute)
+router.get('/template', (req, res) => {
+  const templatePath = path.join(__dirname, '../templates/workorders-template.xlsx');
+  
+  // Ako šablon ne postoji, kreiramo ga
+  if (!fs.existsSync(templatePath)) {
+    const workbook = xlsx.utils.book_new();
+    const data = [
+      {
+        "Tehnicar 1": "Ime tehničara",
+        "Tehnicar 2": "",
+        "Područje": "BORČA",
+        "Početak instalacije": "31/05/2023 12:00",
+        "Tehnologija": "HFC",
+        "TIS ID korisnika": "904317",
+        "Adresa korisnika": "Beograd,BORČA,OBROVAČKA 9",
+        "Ime korisnika": "PETAR ĐUKIĆ",
+        "Kontakt telefon 1": "0642395394",
+        "TIS Posao ID": "629841530",
+        "Paket": "Dodatni STB/CA - Kabl TV",
+        "Dodatni poslovi": "629841530,Dodatni STB/CA - Kabl TV",
+        "Tip zahteva": "Zamena uređaja"
+      }
+    ];
+    
+    const worksheet = xlsx.utils.json_to_sheet(data);
+    xlsx.utils.book_append_sheet(workbook, worksheet, "Radni Nalozi");
+    
+    // Kreiramo direktorijum ako ne postoji
+    const dir = path.dirname(templatePath);
+    if (!fs.existsSync(dir)){
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    xlsx.writeFile(workbook, templatePath);
+  }
+  
+  res.download(templatePath, 'radni-nalozi-sablon.xlsx');
+});
+
 // GET - Dohvati radni nalog po ID-u
 router.get('/:id', async (req, res) => {
   try {
@@ -589,46 +652,6 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// GET - Preuzimanje šablona
-router.get('/template', (req, res) => {
-  const templatePath = path.join(__dirname, '../templates/workorders-template.xlsx');
-  
-  // Ako šablon ne postoji, kreiramo ga
-  if (!fs.existsSync(templatePath)) {
-    const workbook = xlsx.utils.book_new();
-    const data = [
-      {
-        "Tehnicar 1": "Ime tehničara",
-        "Tehnicar 2": "",
-        "Područje": "BORČA",
-        "Početak instalacije": "31/05/2023 12:00",
-        "Tehnologija": "HFC",
-        "TIS ID korisnika": "904317",
-        "Adresa korisnika": "Beograd,BORČA,OBROVAČKA 9",
-        "Ime korisnika": "PETAR ĐUKIĆ",
-        "Kontakt telefon 1": "0642395394",
-        "TIS Posao ID": "629841530",
-        "Paket": "Dodatni STB/CA - Kabl TV",
-        "Dodatni poslovi": "629841530,Dodatni STB/CA - Kabl TV",
-        "Tip zahteva": "Zamena uređaja"
-      }
-    ];
-    
-    const worksheet = xlsx.utils.json_to_sheet(data);
-    xlsx.utils.book_append_sheet(workbook, worksheet, "Radni Nalozi");
-    
-    // Kreiramo direktorijum ako ne postoji
-    const dir = path.dirname(templatePath);
-    if (!fs.existsSync(dir)){
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    
-    xlsx.writeFile(workbook, templatePath);
-  }
-  
-  res.download(templatePath, 'radni-nalozi-sablon.xlsx');
-});
-
 // POST - Dodaj pojedinačni radni nalog
 router.post('/', async (req, res) => {
   try {
@@ -646,6 +669,19 @@ router.post('/', async (req, res) => {
       const technician = await Technician.findById(technicianId);
       if (!technician) {
         return res.status(400).json({ error: 'Tehničar nije pronađen' });
+      }
+    }
+    
+    // Provera da li drugi tehničar postoji
+    if (technician2Id && mongoose.Types.ObjectId.isValid(technician2Id)) {
+      const technician2 = await Technician.findById(technician2Id);
+      if (!technician2) {
+        return res.status(400).json({ error: 'Drugi tehničar nije pronađen' });
+      }
+      
+      // Provera da nisu isti tehničari
+      if (technicianId === technician2Id) {
+        return res.status(400).json({ error: 'Ne možete dodeliti isti tehničar kao prvi i drugi tehničar' });
       }
     }
     
@@ -1726,9 +1762,25 @@ router.put('/:id/customer-status', async (req, res) => {
       return res.status(400).json({ error: 'Status korisnika je obavezan' });
     }
 
-    const evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+    let evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+    
     if (!evidence) {
-      return res.status(404).json({ error: 'WorkOrderEvidence nije pronađen' });
+      // Ako ne postoji WorkOrderEvidence, kreiraj ga na osnovu WorkOrder-a
+      console.log('WorkOrderEvidence ne postoji za:', id, 'kreiram novi...');
+      
+      const workOrder = await WorkOrder.findById(id);
+      if (!workOrder) {
+        return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+      }
+      
+      // Kreiraj novi WorkOrderEvidence zapis
+      try {
+        evidence = await createWorkOrderEvidence(workOrder);
+        console.log('Novi WorkOrderEvidence kreiran za:', id);
+      } catch (createError) {
+        console.error('Greška pri kreiranju WorkOrderEvidence:', createError);
+        return res.status(500).json({ error: 'Greška pri kreiranju evidence zapisa' });
+      }
     }
 
     evidence.customerStatus = customerStatus;
@@ -1753,9 +1805,25 @@ router.get('/:id/evidence', async (req, res) => {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
 
-    const evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+    let evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+    
     if (!evidence) {
-      return res.status(404).json({ error: 'WorkOrderEvidence nije pronađen' });
+      // Ako ne postoji WorkOrderEvidence, kreiraj ga na osnovu WorkOrder-a
+      console.log('WorkOrderEvidence ne postoji za:', id, 'kreiram novi...');
+      
+      const workOrder = await WorkOrder.findById(id);
+      if (!workOrder) {
+        return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+      }
+      
+      // Kreiraj novi WorkOrderEvidence zapis
+      try {
+        evidence = await createWorkOrderEvidence(workOrder);
+        console.log('Novi WorkOrderEvidence kreiran za:', id);
+      } catch (createError) {
+        console.error('Greška pri kreiranju WorkOrderEvidence:', createError);
+        return res.status(500).json({ error: 'Greška pri kreiranju evidence zapisa' });
+      }
     }
 
     res.json(evidence);

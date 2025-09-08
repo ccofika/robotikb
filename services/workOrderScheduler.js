@@ -5,20 +5,20 @@ const { WorkOrder } = require('../models');
 async function checkPostponedWorkOrders() {
   try {
     const currentTime = new Date();
-    console.log(`[${currentTime.toISOString()}] Checking for postponed work orders...`);
+    // console.log(`[${currentTime.toISOString()}] Checking for postponed work orders...`);
     
     // Prvo pronađi sve odložene radne naloge da vidimo šta imamo
     const allPostponedWorkOrders = await WorkOrder.find({
       status: 'odlozen'
     }).select('_id address postponedUntil');
     
-    console.log(`Ukupno odloženih radnih naloga: ${allPostponedWorkOrders.length}`);
+    // console.log(`Ukupno odloženih radnih naloga: ${allPostponedWorkOrders.length}`);
     
-    if (allPostponedWorkOrders.length > 0) {
-      allPostponedWorkOrders.forEach(wo => {
-        console.log(`- ID: ${wo._id}, Address: ${wo.address}, PostponedUntil: ${wo.postponedUntil ? wo.postponedUntil.toISOString() : 'NIJE POSTAVLJENO'}, Current time: ${currentTime.toISOString()}`);
-      });
-    }
+    // if (allPostponedWorkOrders.length > 0) {
+    //   allPostponedWorkOrders.forEach(wo => {
+    //     console.log(`- ID: ${wo._id}, Address: ${wo.address}, PostponedUntil: ${wo.postponedUntil ? wo.postponedUntil.toISOString() : 'NIJE POSTAVLJENO'}, Current time: ${currentTime.toISOString()}`);
+    //   });
+    // }
     
     // Pronađi sve odložene radne naloge čije je vreme za obradu stiglo
     const workOrdersToUpdate = await WorkOrder.find({
@@ -26,7 +26,7 @@ async function checkPostponedWorkOrders() {
       postponedUntil: { $lte: currentTime }
     });
     
-    console.log(`Radnih naloga koji treba da se ažuriraju: ${workOrdersToUpdate.length}`);
+    // console.log(`Radnih naloga koji treba da se ažuriraju: ${workOrdersToUpdate.length}`);
     
     if (workOrdersToUpdate.length > 0) {
       console.log(`Pronađeno ${workOrdersToUpdate.length} odloženih radnih naloga koji treba da se promene u nezavršene`);

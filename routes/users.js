@@ -7,8 +7,32 @@ const mongoose = require('mongoose');
 // GET - Dohvati sve korisnike
 router.get('/', async (req, res) => {
   try {
-    const users = await User.find();
-    res.json(users);
+    const users = await User.find().populate({
+      path: 'workOrders',
+      select: 'status date type',
+      options: { sort: { date: -1 } }
+    });
+
+    // Dodaj broj instalirane opreme i serijske brojeve za svakog korisnika
+    const Equipment = require('../models/Equipment');
+    const usersWithEquipment = await Promise.all(users.map(async (user) => {
+      const installedEquipment = await Equipment.find({
+        location: `user-${user.tisId}`,
+        status: 'installed'
+      }).select('serialNumber category description');
+      
+      return {
+        ...user.toObject(),
+        equipmentCount: installedEquipment.length,
+        installedEquipment: installedEquipment.map(eq => ({
+          serialNumber: eq.serialNumber,
+          category: eq.category,
+          description: eq.description
+        }))
+      };
+    }));
+    
+    res.json(usersWithEquipment);
   } catch (error) {
     console.error('Greška pri dohvatanju korisnika:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju korisnika' });

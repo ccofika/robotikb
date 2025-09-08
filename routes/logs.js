@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Log, Technician, WorkOrder } = require('../models');
+const { Log, Technician, WorkOrder, DismissedWorkOrder } = require('../models');
 const mongoose = require('mongoose');
 const fetch = require('node-fetch');
 
@@ -510,12 +510,18 @@ router.get('/dashboard/tables', async (req, res) => {
       log.formattedTimestamp = formatSerbianDateTime(log.timestamp);
     });
     
-    // Problematic work orders (postponed/cancelled)
-    const problematicWorkOrders = await Log.aggregate([
+    // Get dismissed work orders to exclude them
+    const dismissedWorkOrders = await DismissedWorkOrder.find({}).select('workOrderId').lean();
+    const dismissedWorkOrderIds = dismissedWorkOrders.map(item => item.workOrderId);
+
+    // Problematic work orders (postponed/cancelled) - with full WorkOrder data, excluding dismissed ones
+    const problematicWorkOrdersAgg = await Log.aggregate([
       { 
         $match: { 
           ...filter, 
-          action: { $in: ['workorder_postponed', 'workorder_cancelled'] }
+          action: { $in: ['workorder_postponed', 'workorder_cancelled'] },
+          // Exclude dismissed work orders
+          workOrderId: { $nin: dismissedWorkOrderIds }
         } 
       },
       {
@@ -531,9 +537,31 @@ router.get('/dashboard/tables', async (req, res) => {
       { $limit: 15 }
     ]);
     
+    // Populate full WorkOrder data including tisJobId
+    const problematicWorkOrders = await Promise.all(
+      problematicWorkOrdersAgg.map(async (item) => {
+        if (item._id && mongoose.Types.ObjectId.isValid(item._id)) {
+          const workOrder = await WorkOrder.findById(item._id).lean();
+          return {
+            ...item,
+            workOrderFull: workOrder || null,
+            // Include tisJobId and other important fields directly
+            tisJobId: workOrder?.tisJobId || null,
+            status: workOrder?.status || 'nezavrsen',
+            type: workOrder?.type || null,
+            municipality: workOrder?.municipality || item.workOrderInfo?.municipality,
+            address: workOrder?.address || item.workOrderInfo?.address,
+            userName: workOrder?.userName || item.workOrderInfo?.userName,
+            tisId: workOrder?.tisId || item.workOrderInfo?.tisId
+          };
+        }
+        return item;
+      })
+    );
+    
     res.json({
       topTechnicians,
-      recentActions,
+      recentActions, 
       problematicWorkOrders
     });
   } catch (error) {
@@ -905,7 +933,7 @@ geocodeCache.clear();
 
 // Clear cache every 2 minutes for testing
 setInterval(() => {
-  console.log(`🗑️ Clearing geocode cache (${geocodeCache.size} entries)`);
+  // console.log(`🗑️ Clearing geocode cache (${geocodeCache.size} entries)`);
   geocodeCache.clear();
 }, 2 * 60 * 1000);
 
@@ -1572,5 +1600,93 @@ function getPeriodGrouping(period) {
       };
   }
 }
+
+// POST - Dismiss a problematic work order from dashboard
+router.post('/dashboard/dismiss-work-order', async (req, res) => {
+  try {
+    const { workOrderId } = req.body;
+    
+    if (!workOrderId) {
+      return res.status(400).json({ error: 'workOrderId je obavezan' });
+    }
+    
+    // Check if workOrderId is valid ObjectId
+    if (!mongoose.Types.ObjectId.isValid(workOrderId)) {
+      return res.status(400).json({ error: 'Nevalidan workOrderId' });
+    }
+    
+    // Create or update dismissed work order record
+    const dismissedWorkOrder = await DismissedWorkOrder.findOneAndUpdate(
+      { workOrderId: workOrderId },
+      { 
+        workOrderId: workOrderId,
+        dismissedAt: new Date(),
+        dismissedBy: 'admin'
+      },
+      { 
+        upsert: true, 
+        new: true,
+        setDefaultsOnInsert: true
+      }
+    );
+    
+    console.log(`✅ Work order ${workOrderId} dismissed from problematic list`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Radni nalog je uklonjen iz problematičnih',
+      dismissedWorkOrder
+    });
+    
+  } catch (error) {
+    console.error('Greška pri uklanjanju radnog naloga:', error);
+    res.status(500).json({ error: 'Greška pri uklanjanju radnog naloga' });
+  }
+});
+
+// GET - Get list of dismissed work orders
+router.get('/dashboard/dismissed-work-orders', async (req, res) => {
+  try {
+    const dismissedWorkOrders = await DismissedWorkOrder.find({})
+      .populate('workOrderId', 'tisJobId municipality address userName status')
+      .sort({ dismissedAt: -1 })
+      .lean();
+    
+    res.json(dismissedWorkOrders);
+    
+  } catch (error) {
+    console.error('Greška pri dohvatanju uklonjenih radnih naloga:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju uklonjenih radnih naloga' });
+  }
+});
+
+// DELETE - Re-add a dismissed work order to problematic list 
+router.delete('/dashboard/dismiss-work-order/:workOrderId', async (req, res) => {
+  try {
+    const { workOrderId } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(workOrderId)) {
+      return res.status(400).json({ error: 'Nevalidan workOrderId' });
+    }
+    
+    const result = await DismissedWorkOrder.findOneAndDelete({ workOrderId: workOrderId });
+    
+    if (!result) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen u uklonjenim' });
+    }
+    
+    console.log(`↩️ Work order ${workOrderId} re-added to problematic list`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Radni nalog je vraćen u problematične',
+      workOrderId 
+    });
+    
+  } catch (error) {
+    console.error('Greška pri vraćanju radnog naloga:', error);
+    res.status(500).json({ error: 'Greška pri vraćanju radnog naloga' });
+  }
+});
 
 module.exports = router; 
