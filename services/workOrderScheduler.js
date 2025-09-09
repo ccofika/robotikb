@@ -1,5 +1,8 @@
 const cron = require('node-cron');
-const { WorkOrder } = require('../models');
+const { WorkOrder, Technician } = require('../models');
+const Vehicle = require('../models/Vehicle');
+const notificationsRouter = require('../routes/notifications');
+const createNotification = notificationsRouter.createNotification;
 
 // Funkcija za proveru i ažuriranje odloženih radnih naloga
 async function checkPostponedWorkOrders() {
@@ -148,6 +151,89 @@ async function ensureAppointmentDateTimeSet() {
   }
 }
 
+// Funkcija za proveru vozila sa istekajućom registracijom
+async function checkVehicleRegistrations() {
+  try {
+    const currentTime = new Date();
+    const thirtyDaysFromNow = new Date(currentTime.getTime() + (30 * 24 * 60 * 60 * 1000));
+    const tenDaysFromNow = new Date(currentTime.getTime() + (10 * 24 * 60 * 60 * 1000));
+    
+    // Pronađi vozila sa registracijom koja ističe u narednih 30 dana
+    const vehiclesExpiringIn30Days = await Vehicle.find({
+      registrationExpiry: {
+        $gte: currentTime,
+        $lte: thirtyDaysFromNow
+      },
+      status: { $ne: 'sold' } // Isključi prodana vozila
+    });
+    
+    // Pronađi vozila sa registracijom koja ističe u narednih 10 dana
+    const vehiclesExpiringIn10Days = await Vehicle.find({
+      registrationExpiry: {
+        $gte: currentTime,
+        $lte: tenDaysFromNow
+      },
+      status: { $ne: 'sold' }
+    });
+    
+    if (vehiclesExpiringIn30Days.length > 0 || vehiclesExpiringIn10Days.length > 0) {
+      
+      // Pronađi sve admin korisnike za slanje notifikacija
+      const adminUsers = await Technician.find({ isAdmin: true });
+      
+      if (adminUsers.length > 0) {
+        // Kreiraj notifikacije za vozila sa registracijom koja ističe u narednih 10 dana (visoki prioritet)
+        for (const vehicle of vehiclesExpiringIn10Days) {
+          const daysUntilExpiry = Math.ceil((vehicle.registrationExpiry.getTime() - currentTime.getTime()) / (24 * 60 * 60 * 1000));
+          
+          for (const adminUser of adminUsers) {
+            try {
+              await createNotification('vehicle_registration_expiry', {
+                vehicleId: vehicle._id,
+                vehicleName: vehicle.name,
+                licensePlate: vehicle.licensePlate,
+                expiryDate: vehicle.registrationExpiry,
+                recipientId: adminUser._id
+              });
+              
+            } catch (notificationError) {
+              console.error(`Greška pri kreiranju notifikacije za vozilo ${vehicle.name}:`, notificationError);
+            }
+          }
+        }
+        
+        // Kreiraj notifikacije za vozila sa registracijom koja ističe u narednih 30 dana (srednji prioritet)
+        for (const vehicle of vehiclesExpiringIn30Days) {
+          // Proveri da li vozilo nije već pokriveno u 10-dnevnoj proveri
+          const isAlreadyCovered = vehiclesExpiringIn10Days.some(v => v._id.toString() === vehicle._id.toString());
+          
+          if (!isAlreadyCovered) {
+            const daysUntilExpiry = Math.ceil((vehicle.registrationExpiry.getTime() - currentTime.getTime()) / (24 * 60 * 60 * 1000));
+            
+            for (const adminUser of adminUsers) {
+              try {
+                await createNotification('vehicle_registration_expiry', {
+                  vehicleId: vehicle._id,
+                  vehicleName: vehicle.name,
+                  licensePlate: vehicle.licensePlate,
+                  expiryDate: vehicle.registrationExpiry,
+                  recipientId: adminUser._id
+                });
+                
+                } catch (notificationError) {
+                console.error(`Greška pri kreiranju notifikacije za vozilo ${vehicle.name}:`, notificationError);
+              }
+            }
+          }
+        }
+      } else {
+      }
+    }
+  } catch (error) {
+    console.error('Greška pri proveri registracije vozila:', error);
+  }
+}
+
 // Pokretanje scheduler-a
 function startWorkOrderScheduler() {
   console.log('Pokretanje Work Order Scheduler-a...');
@@ -158,6 +244,11 @@ function startWorkOrderScheduler() {
     await checkOverdueWorkOrders();
   });
   
+  // Proveri vozila sa istekajućom registracijom jednom dnevno u 9:00 ujutru
+  cron.schedule('0 9 * * *', async () => {
+    await checkVehicleRegistrations();
+  });
+  
   console.log('Work Order Scheduler je pokrenut - proverava odložene i overdue radne naloge svaki minut');
 }
 
@@ -166,6 +257,7 @@ async function testScheduler() {
   console.log('=== MANUAL SCHEDULER TEST ===');
   await checkPostponedWorkOrders();
   await checkOverdueWorkOrders();
+  await checkVehicleRegistrations();
   console.log('=== TEST COMPLETED ===');
 }
 
@@ -173,6 +265,7 @@ module.exports = {
   startWorkOrderScheduler,
   checkPostponedWorkOrders,
   checkOverdueWorkOrders,
+  checkVehicleRegistrations,
   ensureAppointmentDateTimeSet,
   testScheduler
 };

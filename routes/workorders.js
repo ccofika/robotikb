@@ -19,9 +19,12 @@ const {
   logMaterialRemoved,
   logWorkOrderCreated,
   logWorkOrderAssigned,
-  logWorkOrderUpdated
+  logWorkOrderUpdated,
+  checkMaterialAnomaly
 } = require('../utils/logger');
 const { testScheduler } = require('../services/workOrderScheduler');
+const notificationsRouter = require('./notifications');
+const createNotification = notificationsRouter.createNotification;
 
 // Funkcija za kreiranje WorkOrderEvidence zapisa
 async function createWorkOrderEvidence(workOrder) {
@@ -856,6 +859,48 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Radni nalog nije pronađen nakon ažuriranja' });
     }
 
+    // Check if status was changed to "zavrsen" and create notifications for admins
+    const oldStatus = workOrder.status;
+    const newStatus = updatedWorkOrder.status;
+    
+    if (oldStatus !== 'zavrsen' && newStatus === 'zavrsen') {
+      // Kreiraj notifikaciju za admin kada se radni nalog označi kao završen
+      try {
+        // Dohvati tehničara ako postoji
+        let technicianName = 'Nepoznat tehničar';
+        if (updatedWorkOrder.technicianId) {
+          const technician = await Technician.findById(updatedWorkOrder.technicianId);
+          if (technician) {
+            technicianName = technician.name;
+          }
+        }
+        
+        // Pronađi sve admne (tehničari sa admin privilegijama)
+        const adminUsers = await Technician.find({ isAdmin: true });
+        
+        // Kreiraj notifikaciju za svakog admina
+        console.log('=== ADMIN UPDATE: Pozivam createNotification ===');
+        console.log('createNotification type:', typeof createNotification);
+        console.log('createNotification function:', createNotification);
+        
+        for (const adminUser of adminUsers) {
+          console.log('Kreiram notifikaciju za admin:', adminUser._id);
+          await createNotification('work_order_verification', {
+            workOrderId: updatedWorkOrder._id,
+            technicianId: updatedWorkOrder.technicianId,
+            technicianName: technicianName,
+            recipientId: adminUser._id
+          });
+          console.log('Notifikacija kreirana za admin:', adminUser._id);
+        }
+        
+        console.log('Notifikacija kreirana za završetak radnog naloga (admin update):', updatedWorkOrder._id);
+      } catch (notificationError) {
+        console.error('Greška pri kreiranju notifikacije:', notificationError);
+        // Ne prekidamo proces zbog greške u notifikaciji
+      }
+    }
+
     // Ažuriranje WorkOrderEvidence zapisa
     try {
       const evidenceUpdateData = {
@@ -998,6 +1043,36 @@ router.put('/:id/technician-update', async (req, res) => {
       if (status === 'zavrsen') {
         workOrder.completedAt = new Date();
         workOrder.verified = false; // Čeka verifikaciju admina
+        
+        // Kreiraj notifikaciju za admin kada tehničar završi radni nalog
+        try {
+          console.log('=== TEHNICIAN UPDATE: Pozivam createNotification ===');
+          console.log('createNotification type:', typeof createNotification);
+          console.log('createNotification function:', createNotification);
+          
+          // Pronađi sve admne (tehničari sa admin privilegijama)
+          const adminUsers = await Technician.find({ isAdmin: true });
+          console.log('Pronašao admin tehničare:', adminUsers.length);
+          
+          // Kreiraj notifikaciju za svakog admina
+          for (const adminUser of adminUsers) {
+            console.log('Kreiram notifikaciju za admin:', adminUser._id);
+            await createNotification('work_order_verification', {
+              workOrderId: workOrder._id,
+              technicianId: technicianId,
+              technicianName: technician ? technician.name : 'Nepoznat tehničar',
+              recipientId: adminUser._id
+            });
+            console.log('Notifikacija kreirana za admin:', adminUser._id);
+          }
+          
+          console.log('Notifikacija kreirana za završetak radnog naloga (tehnician update):', workOrder._id);
+        } catch (notificationError) {
+          console.error('=== Error u createNotification (tehnician update) ===');
+          console.error('Greška pri kreiranju notifikacije za završetak radnog naloga:', notificationError);
+          console.error('Error stack:', notificationError.stack);
+          // Ne prekidamo proces zbog greške u notifikaciji
+        }
       } 
       // Ako je status promenjen na "odlozen", dodaj novo vreme i datum
       else if (status === 'odlozen') {
@@ -1430,13 +1505,25 @@ router.post('/:id/used-materials', async (req, res) => {
               // Material was added
               const materialDoc = await Material.findById(newMaterial.material);
               if (materialDoc) {
-                await logMaterialAdded(
+                const log = await logMaterialAdded(
                   technicianId, 
                   technician.name, 
                   workOrder, 
                   materialDoc, 
                   newQuantity - oldQuantity
                 );
+                
+                // Check for material anomaly after logging
+                if (log) {
+                  await checkMaterialAnomaly(
+                    technicianId,
+                    technician.name,
+                    workOrder,
+                    materialDoc,
+                    newQuantity - oldQuantity,
+                    log._id
+                  );
+                }
               }
             } else if (newQuantity < oldQuantity) {
               // Material was reduced

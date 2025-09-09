@@ -34,7 +34,8 @@ const WorkOrderEvidenceSchema = new Schema({
       'Priključenje korisnika na GPON mrežu u privatnim kućama (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme)',
       'Priključenje korisnika na GPON mrežu u zgradi (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme)',
       'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji sa montažnim radovima',
-      'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji bez montažnih radova'
+      'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji bez montažnih radova',
+      'Nov korisnik'
     ],
     required: true
   },

@@ -156,6 +156,7 @@ const userEquipmentRouter = require('./routes/userEquipment');
 const logsRoutes = require('./routes/logs');
 const defectiveEquipmentRoutes = require('./routes/defectiveEquipment');
 const vehiclesRoutes = require('./routes/vehicles');
+const notificationsRoutes = require('./routes/notifications');
 
 // Definisanje ruta
 app.use('/api/auth', authRoutes);
@@ -169,6 +170,7 @@ app.use('/api/user-equipment', userEquipmentRouter);
 app.use('/api/logs', logsRoutes);
 app.use('/api/defective-equipment', defectiveEquipmentRoutes);
 app.use('/api/vehicles', vehiclesRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Rukovanje greškama
 app.use((err, req, res, next) => {

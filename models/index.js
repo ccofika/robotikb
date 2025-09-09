@@ -6,6 +6,7 @@ const WorkOrder = require('./WorkOrder');
 const WorkOrderEvidence = require('./WorkOrderEvidence');
 const Log = require('./Log');
 const DismissedWorkOrder = require('./DismissedWorkOrder');
+const Notification = require('./Notification');
 
 module.exports = {
   User,
@@ -15,5 +16,6 @@ module.exports = {
   WorkOrder,
   WorkOrderEvidence,
   Log,
-  DismissedWorkOrder
+  DismissedWorkOrder,
+  Notification
 }; 

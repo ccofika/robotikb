@@ -1,4 +1,6 @@
-const { Log } = require('../models');
+const { Log, Technician } = require('../models');
+const notificationsRouter = require('../routes/notifications');
+const createNotification = notificationsRouter.createNotification;
 
 // Helper funkcija za kreiranje log zapisa
 const createLog = async (logData) => {
@@ -288,6 +290,67 @@ const logWorkOrderUpdated = async (adminId, adminName, workOrder) => {
   });
 };
 
+// Function to detect material anomalies and create notifications
+const checkMaterialAnomaly = async (technicianId, technicianName, workOrder, material, quantity, logId) => {
+  try {
+    // Get recent material usage data for anomaly detection (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const recentLogs = await Log.find({
+      action: 'material_added',
+      'materialDetails.materialType': material.type,
+      timestamp: { $gte: thirtyDaysAgo }
+    });
+
+    if (recentLogs.length < 5) {
+      // Not enough data for anomaly detection
+      return;
+    }
+
+    // Calculate average and standard deviation
+    const quantities = recentLogs.map(log => log.materialDetails.quantity);
+    const average = quantities.reduce((sum, q) => sum + q, 0) / quantities.length;
+    const variance = quantities.reduce((sum, q) => sum + Math.pow(q - average, 2), 0) / quantities.length;
+    const standardDeviation = Math.sqrt(variance);
+    
+    // Threshold: 2 standard deviations above average
+    const threshold = average + (2 * standardDeviation);
+
+    // Check if current usage exceeds threshold
+    if (quantity > threshold) {
+      console.log(`Material anomaly detected: ${material.type} - quantity ${quantity} exceeds threshold ${threshold.toFixed(2)}`);
+      
+      // Find all admin users to send notifications
+      const adminUsers = await Technician.find({ isAdmin: true });
+      
+      if (adminUsers.length > 0) {
+        const anomalyType = quantity > threshold * 1.5 ? 'high' : 'medium';
+        
+        for (const adminUser of adminUsers) {
+          try {
+            await createNotification('material_anomaly', {
+              logId: logId,
+              technicianId: technicianId,
+              technicianName: technicianName,
+              workOrderId: workOrder._id,
+              materialName: material.type,
+              anomalyType: anomalyType,
+              recipientId: adminUser._id
+            });
+            
+            console.log(`Created material anomaly notification for admin ${adminUser.name} - ${material.type} (${quantity} > ${threshold.toFixed(2)})`);
+          } catch (notificationError) {
+            console.error(`Error creating material anomaly notification for admin ${adminUser.name}:`, notificationError);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error in material anomaly detection:', error);
+  }
+};
+
 module.exports = {
   createLog,
   logMaterialAdded,
@@ -300,5 +363,6 @@ module.exports = {
   logImageRemoved,
   logWorkOrderCreated,
   logWorkOrderAssigned,
-  logWorkOrderUpdated
+  logWorkOrderUpdated,
+  checkMaterialAnomaly
 }; 
