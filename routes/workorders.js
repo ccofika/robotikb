@@ -247,6 +247,36 @@ router.get('/technician/:technicianId', async (req, res) => {
   }
 });
 
+// GET - Dohvati overdue radne naloge za tehničara
+router.get('/technician/:technicianId/overdue', async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+    
+    if (!mongoose.Types.ObjectId.isValid(technicianId)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    
+    const overdueOrders = await WorkOrder.find({ 
+      $or: [
+        { technicianId },
+        { technician2Id: technicianId }
+      ],
+      status: 'nezavrsen',
+      isOverdue: true
+    })
+      .populate('technicianId', 'name')
+      .populate('technician2Id', 'name')
+      .select('_id address appointmentDateTime isOverdue overdueMarkedAt comment status type')
+      .lean()
+      .exec();
+      
+    res.json(overdueOrders);
+  } catch (error) {
+    console.error('Greška pri dohvatanju overdue radnih naloga:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju overdue radnih naloga' });
+  }
+});
+
 // GET - Dohvati nedodeljene radne naloge
 router.get('/unassigned', async (req, res) => {
   try {
@@ -954,6 +984,11 @@ router.put('/:id/technician-update', async (req, res) => {
       workOrder.statusChangedBy = technicianId;
       workOrder.statusChangedAt = new Date();
       
+      // Zapamti prvo menjanje statusa - samo ako nije već zapisano
+      if (!workOrder.prvoMenjanjeStatusa) {
+        workOrder.prvoMenjanjeStatusa = new Date();
+      }
+      
       // Log status change
       if (technician) {
         await logWorkOrderStatusChanged(technicianId, technician.name, workOrder, oldStatus, status);
@@ -1522,6 +1557,221 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// GET - Dohvati analitiku vremena završavanja radnih naloga
+router.get('/statistics/completion-time', async (req, res) => {
+  try {
+    const { technician, period, startDate, endDate } = req.query;
+    
+    // Build aggregation pipeline
+    const pipeline = [];
+    
+    // Match criteria for work orders with first status change
+    const matchCriteria = {
+      prvoMenjanjeStatusa: { $exists: true, $ne: null }
+    };
+    
+    // Add date filtering based on prvoMenjanjeStatusa
+    if (period && period !== 'all') {
+      const now = new Date();
+      let dateFrom;
+      
+      switch (period) {
+        case 'danas':
+          dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'nedelja':
+          dateFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case 'mesec':
+          dateFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case 'kvartal':
+          const currentQuarter = Math.floor(now.getMonth() / 3);
+          dateFrom = new Date(now.getFullYear(), currentQuarter * 3, 1);
+          break;
+        case 'godina':
+          dateFrom = new Date(now.getFullYear(), 0, 1);
+          break;
+        default:
+          dateFrom = null;
+      }
+      
+      if (dateFrom) {
+        matchCriteria.prvoMenjanjeStatusa = { 
+          $exists: true, 
+          $ne: null,
+          $gte: dateFrom 
+        };
+      }
+    } else if (startDate && endDate) {
+      matchCriteria.prvoMenjanjeStatusa = {
+        $exists: true,
+        $ne: null,
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+    
+    // Add technician filter
+    if (technician && technician !== 'all') {
+      const technicianDoc = await Technician.findOne({ name: technician });
+      if (technicianDoc) {
+        matchCriteria.$or = [
+          { technicianId: technicianDoc._id },
+          { technician2Id: technicianDoc._id }
+        ];
+      }
+    }
+    
+    pipeline.push({ $match: matchCriteria });
+    
+    // Populate technician info
+    pipeline.push({
+      $lookup: {
+        from: 'technicians',
+        localField: 'technicianId',
+        foreignField: '_id',
+        as: 'technicianInfo'
+      }
+    });
+    
+    // Add technician name and construct start time from date and time
+    pipeline.push({
+      $addFields: {
+        startDateTime: {
+          $cond: {
+            if: { $and: [{ $ne: ['$date', null] }, { $ne: ['$time', null] }] },
+            then: {
+              $dateFromParts: {
+                year: { $year: '$date' },
+                month: { $month: '$date' },
+                day: { $dayOfMonth: '$date' },
+                // Convert Belgrade time to UTC by subtracting 2 hours
+                hour: { 
+                  $subtract: [
+                    { $toInt: { $substr: [{ $ifNull: ['$time', '09:00'] }, 0, 2] } },
+                    2 // Belgrade is UTC+2
+                  ]
+                },
+                minute: { $toInt: { $substr: [{ $ifNull: ['$time', '09:00'] }, 3, 2] } }
+              }
+            },
+            else: '$date' // fallback to just date if time is missing
+          }
+        },
+        technicianName: { $arrayElemAt: ['$technicianInfo.name', 0] }
+      }
+    });
+    
+    pipeline.push({
+      $addFields: {
+        completionTimeHours: {
+          $cond: {
+            if: { $ne: ['$startDateTime', null] },
+            then: {
+              $divide: [
+                { $subtract: ['$prvoMenjanjeStatusa', '$startDateTime'] },
+                3600000 // Convert milliseconds to hours
+              ]
+            },
+            else: 0 // Default to 0 if no start time
+          }
+        }
+      }
+    });
+    
+    // Filter out negative completion times and null values
+    pipeline.push({
+      $match: {
+        completionTimeHours: { $gte: 0 }
+      }
+    });
+    
+    // Group by technician for individual stats
+    pipeline.push({
+      $group: {
+        _id: '$technicianName',
+        avgCompletionTime: { $avg: '$completionTimeHours' },
+        minCompletionTime: { $min: '$completionTimeHours' },
+        maxCompletionTime: { $max: '$completionTimeHours' },
+        totalWorkOrders: { $sum: 1 },
+        completionTimes: { $push: '$completionTimeHours' },
+        // Add tisJobId samples for debugging
+        tisJobIds: { $push: '$tisJobId' }
+      }
+    });
+    
+    // Sort by average completion time
+    pipeline.push({ $sort: { avgCompletionTime: 1 } });
+    
+    const results = await WorkOrder.aggregate(pipeline);
+    
+    // Calculate overall statistics
+    let overallAvg = 0;
+    let overallMin = Number.MAX_VALUE;
+    let overallMax = 0;
+    let totalOrders = 0;
+    let allCompletionTimes = [];
+    
+    results.forEach(result => {
+      if (result._id) { // Only count if technician name exists
+        overallAvg += result.avgCompletionTime * result.totalWorkOrders;
+        overallMin = Math.min(overallMin, result.minCompletionTime);
+        overallMax = Math.max(overallMax, result.maxCompletionTime);
+        totalOrders += result.totalWorkOrders;
+        allCompletionTimes = allCompletionTimes.concat(result.completionTimes);
+      }
+    });
+    
+    overallAvg = totalOrders > 0 ? overallAvg / totalOrders : 0;
+    overallMin = overallMin === Number.MAX_VALUE ? 0 : overallMin;
+    
+    // Calculate median
+    allCompletionTimes.sort((a, b) => a - b);
+    const median = allCompletionTimes.length > 0 ? 
+      allCompletionTimes.length % 2 === 0 ?
+        (allCompletionTimes[allCompletionTimes.length / 2 - 1] + allCompletionTimes[allCompletionTimes.length / 2]) / 2 :
+        allCompletionTimes[Math.floor(allCompletionTimes.length / 2)] : 0;
+    
+    // Format technician data
+    const technicianStats = results
+      .filter(result => result._id) // Only include results with technician names
+      .map(result => ({
+        name: result._id,
+        avgCompletionTime: Math.round(result.avgCompletionTime * 100) / 100,
+        minCompletionTime: Math.round(result.minCompletionTime * 100) / 100,
+        maxCompletionTime: Math.round(result.maxCompletionTime * 100) / 100,
+        totalWorkOrders: result.totalWorkOrders,
+        efficiency: result.avgCompletionTime <= overallAvg ? 'high' : result.avgCompletionTime <= overallAvg * 1.5 ? 'medium' : 'low',
+        // Add tisJobIds for debugging/verification
+        tisJobIds: result.tisJobIds || []
+      }));
+    
+    const response = {
+      overall: {
+        avgCompletionTime: Math.round(overallAvg * 100) / 100,
+        minCompletionTime: Math.round(overallMin * 100) / 100,
+        maxCompletionTime: Math.round(overallMax * 100) / 100,
+        medianCompletionTime: Math.round(median * 100) / 100,
+        totalWorkOrders: totalOrders,
+        period: period || 'custom',
+        dateRange: startDate && endDate ? { startDate, endDate } : null
+      },
+      technicians: technicianStats,
+      distribution: {
+        fast: allCompletionTimes.filter(t => t <= overallAvg * 0.8).length,
+        average: allCompletionTimes.filter(t => t > overallAvg * 0.8 && t <= overallAvg * 1.2).length,
+        slow: allCompletionTimes.filter(t => t > overallAvg * 1.2).length
+      }
+    };
+    
+    res.json(response);
+  } catch (error) {
+    console.error('Greška pri dohvatanju analitike vremena završavanja:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju analitike vremena završavanja' });
+  }
+});
+
 // GET - Dohvati statistiku radnih naloga
 router.get('/statistics/summary', async (req, res) => {
   try {
@@ -1899,6 +2149,89 @@ router.post('/test-scheduler', async (req, res) => {
   } catch (error) {
     console.error('Error running scheduler test:', error);
     res.status(500).json({ error: 'Error running scheduler test' });
+  }
+});
+
+// GET version za lakše testiranje u browseru
+router.get('/test-scheduler', async (req, res) => {
+  try {
+    console.log('=== MANUAL SCHEDULER TEST via GET ===');
+    await testScheduler();
+    res.json({ 
+      message: 'Scheduler test completed - check console logs',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error running scheduler test:', error);
+    res.status(500).json({ error: 'Error running scheduler test', details: error.message });
+  }
+});
+
+// DEBUG - Check completion time data
+router.get('/debug/completion-time', async (req, res) => {
+  try {
+    // Find all work orders with prvoMenjanjeStatusa
+    const workOrders = await WorkOrder.find({
+      prvoMenjanjeStatusa: { $exists: true, $ne: null }
+    })
+    .populate('technicianId', 'name')
+    .select('_id prvoMenjanjeStatusa date time technicianId address status')
+    .lean();
+
+    console.log('Found work orders with prvoMenjanjeStatusa:', workOrders.length);
+    
+    const result = {
+      totalFound: workOrders.length,
+      workOrders: workOrders.map(wo => ({
+        _id: wo._id,
+        prvoMenjanjeStatusa: wo.prvoMenjanjeStatusa,
+        date: wo.date,
+        time: wo.time,
+        technicianName: wo.technicianId?.name || 'No technician',
+        address: wo.address,
+        status: wo.status
+      }))
+    };
+
+    res.json(result);
+  } catch (error) {
+    console.error('Debug completion time error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DEBUG - Check overdue work orders status
+router.get('/debug/overdue-status', async (req, res) => {
+  try {
+    const currentTime = new Date();
+    const oneHourAgo = new Date(currentTime.getTime() - (60 * 60 * 1000));
+    
+    // Find all incomplete work orders with appointment time
+    const incompleteOrders = await WorkOrder.find({
+      status: 'nezavrsen'
+    }).select('_id address appointmentDateTime isOverdue overdueMarkedAt technicianId').populate('technicianId', 'name');
+    
+    const result = {
+      currentTime: currentTime.toISOString(),
+      oneHourAgo: oneHourAgo.toISOString(),
+      totalIncompleteOrders: incompleteOrders.length,
+      orders: incompleteOrders.map(order => ({
+        _id: order._id,
+        address: order.address,
+        appointmentDateTime: order.appointmentDateTime,
+        isOverdue: order.isOverdue,
+        overdueMarkedAt: order.overdueMarkedAt,
+        technician: order.technicianId?.name || 'No technician assigned',
+        shouldBeOverdue: order.appointmentDateTime && order.appointmentDateTime <= oneHourAgo,
+        hoursOverdue: order.appointmentDateTime ? 
+          Math.max(0, (currentTime.getTime() - order.appointmentDateTime.getTime()) / (60 * 60 * 1000)) : 0
+      }))
+    };
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Error checking overdue status:', error);
+    res.status(500).json({ error: 'Error checking overdue status' });
   }
 });
 

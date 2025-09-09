@@ -48,6 +48,9 @@ const WorkOrderSchema = new Schema({
   statusChangedAt: {
     type: Date
   },
+  prvoMenjanjeStatusa: {
+    type: Date
+  },
   postponedUntil: {
     type: Date
   },
@@ -168,7 +171,18 @@ const WorkOrderSchema = new Schema({
     notes: {
       type: String
     }
-  }]
+  }],
+  // Overdue fields
+  isOverdue: {
+    type: Boolean,
+    default: false
+  },
+  overdueMarkedAt: {
+    type: Date
+  },
+  appointmentDateTime: {
+    type: Date
+  }
 }, { timestamps: true });
 
 module.exports = mongoose.model('WorkOrder', WorkOrderSchema); 

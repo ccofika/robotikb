@@ -60,6 +60,94 @@ async function checkPostponedWorkOrders() {
   }
 }
 
+// Funkcija za proveru radnih naloga koji su duže od sat vremena nezavršeni
+async function checkOverdueWorkOrders() {
+  try {
+    const currentTime = new Date();
+    const oneHourAgo = new Date(currentTime.getTime() - (60 * 60 * 1000)); // 1 sat u millisekunde
+    
+    // First, ensure all work orders have appointmentDateTime set
+    await ensureAppointmentDateTimeSet();
+    
+    // Pronađi sve radne naloge sa statusom 'nezavrsen' koji su stariji od sat vremena
+    // Koristimo appointmentDateTime za vreme kada treba da se odradi zadatak
+    const overdueWorkOrders = await WorkOrder.find({
+      status: 'nezavrsen',
+      appointmentDateTime: { $lte: oneHourAgo }
+    }).populate('technicianId', 'name email');
+    
+    if (overdueWorkOrders.length > 0) {
+      console.log(`Pronađeno ${overdueWorkOrders.length} radnih naloga koji su duži od sat vremena nezavršeni`);
+      
+      // Dodaj overdue flag na svaki radni nalog
+      const updateResult = await WorkOrder.updateMany(
+        {
+          status: 'nezavrsen',
+          appointmentDateTime: { $lte: oneHourAgo },
+          isOverdue: { $ne: true } // Samo ako već nije označen kao overdue
+        },
+        {
+          $set: {
+            isOverdue: true,
+            overdueMarkedAt: currentTime
+          }
+        }
+      );
+      
+      console.log(`Označeno ${updateResult.modifiedCount} radnih naloga kao overdue`);
+      
+      // Log za svaki overdue radni nalog
+      overdueWorkOrders.forEach(workOrder => {
+        if (!workOrder.isOverdue) {
+          console.log(`Radni nalog ${workOrder._id} (${workOrder.address}) označen kao overdue - trebao je biti završen ${workOrder.appointmentDateTime}`);
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Greška pri proveri overdue radnih naloga:', error);
+  }
+}
+
+// Helper function to ensure appointmentDateTime is set for all work orders
+async function ensureAppointmentDateTimeSet() {
+  try {
+    // Find work orders without appointmentDateTime
+    const workOrdersWithoutDateTime = await WorkOrder.find({
+      appointmentDateTime: { $exists: false }
+    });
+    
+    if (workOrdersWithoutDateTime.length > 0) {
+      console.log(`Setting appointmentDateTime for ${workOrdersWithoutDateTime.length} work orders`);
+      
+      const bulkOps = workOrdersWithoutDateTime.map(workOrder => {
+        // Parse time (format: "09:00" or "9:00")
+        let [hours, minutes] = [9, 0];
+        if (workOrder.time && typeof workOrder.time === 'string') {
+          const timeParts = workOrder.time.split(':');
+          hours = parseInt(timeParts[0]) || 9;
+          minutes = parseInt(timeParts[1]) || 0;
+        }
+        
+        // Create appointmentDateTime by combining date and time
+        const appointmentDateTime = new Date(workOrder.date);
+        appointmentDateTime.setHours(hours, minutes, 0, 0);
+        
+        return {
+          updateOne: {
+            filter: { _id: workOrder._id },
+            update: { $set: { appointmentDateTime } }
+          }
+        };
+      });
+      
+      await WorkOrder.bulkWrite(bulkOps);
+      console.log(`Successfully set appointmentDateTime for ${workOrdersWithoutDateTime.length} work orders`);
+    }
+  } catch (error) {
+    console.error('Error setting appointmentDateTime:', error);
+  }
+}
+
 // Pokretanje scheduler-a
 function startWorkOrderScheduler() {
   console.log('Pokretanje Work Order Scheduler-a...');
@@ -67,20 +155,24 @@ function startWorkOrderScheduler() {
   // Pokreni svake minute za testiranje, u produkciji možda svakih 5-10 minuta
   cron.schedule('* * * * *', async () => {
     await checkPostponedWorkOrders();
+    await checkOverdueWorkOrders();
   });
   
-  console.log('Work Order Scheduler je pokrenut - proverava odložene radne naloge svaki minut');
+  console.log('Work Order Scheduler je pokrenut - proverava odložene i overdue radne naloge svaki minut');
 }
 
 // Ručno testiranje scheduler-a
 async function testScheduler() {
   console.log('=== MANUAL SCHEDULER TEST ===');
   await checkPostponedWorkOrders();
+  await checkOverdueWorkOrders();
   console.log('=== TEST COMPLETED ===');
 }
 
 module.exports = {
   startWorkOrderScheduler,
   checkPostponedWorkOrders,
+  checkOverdueWorkOrders,
+  ensureAppointmentDateTimeSet,
   testScheduler
 };

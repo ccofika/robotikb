@@ -153,7 +153,6 @@ router.get('/:id/materials', async (req, res) => {
     }
     
     console.log('Technician found:', technician.name);
-    console.log('Technician materials array:', technician.materials);
     
     // Dohvatanje materijala zaduženih kod tehničara sa detaljima
     const materialsWithDetails = [];
@@ -170,7 +169,6 @@ router.get('/:id/materials', async (req, res) => {
       }
     }
     
-    console.log('Materials with details:', materialsWithDetails);
     console.log('Sending materials response to frontend');
     res.json(materialsWithDetails);
   } catch (error) {
