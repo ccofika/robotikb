@@ -10,6 +10,7 @@ const auth = async (req, res, next) => {
     // Dohvati token iz header-a
     const token = req.header('Authorization')?.replace('Bearer ', '');
     console.log('Token received:', token ? 'YES' : 'NO');
+    if (token) console.log('Token preview:', token.substring(0, 20) + '...');
     
     if (!token) {
       console.log('No token provided');

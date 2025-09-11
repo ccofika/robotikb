@@ -42,7 +42,7 @@ router.post('/login', async (req, res) => {
       const token = jwt.sign(
         { _id: admin._id, name: admin.name, role: 'admin' },
         JWT_SECRET,
-        { expiresIn: '24h' }
+        { expiresIn: '365d' }
       );
       
       console.log('Admin login successful');
@@ -79,7 +79,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { id: technician._id, name: technician.name, role: 'technician' },
       JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: '30d' }
     );
     
     // Ne vraćamo lozinku

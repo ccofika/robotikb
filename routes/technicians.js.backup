@@ -586,41 +586,6 @@ router.post('/:id/equipment', async (req, res) => {
       return res.status(400).json({ error: 'No equipment was available for assignment' });
     }
     
-    // Send email notification to technician
-    try {
-      if (technician.gmail) {
-        // Get the assigned equipment details for email
-        const assignedEquipment = await Equipment.find({ 
-          serialNumber: { $in: serialNumbers },
-          assignedTo: id
-        });
-        
-        const emailResult = await emailService.sendEmailToTechnician(
-          id,
-          'equipmentAssignment',
-          {
-            technicianName: technician.name,
-            assignmentType: 'assign',
-            equipment: assignedEquipment.map(eq => ({
-              category: eq.category,
-              description: eq.description,
-              serialNumber: eq.serialNumber,
-              status: eq.status
-            }))
-          }
-        );
-        
-        if (emailResult.success) {
-          console.log(`Email sent to technician ${technician.name} about equipment assignment`);
-        } else {
-          console.error('Failed to send email notification:', emailResult.error);
-        }
-      }
-    } catch (emailError) {
-      console.error('Error sending equipment assignment email:', emailError);
-      // Ne prekidamo proces ako email ne uspe
-    }
-
     res.json({ 
       message: `Successfully assigned ${updateResults.modifiedCount} equipment items - awaiting technician confirmation`,
       modifiedCount: updateResults.modifiedCount

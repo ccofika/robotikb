@@ -63,11 +63,11 @@ async function checkPostponedWorkOrders() {
   }
 }
 
-// Funkcija za proveru radnih naloga koji su duže od sat vremena nezavršeni
+// Funkcija za proveru radnih naloga koji su duže od 24 sata nezavršeni
 async function checkOverdueWorkOrders() {
   try {
     const currentTime = new Date();
-    const oneHourAgo = new Date(currentTime.getTime() - (60 * 60 * 1000)); // 1 sat u millisekunde
+    const oneDayAgo = new Date(currentTime.getTime() - (24 * 60 * 60 * 1000)); // 24 sata u millisekunde
     
     // First, ensure all work orders have appointmentDateTime set
     await ensureAppointmentDateTimeSet();
@@ -76,17 +76,17 @@ async function checkOverdueWorkOrders() {
     // Koristimo appointmentDateTime za vreme kada treba da se odradi zadatak
     const overdueWorkOrders = await WorkOrder.find({
       status: 'nezavrsen',
-      appointmentDateTime: { $lte: oneHourAgo }
+      appointmentDateTime: { $lte: oneDayAgo }
     }).populate('technicianId', 'name email');
     
     if (overdueWorkOrders.length > 0) {
-      console.log(`Pronađeno ${overdueWorkOrders.length} radnih naloga koji su duži od sat vremena nezavršeni`);
+      console.log(`Pronađeno ${overdueWorkOrders.length} radnih naloga koji su duži od 24 sata nezavršeni`);
       
       // Dodaj overdue flag na svaki radni nalog
       const updateResult = await WorkOrder.updateMany(
         {
           status: 'nezavrsen',
-          appointmentDateTime: { $lte: oneHourAgo },
+          appointmentDateTime: { $lte: oneDayAgo },
           isOverdue: { $ne: true } // Samo ako već nije označen kao overdue
         },
         {
@@ -238,8 +238,8 @@ async function checkVehicleRegistrations() {
 function startWorkOrderScheduler() {
   console.log('Pokretanje Work Order Scheduler-a...');
   
-  // Pokreni svake minute za testiranje, u produkciji možda svakih 5-10 minuta
-  cron.schedule('* * * * *', async () => {
+  // Pokreni svakog sata na početku sata (0 minuta)
+  cron.schedule('0 * * * *', async () => {
     await checkPostponedWorkOrders();
     await checkOverdueWorkOrders();
   });
@@ -249,7 +249,7 @@ function startWorkOrderScheduler() {
     await checkVehicleRegistrations();
   });
   
-  console.log('Work Order Scheduler je pokrenut - proverava odložene i overdue radne naloge svaki minut');
+  console.log('Work Order Scheduler je pokrenut - proverava odložene i overdue radne naloge svakog sata');
 }
 
 // Ručno testiranje scheduler-a

@@ -5,7 +5,8 @@ const xlsx = require('xlsx');
 const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
-const { Equipment, Log } = require('../models');
+const { Equipment, Log, Technician } = require('../models');
+const emailService = require('../services/emailService');
 
 // Konfiguracija za multer (upload fajlova)
 const storage = multer.diskStorage({
@@ -278,6 +279,7 @@ router.put('/:id', async (req, res) => {
     if (updateData.serialNumber) equipment.serialNumber = updateData.serialNumber;
     if (updateData.location) equipment.location = updateData.location;
     if (updateData.status) equipment.status = updateData.status;
+    if (updateData.assignedTo !== undefined) equipment.assignedTo = updateData.assignedTo;
     
     // Specijalna logika za defektnu opremu
     if (updateData.status === 'defective' && oldStatus !== 'defective') {
@@ -319,6 +321,41 @@ router.put('/:id', async (req, res) => {
       }
     }
     
+    // Send email notification if equipment is assigned to technician
+    try {
+      // Check if location changed to a technician
+      if (updateData.location && updateData.location.startsWith('tehnicar-')) {
+        const technicianId = updateData.location.replace('tehnicar-', '');
+        const technician = await Technician.findById(technicianId);
+        
+        if (technician && technician.gmail) {
+          const emailResult = await emailService.sendEmailToTechnician(
+            technicianId,
+            'equipmentAssignment',
+            {
+              technicianName: technician.name,
+              assignmentType: 'edit',
+              equipment: [{
+                category: equipment.category,
+                description: equipment.description,
+                serialNumber: equipment.serialNumber,
+                status: equipment.status
+              }]
+            }
+          );
+          
+          if (emailResult.success) {
+            console.log(`Email sent to technician ${technician.name} about equipment location change`);
+          } else {
+            console.error('Failed to send email notification:', emailResult.error);
+          }
+        }
+      }
+    } catch (emailError) {
+      console.error('Error sending equipment assignment email:', emailError);
+      // Ne prekidamo proces ako email ne uspe
+    }
+
     const updatedEquipment = await equipment.save();
     
     console.log('✅ Equipment updated successfully:', {
