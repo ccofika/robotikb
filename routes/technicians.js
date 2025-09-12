@@ -650,6 +650,16 @@ router.post('/:id/equipment/return', async (req, res) => {
       return res.status(404).json({ error: 'Technician not found' });
     }
     
+    // Get equipment details before updating for email
+    const equipmentToReturn = await Equipment.find({
+      serialNumber: { $in: serialNumbers },
+      assignedTo: id
+    });
+    
+    if (equipmentToReturn.length === 0) {
+      return res.status(400).json({ error: 'No equipment was available for return' });
+    }
+    
     // Update all equipment items
     const updateResults = await Equipment.updateMany(
       { 
@@ -667,6 +677,34 @@ router.post('/:id/equipment/return', async (req, res) => {
     
     if (updateResults.modifiedCount === 0) {
       return res.status(400).json({ error: 'No equipment was available for return' });
+    }
+    
+    // Send email notification to technician
+    try {
+      if (technician.gmail) {
+        const emailResult = await emailService.sendEmailToTechnician(
+          id,
+          'equipmentUnassignment',
+          {
+            technicianName: technician.name,
+            equipment: equipmentToReturn.map(item => ({
+              category: item.category,
+              description: item.description,
+              serialNumber: item.serialNumber,
+              status: item.status
+            }))
+          }
+        );
+        
+        if (emailResult.success) {
+          console.log(`Unassignment email sent to technician ${technician.name} about ${equipmentToReturn.length} returned equipment items`);
+        } else {
+          console.error('Failed to send unassignment email notification:', emailResult.error);
+        }
+      }
+    } catch (emailError) {
+      console.error('Error sending equipment unassignment email:', emailError);
+      // Ne prekidamo proces ako email ne uspe
     }
     
     res.json({ 

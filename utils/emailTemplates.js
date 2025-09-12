@@ -82,31 +82,108 @@ const createEmailTemplate = (type, data) => {
         </div>
       `
     },
+    equipmentUnassignment: {
+      subject: 'Razdužena oprema',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #fef2f2; padding: 24px;">
+          <h2 style="color: #dc2626;">📋 Razdužena oprema</h2>
+          <p>Poštovani ${data.technicianName},</p>
+          <p>Obaveštavamo vas da je sledeća oprema razdužena i vraćena u magacin:</p>
+          
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+            <thead>
+              <tr style="background: #fee2e2;">
+                <th style="padding: 12px; text-align: left; border: 1px solid #fecaca;">RB</th>
+                <th style="padding: 12px; text-align: left; border: 1px solid #fecaca;">Kategorija</th>
+                <th style="padding: 12px; text-align: left; border: 1px solid #fecaca;">Opis</th>
+                <th style="padding: 12px; text-align: left; border: 1px solid #fecaca;">Serijski broj</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(data.equipment || []).map((item, index) => `
+                <tr style="background: ${index % 2 === 0 ? '#fef7f7' : 'white'};">
+                  <td style="padding: 12px; border: 1px solid #fecaca;">${index + 1}</td>
+                  <td style="padding: 12px; border: 1px solid #fecaca;">${item.category || 'N/A'}</td>
+                  <td style="padding: 12px; border: 1px solid #fecaca;">${item.description || 'N/A'}</td>
+                  <td style="padding: 12px; border: 1px solid #fecaca;">${item.serialNumber || 'N/A'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <p style="color: #16a34a; font-weight: 600;">✅ Oprema je uspešno vraćena u magacin</p>
+          
+          <hr style="margin: 20px 0;">
+          <p style="font-size: 12px; color: #666;">
+            <strong>Robotik</strong> - Centralizovani sistem za upravljanje opremom i materijalima<br>
+            <em>Automatski generisano ${new Date().toLocaleString('sr-RS')}</em>
+          </p>
+        </div>
+      `
+    },
     equipmentAssignment: {
       subject: 'Zadužena nova oprema',
       html: `
-        <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); padding: 24px;">
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f1f5f9; padding: 24px;">
+          <h2 style="color: #3b82f6;">📋 Zadužena nova oprema</h2>
+          <p>Poštovani ${data.technicianName},</p>
+          <p>Obaveštavamo vas da vam je zadužena nova oprema:</p>
           
-          <!-- Header Card with Glassmorphism Effect -->
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+            <thead>
+              <tr style="background: #dbeafe;">
+                <th style="padding: 12px; text-align: left; border: 1px solid #bfdbfe;">RB</th>
+                <th style="padding: 12px; text-align: left; border: 1px solid #bfdbfe;">Kategorija</th>
+                <th style="padding: 12px; text-align: left; border: 1px solid #bfdbfe;">Opis</th>
+                <th style="padding: 12px; text-align: left; border: 1px solid #bfdbfe;">Serijski broj</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(data.equipment || []).map((item, index) => `
+                <tr style="background: ${index % 2 === 0 ? '#f8fafc' : 'white'};">
+                  <td style="padding: 12px; border: 1px solid #bfdbfe;">${index + 1}</td>
+                  <td style="padding: 12px; border: 1px solid #bfdbfe;">${item.category || 'N/A'}</td>
+                  <td style="padding: 12px; border: 1px solid #bfdbfe;">${item.description || 'N/A'}</td>
+                  <td style="padding: 12px; border: 1px solid #bfdbfe;">${item.serialNumber || 'N/A'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <p style="color: #dc2626; font-weight: 600;">⚠️ Molimo vas da proverite sve stavke i potvrdite prijem</p>
+          
+          <hr style="margin: 20px 0;">
+          <p style="font-size: 12px; color: #666;">
+            <strong>Robotik</strong> - Centralizovani sistem za upravljanje opremom i materijalima<br>
+            <em>Automatski generisano ${new Date().toLocaleString('sr-RS')}</em>
+          </p>
+        </div>
+      `
+    },
+    workOrderAssignment: {
+      subject: 'Dodeljen novi radni nalog',
+      html: `
+        <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 24px;">
+          
           <div style="background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 16px; padding: 32px; margin-bottom: 24px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);">
             <div style="display: flex; align-items: center; margin-bottom: 16px;">
-              <div style="padding: 12px; background: #dbeafe; border-radius: 12px; margin-right: 16px;">
-                <span style="font-size: 24px; color: #3b82f6;">📋</span>
+              <div style="padding: 12px; background: #dcfce7; border-radius: 12px; margin-right: 16px;">
+                <span style="font-size: 24px; color: #16a34a;">📋</span>
               </div>
               <div>
                 <h1 style="color: #1e293b; margin: 0; font-size: 24px; font-weight: 700;">
-                  ${data.assignmentType === 'assign' ? 'Zadužena nova oprema' : 'Promenjena lokacija opreme'}
+                  Dodeljen novi radni nalog
                 </h1>
-                <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Robotik - Sistem za upravljanje opremom</p>
+                <p style="color: #64748b; margin: 4px 0 0 0; font-size: 14px;">Robotik - Sistem za upravljanje radnim nalozima</p>
               </div>
             </div>
             
-            <div style="padding: 16px; background: ${data.assignmentType === 'assign' ? '#dbeafe' : '#fef3c7'}; border-radius: 8px; border-left: 4px solid ${data.assignmentType === 'assign' ? '#3b82f6' : '#f59e0b'};">
-              <p style="color: ${data.assignmentType === 'assign' ? '#1e40af' : '#92400e'}; margin: 0; font-size: 14px; font-weight: 600;">
-                ${data.assignmentType === 'assign' ? '✅ Zadužena oprema' : '🔄 Promenjena lokacija'} (${data.equipment.length} ${data.equipment.length === 1 ? 'stavka' : data.equipment.length < 5 ? 'stavke' : 'stavki'})
+            <div style="padding: 16px; background: #dcfce7; border-radius: 8px; border-left: 4px solid #16a34a;">
+              <p style="color: #15803d; margin: 0; font-size: 14px; font-weight: 600;">
+                ✅ Novi radni nalog (${(data.workOrders && data.workOrders.length) || 1} ${((data.workOrders && data.workOrders.length) || 1) === 1 ? 'nalog' : 'naloga'})
               </p>
-              <p style="color: ${data.assignmentType === 'assign' ? '#1e40af' : '#92400e'}; margin: 8px 0 0 0; font-size: 12px;">
-                <strong>Datum i vreme:</strong> ${new Date().toLocaleString('sr-RS', { 
+              <p style="color: #15803d; margin: 8px 0 0 0; font-size: 12px;">
+                <strong>Datum dodeljivanja:</strong> ${new Date().toLocaleString('sr-RS', { 
                   day: '2-digit', 
                   month: '2-digit', 
                   year: 'numeric', 
@@ -117,57 +194,66 @@ const createEmailTemplate = (type, data) => {
             </div>
           </div>
 
-          <!-- Greeting Card -->
           <div style="background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 16px; padding: 24px; margin-bottom: 24px;">
             <h2 style="color: #1e293b; margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">Poštovani ${data.technicianName},</h2>
             <p style="color: #475569; margin: 0; font-size: 16px; line-height: 1.5;">
-              Obaveštavamo vas da vam je ${data.assignmentType === 'assign' ? 'zadužena nova oprema' : 'promenjena lokacija opreme'}. 
-              Molimo vas da proverite listu opreme ispod.
+              Obaveštavamo vas da ${(data.workOrders && data.workOrders.length > 1) ? 'su vam dodeljeni novi radni nalozi' : 'vam je dodeljen novi radni nalog'}. 
+              Molimo vas da proverite detalje naloga ispod i pristupite izvršavanju u predviđenom vremenu.
             </p>
           </div>
 
-          <!-- Equipment Table Card -->
           <div style="background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 16px; overflow: hidden; margin-bottom: 24px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);">
-            <!-- Table Header -->
             <div style="padding: 24px 24px 16px 24px; border-bottom: 1px solid #e2e8f0;">
               <div style="display: flex; align-items: center; margin-bottom: 16px;">
                 <span style="font-size: 18px; margin-right: 8px;">📋</span>
-                <h3 style="color: #1e293b; margin: 0; font-size: 16px; font-weight: 600;">Lista opreme</h3>
-                <span style="margin-left: 12px; padding: 4px 8px; background: #f1f5f9; color: #64748b; border-radius: 12px; font-size: 12px; font-weight: 500;">
-                  ${data.equipment.length} ${data.equipment.length === 1 ? 'stavka' : data.equipment.length < 5 ? 'stavke' : 'stavki'}
+                <h3 style="color: #1e293b; margin: 0; font-size: 16px; font-weight: 600;">Dodeljeni radni nalozi</h3>
+                <span style="margin-left: 12px; padding: 4px 8px; background: #f0fdf4; color: #15803d; border-radius: 12px; font-size: 12px; font-weight: 500;">
+                  ${(data.workOrders && data.workOrders.length) || 1} ${((data.workOrders && data.workOrders.length) || 1) === 1 ? 'nalog' : 'naloga'}
                 </span>
               </div>
             </div>
             
-            <!-- Equipment Table -->
             <div style="overflow-x: auto;">
               <table style="width: 100%; border-collapse: collapse;">
                 <thead>
                   <tr style="background: #f8fafc;">
                     <th style="padding: 16px 24px; text-align: left; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">RB.</th>
-                    <th style="padding: 16px 24px; text-align: left; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Kategorija</th>
-                    <th style="padding: 16px 24px; text-align: left; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Opis</th>
-                    <th style="padding: 16px 24px; text-align: left; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Serijski broj</th>
-                    <th style="padding: 16px 24px; text-align: left; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Status</th>
+                    <th style="padding: 16px 24px; text-align: left; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Datum</th>
+                    <th style="padding: 16px 24px; text-align: left; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Vreme</th>
+                    <th style="padding: 16px 24px; text-align: left; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Adresa</th>
+                    <th style="padding: 16px 24px; text-align: left; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Tip</th>
+                    <th style="padding: 16px 24px; text-align: left; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Korisnik</th>
+                    <th style="padding: 16px 24px; text-align: left; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0;">Telefon</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${data.equipment.map((item, index) => `
-                  <tr style="transition: all 0.2s; ${index % 2 === 0 ? 'background: rgba(248, 250, 252, 0.3);' : 'background: rgba(255, 255, 255, 0.1);'}">
+                  ${(data.workOrders || []).map((order, index) => `
+                  <tr style="transition: all 0.2s; background: ${index % 2 === 0 ? 'rgba(248, 250, 252, 0.3)' : 'rgba(255, 255, 255, 0.1)'};">
                     <td style="padding: 16px 24px; color: #64748b; font-size: 14px; font-weight: 500;">${index + 1}.</td>
                     <td style="padding: 16px 24px;">
-                      <span style="display: inline-block; padding: 6px 12px; background: ${index % 2 === 0 ? '#3b82f6' : '#06b6d4'}; color: white; border-radius: 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                        ${item.category || 'N/A'}
-                      </span>
-                    </td>
-                    <td style="padding: 16px 24px; color: #1e293b; font-size: 14px; font-weight: 500;">${item.description || 'N/A'}</td>
-                    <td style="padding: 16px 24px;">
-                      <code style="padding: 6px 8px; background: #fef7ed; color: #ea580c; border-radius: 4px; font-family: 'Monaco', 'Menlo', monospace; font-size: 13px; font-weight: 600;">${item.serialNumber || 'N/A'}</code>
+                      <div style="color: #1e293b; font-size: 14px; font-weight: 500;">
+                        ${order.date ? new Date(order.date).toLocaleDateString('sr-RS') : 'N/A'}
+                      </div>
                     </td>
                     <td style="padding: 16px 24px;">
-                      <span style="display: inline-block; padding: 6px 12px; background: ${item.status === 'assigned' ? '#dcfce7' : '#f3f4f6'}; color: ${item.status === 'assigned' ? '#15803d' : '#374151'}; border-radius: 6px; font-size: 12px; font-weight: 600;">
-                        ${item.status === 'assigned' ? '✓ Zaduženo' : item.status === 'available' ? '○ Dostupno' : item.status || 'N/A'}
+                      <span style="display: inline-block; padding: 6px 12px; background: #16a34a; color: white; border-radius: 6px; font-size: 12px; font-weight: 600;">
+                        ${order.time || 'N/A'}
                       </span>
+                    </td>
+                    <td style="padding: 16px 24px; color: #1e293b; font-size: 14px; font-weight: 500;">
+                      <div style="margin-bottom: 4px;">${order.address || 'N/A'}</div>
+                      <div style="color: #64748b; font-size: 12px;">${order.municipality || 'N/A'}</div>
+                    </td>
+                    <td style="padding: 16px 24px;">
+                      <span style="display: inline-block; padding: 6px 12px; background: #f0fdf4; color: #15803d; border: 1px solid #dcfce7; border-radius: 6px; font-size: 12px; font-weight: 600;">
+                        ${order.type || 'N/A'}
+                      </span>
+                    </td>
+                    <td style="padding: 16px 24px; color: #1e293b; font-size: 14px; font-weight: 500;">
+                      ${order.userName || 'N/A'}
+                    </td>
+                    <td style="padding: 16px 24px;">
+                      <code style="padding: 6px 8px; background: #fef7ed; color: #ea580c; border-radius: 4px; font-family: 'Monaco', 'Menlo', monospace; font-size: 13px; font-weight: 600;">${order.userPhone || 'N/A'}</code>
                     </td>
                   </tr>
                   `).join('')}
@@ -176,51 +262,77 @@ const createEmailTemplate = (type, data) => {
             </div>
           </div>
 
-          <!-- Stats Card -->
+          ${(data.workOrders && data.workOrders.length === 1) ? `
+          <div style="background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 16px; padding: 24px; margin-bottom: 24px;">
+            <div style="display: flex; align-items: center; margin-bottom: 16px;">
+              <span style="font-size: 18px; margin-right: 8px;">📝</span>
+              <h3 style="color: #1e293b; margin: 0; font-size: 16px; font-weight: 600;">Dodatni detalji</h3>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+              ${data.workOrders[0].technology ? `
+              <div style="padding: 16px; background: #f0fdf4; border-radius: 8px;">
+                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Tehnologija</div>
+                <div style="color: #16a34a; font-size: 14px; font-weight: 600;">${data.workOrders[0].technology}</div>
+              </div>
+              ` : ''}
+              ${data.workOrders[0].tisId ? `
+              <div style="padding: 16px; background: #fef7ed; border-radius: 8px;">
+                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">TIS ID</div>
+                <div style="color: #ea580c; font-size: 14px; font-weight: 600;">${data.workOrders[0].tisId}</div>
+              </div>
+              ` : ''}
+              ${data.workOrders[0].details ? `
+              <div style="padding: 16px; background: #f8fafc; border-radius: 8px;">
+                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Detalji</div>
+                <div style="color: #1e293b; font-size: 14px;">${data.workOrders[0].details}</div>
+              </div>
+              ` : ''}
+            </div>
+          </div>
+          ` : ''}
+
           <div style="background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 16px; padding: 24px; margin-bottom: 24px;">
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
-              <div style="text-align: center; padding: 16px; background: #f8fafc; border-radius: 12px;">
-                <div style="font-size: 24px; font-weight: 700; color: #3b82f6; margin-bottom: 4px;">${data.equipment.length}</div>
-                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">📊 Ukupno stavki</div>
-              </div>
               <div style="text-align: center; padding: 16px; background: #f0fdf4; border-radius: 12px;">
-                <div style="font-size: 18px; font-weight: 600; color: #16a34a; margin-bottom: 4px;">${data.technicianName}</div>
+                <div style="font-size: 24px; font-weight: 700; color: #16a34a; margin-bottom: 4px;">${(data.workOrders && data.workOrders.length) || 1}</div>
+                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">📊 Radnih naloga</div>
+              </div>
+              <div style="text-align: center; padding: 16px; background: #f8fafc; border-radius: 12px;">
+                <div style="font-size: 18px; font-weight: 600; color: #1e293b; margin-bottom: 4px;">${data.technicianName}</div>
                 <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">👤 Odgovorno lice</div>
               </div>
               <div style="text-align: center; padding: 16px; background: #fef7ed; border-radius: 12px;">
                 <div style="font-size: 14px; font-weight: 600; color: #ea580c; margin-bottom: 4px;">${new Date().toLocaleDateString('sr-RS')}</div>
-                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">📅 Datum</div>
+                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">📅 Datum dodeljivanja</div>
               </div>
             </div>
           </div>
 
-          <!-- Important Notes Card -->
-          <div style="background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 16px; padding: 24px; margin-bottom: 24px; border-left: 4px solid #ef4444;">
+          <div style="background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 16px; padding: 24px; margin-bottom: 24px; border-left: 4px solid #f59e0b;">
             <div style="display: flex; align-items: center; margin-bottom: 16px;">
               <span style="font-size: 20px; margin-right: 12px;">⚠️</span>
-              <h4 style="color: #dc2626; margin: 0; font-size: 16px; font-weight: 600;">Važne napomene</h4>
+              <h4 style="color: #d97706; margin: 0; font-size: 16px; font-weight: 600;">Važne napomene</h4>
             </div>
-            <ul style="color: #7f1d1d; margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; list-style-type: none;">
+            <ul style="color: #92400e; margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; list-style-type: none;">
               <li style="margin-bottom: 8px; position: relative;">
-                <span style="position: absolute; left: -20px; color: #ef4444;">•</span>
-                Molimo vas da proverite sve stavke na listi i potvrdite prijem
+                <span style="position: absolute; left: -20px; color: #f59e0b;">•</span>
+                Molimo vas da se pridržavate zakazanog vremena i datuma
               </li>
               <li style="margin-bottom: 8px; position: relative;">
-                <span style="position: absolute; left: -20px; color: #ef4444;">•</span>
-                U slučaju nedostajuće ili oštećene opreme, odmah kontaktirajte administratora
+                <span style="position: absolute; left: -20px; color: #f59e0b;">•</span>
+                Pre odlaska na teren kontaktirajte korisnika na navedeni broj telefona
               </li>
               <li style="margin-bottom: 8px; position: relative;">
-                <span style="position: absolute; left: -20px; color: #ef4444;">•</span>
-                Odgovorni ste za čuvanje i pravilno korišćenje zadužene opreme
+                <span style="position: absolute; left: -20px; color: #f59e0b;">•</span>
+                U slučaju problema ili izmena, odmah kontaktirajte administratora
               </li>
               <li style="position: relative;">
-                <span style="position: absolute; left: -20px; color: #ef4444;">•</span>
-                Sve izmene ili problemi sa opremom moraju biti prijavljeni u sistemu
+                <span style="position: absolute; left: -20px; color: #f59e0b;">•</span>
+                Ne zaboravite da ažurirate status naloga u sistemu po završetku
               </li>
             </ul>
           </div>
 
-          <!-- Footer Card -->
           <div style="background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 12px; padding: 20px; text-align: center;">
             <div style="padding: 16px; background: #f1f5f9; border-radius: 8px; margin-bottom: 16px;">
               <p style="color: #475569; margin: 0; font-size: 14px; font-weight: 500;">
@@ -229,7 +341,7 @@ const createEmailTemplate = (type, data) => {
             </div>
             <hr style="border: none; height: 1px; background: linear-gradient(to right, transparent, #e2e8f0, transparent); margin: 16px 0;">
             <p style="font-size: 12px; color: #64748b; margin: 0; line-height: 1.4;">
-              <strong style="color: #1e293b;">Robotik</strong> - Centralizovani sistem za upravljanje opremom i materijalima<br>
+              <strong style="color: #1e293b;">Robotik</strong> - Centralizovani sistem za upravljanje radnim nalozima<br>
               <em>Automatski generisano ${new Date().toLocaleString('sr-RS', { 
                 weekday: 'long',
                 day: '2-digit', 

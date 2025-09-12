@@ -665,6 +665,72 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       }
     }
     
+    // Send email notifications to assigned technicians for bulk uploaded work orders
+    const emailService = require('../services/emailService');
+    try {
+      // Group work orders by technician to minimize emails
+      const workOrdersByTechnician = {};
+      
+      for (const workOrder of newWorkOrders) {
+        // Check primary technician
+        if (workOrder.technicianId && mongoose.Types.ObjectId.isValid(workOrder.technicianId)) {
+          const techId = workOrder.technicianId.toString();
+          if (!workOrdersByTechnician[techId]) {
+            workOrdersByTechnician[techId] = [];
+          }
+          workOrdersByTechnician[techId].push(workOrder);
+        }
+        
+        // Check secondary technician
+        if (workOrder.technician2Id && mongoose.Types.ObjectId.isValid(workOrder.technician2Id)) {
+          const tech2Id = workOrder.technician2Id.toString();
+          if (!workOrdersByTechnician[tech2Id]) {
+            workOrdersByTechnician[tech2Id] = [];
+          }
+          workOrdersByTechnician[tech2Id].push(workOrder);
+        }
+      }
+      
+      // Send emails to each technician with their assigned work orders
+      for (const [techId, workOrders] of Object.entries(workOrdersByTechnician)) {
+        try {
+          const technician = await Technician.findById(techId);
+          if (technician && technician.gmail && workOrders.length > 0) {
+            const emailResult = await emailService.sendEmailToTechnician(
+              techId,
+              'workOrderAssignment',
+              {
+                technicianName: technician.name,
+                workOrders: workOrders.map(order => ({
+                  date: order.date,
+                  time: order.time,
+                  municipality: order.municipality,
+                  address: order.address,
+                  type: order.type,
+                  userName: order.userName,
+                  userPhone: order.userPhone,
+                  details: order.details,
+                  technology: order.technology,
+                  tisId: order.tisId
+                }))
+              }
+            );
+            
+            if (emailResult.success) {
+              console.log(`Bulk work order assignment email sent to technician ${technician.name} about ${workOrders.length} work orders`);
+            } else {
+              console.error('Failed to send bulk work order assignment email notification:', emailResult.error);
+            }
+          }
+        } catch (emailError) {
+          console.error(`Error sending email to technician ${techId}:`, emailError);
+        }
+      }
+    } catch (emailError) {
+      console.error('Error sending bulk work order assignment emails:', emailError);
+      // Ne prekidamo proces ako email ne uspe
+    }
+    
     res.json({
       newWorkOrders,
       newUsers,
@@ -792,6 +858,66 @@ router.post('/', async (req, res) => {
     } catch (logError) {
       console.error('Greška pri logovanju kreiranja radnog naloga:', logError);
       // Ne prekidamo izvršavanje zbog greške u logovanju
+    }
+
+    // Send email notification to assigned technician(s)
+    const emailService = require('../services/emailService');
+    try {
+      const techniciansToNotify = [];
+      
+      // Check primary technician
+      if (technicianId && mongoose.Types.ObjectId.isValid(technicianId)) {
+        const technician = await Technician.findById(technicianId);
+        if (technician && technician.gmail) {
+          techniciansToNotify.push({
+            id: technicianId,
+            name: technician.name
+          });
+        }
+      }
+      
+      // Check secondary technician
+      if (technician2Id && mongoose.Types.ObjectId.isValid(technician2Id)) {
+        const technician2 = await Technician.findById(technician2Id);
+        if (technician2 && technician2.gmail) {
+          techniciansToNotify.push({
+            id: technician2Id,
+            name: technician2.name
+          });
+        }
+      }
+      
+      // Send emails to all assigned technicians
+      for (const tech of techniciansToNotify) {
+        const emailResult = await emailService.sendEmailToTechnician(
+          tech.id,
+          'workOrderAssignment',
+          {
+            technicianName: tech.name,
+            workOrders: [{
+              date: savedWorkOrder.date,
+              time: savedWorkOrder.time,
+              municipality: savedWorkOrder.municipality,
+              address: savedWorkOrder.address,
+              type: savedWorkOrder.type,
+              userName: savedWorkOrder.userName,
+              userPhone: savedWorkOrder.userPhone,
+              details: savedWorkOrder.details,
+              technology: savedWorkOrder.technology,
+              tisId: savedWorkOrder.tisId
+            }]
+          }
+        );
+        
+        if (emailResult.success) {
+          console.log(`Work order assignment email sent to technician ${tech.name} about new work order`);
+        } else {
+          console.error('Failed to send work order assignment email notification:', emailResult.error);
+        }
+      }
+    } catch (emailError) {
+      console.error('Error sending work order assignment email:', emailError);
+      // Ne prekidamo proces ako email ne uspe
     }
     
     res.status(201).json(savedWorkOrder);
