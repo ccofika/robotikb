@@ -1,5 +1,5 @@
 const createEmailTemplate = (type, data) => {
-  const templates = {
+  const templates = { 
     lowStock: {
       subject: 'Upozorenje - Nizak nivo zaliha',
       html: `
@@ -112,7 +112,42 @@ const createEmailTemplate = (type, data) => {
           </table>
           
           <p style="color: #16a34a; font-weight: 600;">✅ Oprema je uspešno vraćena u magacin</p>
-          
+
+          ${(data.currentInventory && data.currentInventory.length > 0) ? `
+          <div style="margin-top: 30px;">
+            <h3 style="color: #16a34a; margin-bottom: 15px;">📋 Vaš preostali magacin</h3>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <thead>
+                <tr style="background: #f0fdf4;">
+                  <th style="padding: 12px; text-align: left; border: 1px solid #bbf7d0;">RB</th>
+                  <th style="padding: 12px; text-align: left; border: 1px solid #bbf7d0;">Kategorija</th>
+                  <th style="padding: 12px; text-align: left; border: 1px solid #bbf7d0;">Opis</th>
+                  <th style="padding: 12px; text-align: left; border: 1px solid #bbf7d0;">Serijski broj</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.currentInventory.map((item, index) => `
+                  <tr style="background: ${index % 2 === 0 ? '#f7fef7' : 'white'};">
+                    <td style="padding: 12px; border: 1px solid #bbf7d0;">${index + 1}</td>
+                    <td style="padding: 12px; border: 1px solid #bbf7d0;">${item.category || 'N/A'}</td>
+                    <td style="padding: 12px; border: 1px solid #bbf7d0;">${item.description || 'N/A'}</td>
+                    <td style="padding: 12px; border: 1px solid #bbf7d0;">${item.serialNumber || 'N/A'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            <p style="color: #16a34a; font-size: 14px; font-weight: 500;">
+              📊 Preostalo u magacinu: ${data.currentInventory.length} ${data.currentInventory.length === 1 ? 'stavka' : 'stavki'}
+            </p>
+          </div>
+          ` : `
+          <div style="margin-top: 30px; padding: 20px; background: #f9fafb; border-radius: 8px; border-left: 4px solid #6b7280;">
+            <p style="color: #6b7280; font-size: 14px; font-weight: 500; margin: 0;">
+              📭 Vaš magacin je trenutno prazan
+            </p>
+          </div>
+          `}
+
           <hr style="margin: 20px 0;">
           <p style="font-size: 12px; color: #666;">
             <strong>Robotik</strong> - Centralizovani sistem za upravljanje opremom i materijalima<br>
@@ -151,7 +186,36 @@ const createEmailTemplate = (type, data) => {
           </table>
           
           <p style="color: #dc2626; font-weight: 600;">⚠️ Molimo vas da proverite sve stavke i potvrdite prijem</p>
-          
+
+          ${(data.currentInventory && data.currentInventory.length > 0) ? `
+          <div style="margin-top: 30px;">
+            <h3 style="color: #1e40af; margin-bottom: 15px;">📋 Vaš trenutni magacin</h3>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <thead>
+                <tr style="background: #e0f2fe;">
+                  <th style="padding: 12px; text-align: left; border: 1px solid #81d4fa;">RB</th>
+                  <th style="padding: 12px; text-align: left; border: 1px solid #81d4fa;">Kategorija</th>
+                  <th style="padding: 12px; text-align: left; border: 1px solid #81d4fa;">Opis</th>
+                  <th style="padding: 12px; text-align: left; border: 1px solid #81d4fa;">Serijski broj</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.currentInventory.map((item, index) => `
+                  <tr style="background: ${index % 2 === 0 ? '#f0f9ff' : 'white'};">
+                    <td style="padding: 12px; border: 1px solid #81d4fa;">${index + 1}</td>
+                    <td style="padding: 12px; border: 1px solid #81d4fa;">${item.category || 'N/A'}</td>
+                    <td style="padding: 12px; border: 1px solid #81d4fa;">${item.description || 'N/A'}</td>
+                    <td style="padding: 12px; border: 1px solid #81d4fa;">${item.serialNumber || 'N/A'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            <p style="color: #1e40af; font-size: 14px; font-weight: 500;">
+              📊 Ukupno u magacinu: ${data.currentInventory.length} ${data.currentInventory.length === 1 ? 'stavka' : 'stavki'}
+            </p>
+          </div>
+          ` : ''}
+
           <hr style="margin: 20px 0;">
           <p style="font-size: 12px; color: #666;">
             <strong>Robotik</strong> - Centralizovani sistem za upravljanje opremom i materijalima<br>

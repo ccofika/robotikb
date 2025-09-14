@@ -269,7 +269,7 @@ router.get('/technician/:technicianId/overdue', async (req, res) => {
     })
       .populate('technicianId', 'name')
       .populate('technician2Id', 'name')
-      .select('_id address appointmentDateTime isOverdue overdueMarkedAt comment status type')
+      .select('_id address appointmentDateTime isOverdue overdueMarkedAt comment status type adminComment')
       .lean()
       .exec();
       
@@ -1483,6 +1483,52 @@ router.put('/:id/verify', async (req, res) => {
   } catch (error) {
     console.error('Greška pri verifikaciji radnog naloga:', error);
     res.status(500).json({ error: 'Greška pri verifikaciji radnog naloga' });
+  }
+});
+
+// PUT - Vraćanje radnog naloga kao neispravno popunjenog
+router.put('/:id/return-incorrect', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { adminComment } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    if (!adminComment || adminComment.trim() === '') {
+      return res.status(400).json({ error: 'Admin komentar je obavezan' });
+    }
+
+    const workOrder = await WorkOrder.findById(id);
+
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    if (workOrder.status !== 'zavrsen') {
+      return res.status(400).json({ error: 'Samo završeni radni nalozi mogu biti vraćeni' });
+    }
+
+    // Ažuriraj radni nalog - postavi status na nezavrsen i dodaj admin komentar
+    const updatedWorkOrder = await WorkOrder.findByIdAndUpdate(
+      id,
+      {
+        status: 'nezavrsen',
+        adminComment: adminComment.trim(),
+        verified: false,
+        verifiedAt: null
+      },
+      { new: true }
+    ).populate('technicianId technician2Id', 'name');
+
+    res.json({
+      message: 'Radni nalog je vraćen tehničaru',
+      workOrder: updatedWorkOrder
+    });
+  } catch (error) {
+    console.error('Greška pri vraćanju radnog naloga:', error);
+    res.status(500).json({ error: 'Greška pri vraćanju radnog naloga' });
   }
 });
 

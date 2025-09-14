@@ -136,6 +136,12 @@ const WorkOrderSchema = new Schema({
     type: Boolean,
     default: false
   },
+  verifiedAt: {
+    type: Date
+  },
+  adminComment: {
+    type: String
+  },
   user: {
     type: Schema.Types.ObjectId,
     ref: 'User'

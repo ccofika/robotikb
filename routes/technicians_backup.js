@@ -595,12 +595,6 @@ router.post('/:id/equipment', async (req, res) => {
           assignedTo: id
         });
         
-        // Get technician's current inventory (all equipment assigned to them, excluding installed equipment)
-        const currentInventory = await Equipment.find({
-          assignedTo: id,
-          status: { $ne: 'installed' }
-        });
-
         const emailResult = await emailService.sendEmailToTechnician(
           id,
           'equipmentAssignment',
@@ -608,12 +602,6 @@ router.post('/:id/equipment', async (req, res) => {
             technicianName: technician.name,
             assignmentType: 'assign',
             equipment: assignedEquipment.map(eq => ({
-              category: eq.category,
-              description: eq.description,
-              serialNumber: eq.serialNumber,
-              status: eq.status
-            })),
-            currentInventory: currentInventory.map(eq => ({
               category: eq.category,
               description: eq.description,
               serialNumber: eq.serialNumber,
@@ -694,12 +682,6 @@ router.post('/:id/equipment/return', async (req, res) => {
     // Send email notification to technician
     try {
       if (technician.gmail) {
-        // Get technician's current inventory after equipment return (excluding installed equipment)
-        const currentInventory = await Equipment.find({
-          assignedTo: id,
-          status: { $ne: 'installed' }
-        });
-
         const emailResult = await emailService.sendEmailToTechnician(
           id,
           'equipmentUnassignment',
@@ -710,12 +692,6 @@ router.post('/:id/equipment/return', async (req, res) => {
               description: item.description,
               serialNumber: item.serialNumber,
               status: item.status
-            })),
-            currentInventory: currentInventory.map(eq => ({
-              category: eq.category,
-              description: eq.description,
-              serialNumber: eq.serialNumber,
-              status: eq.status
             }))
           }
         );
@@ -996,4 +972,4 @@ router.post('/upload-profile-image', profileImageUpload.single('image'), async (
   }
 });
 
-module.exports = router; 
+module.exports = router;

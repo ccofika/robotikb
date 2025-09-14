@@ -1,5 +1,5 @@
 const express = require('express');
-const router = express.Router();
+const router = express.Router(); 
 const multer = require('multer');
 const xlsx = require('xlsx');
 const path = require('path');
@@ -329,6 +329,12 @@ router.put('/:id', async (req, res) => {
         const technician = await Technician.findById(technicianId);
         
         if (technician && technician.gmail) {
+          // Get technician's current inventory (all equipment assigned to them, excluding installed equipment)
+          const currentInventory = await Equipment.find({
+            assignedTo: technicianId,
+            status: { $ne: 'installed' }
+          });
+
           const emailResult = await emailService.sendEmailToTechnician(
             technicianId,
             'equipmentAssignment',
@@ -340,7 +346,13 @@ router.put('/:id', async (req, res) => {
                 description: equipment.description,
                 serialNumber: equipment.serialNumber,
                 status: equipment.status
-              }]
+              }],
+              currentInventory: currentInventory.map(eq => ({
+                category: eq.category,
+                description: eq.description,
+                serialNumber: eq.serialNumber,
+                status: eq.status
+              }))
             }
           );
           
