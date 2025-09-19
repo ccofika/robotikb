@@ -22,7 +22,8 @@ const corsOptions = {
     'http://localhost:3000',
     'http://localhost:5173',
     'https://robotik-three.vercel.app',  // UKLONJENO "/" na kraju!
-    'https://robotikb.onrender.com'
+    'https://robotikb.onrender.com',
+    'https://administracija.robotik.rs'  // Novi domen
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
