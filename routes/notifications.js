@@ -158,9 +158,9 @@ router.put('/mark-all-read', auth, async (req, res) => {
         recipientId: req.user.id,
         isRead: false 
       },
-      { 
+      {
         isRead: true,
-        readAt: new Date()
+        readAt: new Date(new Date().getTime() + (2 * 60 * 60 * 1000)) // Serbian timezone (UTC+2)
       }
     );
 
@@ -197,9 +197,9 @@ router.put('/mark-selected-read', auth, async (req, res) => {
         recipientId: req.user.id,
         isRead: false 
       },
-      { 
+      {
         isRead: true,
-        readAt: new Date()
+        readAt: new Date(new Date().getTime() + (2 * 60 * 60 * 1000)) // Serbian timezone (UTC+2)
       }
     );
 

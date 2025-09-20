@@ -1,6 +1,7 @@
 const User = require('./User');
 const Technician = require('./Technician');
 const Material = require('./Material');
+const BasicEquipment = require('./BasicEquipment');
 const Equipment = require('./Equipment');
 const WorkOrder = require('./WorkOrder');
 const WorkOrderEvidence = require('./WorkOrderEvidence');
@@ -12,6 +13,7 @@ module.exports = {
   User,
   Technician,
   Material,
+  BasicEquipment,
   Equipment,
   WorkOrder,
   WorkOrderEvidence,

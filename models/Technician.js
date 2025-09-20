@@ -21,6 +21,16 @@ const TechnicianSchema = new Schema({
       default: 0
     }
   }],
+  basicEquipment: [{
+    basicEquipmentId: {
+      type: Schema.Types.ObjectId,
+      ref: 'BasicEquipment'
+    },
+    quantity: {
+      type: Number,
+      default: 0
+    }
+  }],
   equipment: [{
     type: Schema.Types.ObjectId,
     ref: 'Equipment'

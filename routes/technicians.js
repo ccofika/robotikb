@@ -4,7 +4,7 @@ const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
 const multer = require('multer');
 const jwt = require('jsonwebtoken');
-const { Technician, Equipment, Material } = require('../models');
+const { Technician, Equipment, Material, BasicEquipment } = require('../models');
 const { uploadImage } = require('../config/cloudinary');
 const emailService = require('../services/emailService');
 
@@ -32,7 +32,32 @@ const getUserFromToken = async (req) => {
 router.get('/', async (req, res) => {
   try {
     const technicians = await Technician.find().select('-password');
-    res.json(technicians);
+
+    // Dodaj detalje osnovne opreme za svakog tehničara
+    const techniciansWithBasicEquipment = await Promise.all(
+      technicians.map(async (technician) => {
+        const basicEquipmentWithDetails = [];
+
+        for (const basicEquipmentItem of technician.basicEquipment || []) {
+          const basicEquipmentDetails = await BasicEquipment.findById(basicEquipmentItem.basicEquipmentId);
+          if (basicEquipmentDetails) {
+            basicEquipmentWithDetails.push({
+              id: basicEquipmentItem.basicEquipmentId.toString(),
+              _id: basicEquipmentItem.basicEquipmentId.toString(),
+              type: basicEquipmentDetails.type,
+              quantity: basicEquipmentItem.quantity
+            });
+          }
+        }
+
+        return {
+          ...technician.toObject(),
+          basicEquipment: basicEquipmentWithDetails
+        };
+      })
+    );
+
+    res.json(techniciansWithBasicEquipment);
   } catch (error) {
     console.error('Greška pri dohvatanju tehničara:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju tehničara' });
@@ -59,7 +84,7 @@ router.get('/:id', async (req, res) => {
     
     // Dohvatanje materijala zaduženih kod tehničara
     const materialsWithDetails = [];
-    
+
     for (const materialItem of technician.materials || []) {
       const materialDetails = await Material.findById(materialItem.materialId);
       if (materialDetails) {
@@ -71,11 +96,27 @@ router.get('/:id', async (req, res) => {
         });
       }
     }
-    
+
+    // Dohvatanje osnovne opreme zadužene kod tehničara
+    const basicEquipmentWithDetails = [];
+
+    for (const basicEquipmentItem of technician.basicEquipment || []) {
+      const basicEquipmentDetails = await BasicEquipment.findById(basicEquipmentItem.basicEquipmentId);
+      if (basicEquipmentDetails) {
+        basicEquipmentWithDetails.push({
+          id: basicEquipmentItem.basicEquipmentId.toString(),
+          _id: basicEquipmentItem.basicEquipmentId.toString(),
+          type: basicEquipmentDetails.type,
+          quantity: basicEquipmentItem.quantity
+        });
+      }
+    }
+
     res.json({
       ...technician.toObject(),
       equipment,
-      materials: materialsWithDetails
+      materials: materialsWithDetails,
+      basicEquipment: basicEquipmentWithDetails
     });
   } catch (error) {
     console.error('Greška pri dohvatanju tehničara:', error);
@@ -993,6 +1034,203 @@ router.post('/upload-profile-image', profileImageUpload.single('image'), async (
   } catch (error) {
     console.error('Greška pri upload-u profilne slike:', error);
     res.status(500).json({ error: 'Greška pri upload-u profilne slike' });
+  }
+});
+
+// GET - Dohvati osnovnu opremu tehničara
+router.get('/:id/basic-equipment', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    console.log('=== FETCHING TECHNICIAN BASIC EQUIPMENT ===');
+    console.log('Technician ID:', id);
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      console.error('Invalid technician ID format:', id);
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const technician = await Technician.findById(id);
+    if (!technician) {
+      console.error('Technician not found:', id);
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    console.log('Technician found:', technician.name);
+
+    // Dohvatanje osnovne opreme zadužene kod tehničara sa detaljima
+    const basicEquipmentWithDetails = [];
+
+    for (const basicEquipmentItem of technician.basicEquipment || []) {
+      const basicEquipmentDetails = await BasicEquipment.findById(basicEquipmentItem.basicEquipmentId);
+      if (basicEquipmentDetails) {
+        basicEquipmentWithDetails.push({
+          id: basicEquipmentItem.basicEquipmentId.toString(),
+          _id: basicEquipmentItem.basicEquipmentId.toString(),
+          type: basicEquipmentDetails.type,
+          quantity: basicEquipmentItem.quantity
+        });
+      }
+    }
+
+    console.log('Sending basic equipment response to frontend');
+    res.json(basicEquipmentWithDetails);
+  } catch (error) {
+    console.error('Greška pri dohvatanju osnovne opreme tehničara:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju osnovne opreme tehničara' });
+  }
+});
+
+// POST - Dodaj osnovnu opremu tehničaru
+router.post('/:id/basic-equipment', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { basicEquipmentId, quantity } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(basicEquipmentId)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const technician = await Technician.findById(id);
+    if (!technician) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    const basicEquipment = await BasicEquipment.findById(basicEquipmentId);
+    if (!basicEquipment) {
+      return res.status(404).json({ error: 'Osnovna oprema nije pronađena' });
+    }
+
+    if (basicEquipment.quantity < quantity) {
+      return res.status(400).json({ error: 'Nema dovoljno osnovne opreme na stanju' });
+    }
+
+    // Proveri da li tehničar već ima ovu osnovnu opremu
+    const existingBasicEquipmentIndex = technician.basicEquipment.findIndex(
+      item => item.basicEquipmentId.toString() === basicEquipmentId
+    );
+
+    if (existingBasicEquipmentIndex !== -1) {
+      // Ažuriraj postojeću količinu
+      technician.basicEquipment[existingBasicEquipmentIndex].quantity += parseInt(quantity, 10);
+    } else {
+      // Dodaj novu osnovnu opremu
+      technician.basicEquipment.push({
+        basicEquipmentId,
+        quantity: parseInt(quantity, 10)
+      });
+    }
+
+    // Umanji količinu osnovne opreme u magacinu
+    basicEquipment.quantity -= parseInt(quantity, 10);
+
+    // Sačuvaj promene
+    await Promise.all([
+      technician.save(),
+      basicEquipment.save()
+    ]);
+
+    // Dohvati ažurirane podatke o osnovnoj opremi
+    const basicEquipmentWithDetails = [];
+
+    for (const basicEquipmentItem of technician.basicEquipment) {
+      const basicEquipmentDetails = await BasicEquipment.findById(basicEquipmentItem.basicEquipmentId);
+      if (basicEquipmentDetails) {
+        basicEquipmentWithDetails.push({
+          id: basicEquipmentItem.basicEquipmentId.toString(),
+          _id: basicEquipmentItem.basicEquipmentId.toString(),
+          type: basicEquipmentDetails.type,
+          quantity: basicEquipmentItem.quantity
+        });
+      }
+    }
+
+    res.json({
+      ...technician.toObject(),
+      basicEquipment: basicEquipmentWithDetails
+    });
+  } catch (error) {
+    console.error('Greška pri dodavanju osnovne opreme tehničaru:', error);
+    res.status(500).json({ error: 'Greška pri dodavanju osnovne opreme tehničaru' });
+  }
+});
+
+// POST - Return basic equipment from technician
+router.post('/:id/basic-equipment/return', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { basicEquipmentId, quantity } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(basicEquipmentId)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const technician = await Technician.findById(id);
+    if (!technician) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    // Pronađi osnovnu opremu kod tehničara
+    const technicianBasicEquipmentIndex = technician.basicEquipment.findIndex(
+      item => item.basicEquipmentId.toString() === basicEquipmentId
+    );
+
+    if (technicianBasicEquipmentIndex === -1) {
+      return res.status(404).json({ error: 'Tehničar nema zaduženu ovu osnovnu opremu' });
+    }
+
+    const technicianBasicEquipment = technician.basicEquipment[technicianBasicEquipmentIndex];
+
+    // Proveri da li tehničar ima dovoljno osnovne opreme za razduženje
+    if (technicianBasicEquipment.quantity < quantity) {
+      return res.status(400).json({ error: 'Tehničar nema dovoljno osnovne opreme za razduženje' });
+    }
+
+    // Pronađi osnovnu opremu u magacinu
+    const basicEquipment = await BasicEquipment.findById(basicEquipmentId);
+    if (!basicEquipment) {
+      return res.status(404).json({ error: 'Osnovna oprema nije pronađena' });
+    }
+
+    // Ažuriraj količinu kod tehničara
+    technicianBasicEquipment.quantity -= parseInt(quantity, 10);
+
+    // Ako je količina 0, ukloni osnovnu opremu iz liste
+    if (technicianBasicEquipment.quantity === 0) {
+      technician.basicEquipment.splice(technicianBasicEquipmentIndex, 1);
+    }
+
+    // Vrati osnovnu opremu u magacin
+    basicEquipment.quantity += parseInt(quantity, 10);
+
+    // Sačuvaj promene
+    await Promise.all([
+      technician.save(),
+      basicEquipment.save()
+    ]);
+
+    // Dohvati ažurirane podatke o osnovnoj opremi
+    const basicEquipmentWithDetails = [];
+
+    for (const basicEquipmentItem of technician.basicEquipment) {
+      const basicEquipmentDetails = await BasicEquipment.findById(basicEquipmentItem.basicEquipmentId);
+      if (basicEquipmentDetails) {
+        basicEquipmentWithDetails.push({
+          id: basicEquipmentItem.basicEquipmentId.toString(),
+          _id: basicEquipmentItem.basicEquipmentId.toString(),
+          type: basicEquipmentDetails.type,
+          quantity: basicEquipmentItem.quantity
+        });
+      }
+    }
+
+    res.json({
+      ...technician.toObject(),
+      basicEquipment: basicEquipmentWithDetails
+    });
+  } catch (error) {
+    console.error('Greška pri razduživanju osnovne opreme:', error);
+    res.status(500).json({ error: 'Greška pri razduživanju osnovne opreme' });
   }
 });
 

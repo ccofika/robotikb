@@ -149,6 +149,7 @@ if (!fs.existsSync(templatesDir)) {
 const authRoutes = require('./routes/auth');
 const equipmentRoutes = require('./routes/equipment');
 const materialsRoutes = require('./routes/materials');
+const basicEquipmentRoutes = require('./routes/basicEquipment');
 const techniciansRoutes = require('./routes/technicians');
 const workordersRoutes = require('./routes/workorders');
 const exportRoutes = require('./routes/export');
@@ -163,6 +164,7 @@ const notificationsRoutes = require('./routes/notifications');
 app.use('/api/auth', authRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/materials', materialsRoutes);
+app.use('/api/basic-equipment', basicEquipmentRoutes);
 app.use('/api/technicians', techniciansRoutes);
 app.use('/api/workorders', workordersRoutes);
 app.use('/api/export', exportRoutes);

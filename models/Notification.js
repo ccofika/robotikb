@@ -99,13 +99,20 @@ const NotificationSchema = new mongoose.Schema({
   },
   createdAt: {
     type: Date,
-    default: Date.now,
+    default: function() {
+      // Create timestamp in Serbian timezone (UTC+1/UTC+2)
+      const now = new Date();
+      const serbianTime = new Date(now.getTime() + (2 * 60 * 60 * 1000)); // UTC+2 for CEST
+      return serbianTime;
+    },
   },
   expiresAt: {
     type: Date,
     default: function() {
-      // Auto-delete notifications after 30 days
-      return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      // Auto-delete notifications after 30 days, adjusted for Serbian timezone
+      const now = new Date();
+      const serbianTime = new Date(now.getTime() + (2 * 60 * 60 * 1000)); // UTC+2 for CEST
+      return new Date(serbianTime.getTime() + 30 * 24 * 60 * 60 * 1000);
     }
   }
 });
@@ -173,7 +180,9 @@ NotificationSchema.statics.createVehicleRegistrationExpiry = function(vehicleId,
 // Instance method to mark as read
 NotificationSchema.methods.markAsRead = function() {
   this.isRead = true;
-  this.readAt = new Date();
+  // Set readAt timestamp in Serbian timezone (UTC+2 for CEST)
+  const now = new Date();
+  this.readAt = new Date(now.getTime() + (2 * 60 * 60 * 1000));
   return this.save();
 };
 
