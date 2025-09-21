@@ -1,3 +1,38 @@
+// Helper funkcija za kreiranje sumirane tabele inventara
+const createInventorySummary = (inventory) => {
+  if (!inventory || inventory.length === 0) {
+    return { inventorySummary: [], totalItems: 0 };
+  }
+
+  // Grupišemo opremu po modelu/opisu
+  const summary = {};
+
+  inventory.forEach(item => {
+    // Koristimo description kao model/tip opreme
+    const model = item.description || item.category || 'Nepoznato';
+
+    if (summary[model]) {
+      summary[model]++;
+    } else {
+      summary[model] = 1;
+    }
+  });
+
+  // Konvertujemo u array za template
+  const inventorySummary = Object.entries(summary).map(([model, count]) => ({
+    model,
+    count
+  }));
+
+  // Sortiramo po imenu modela
+  inventorySummary.sort((a, b) => a.model.localeCompare(b.model));
+
+  return {
+    inventorySummary,
+    totalItems: inventory.length
+  };
+};
+
 const createEmailTemplate = (type, data) => {
   const templates = { 
     lowStock: {
@@ -113,31 +148,29 @@ const createEmailTemplate = (type, data) => {
           
           <p style="color: #16a34a; font-weight: 600;">✅ Oprema je uspešno vraćena u magacin</p>
 
-          ${(data.currentInventory && data.currentInventory.length > 0) ? `
+          ${(data.inventorySummary && data.inventorySummary.length > 0) ? `
           <div style="margin-top: 30px;">
-            <h3 style="color: #16a34a; margin-bottom: 15px;">📋 Vaš preostali magacin</h3>
+            <h3 style="color: #16a34a; margin-bottom: 15px;">📋 Vaš preostali magacin (sumirano)</h3>
             <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
               <thead>
                 <tr style="background: #f0fdf4;">
                   <th style="padding: 12px; text-align: left; border: 1px solid #bbf7d0;">RB</th>
-                  <th style="padding: 12px; text-align: left; border: 1px solid #bbf7d0;">Kategorija</th>
-                  <th style="padding: 12px; text-align: left; border: 1px solid #bbf7d0;">Opis</th>
-                  <th style="padding: 12px; text-align: left; border: 1px solid #bbf7d0;">Serijski broj</th>
+                  <th style="padding: 12px; text-align: left; border: 1px solid #bbf7d0;">Model/Tip opreme</th>
+                  <th style="padding: 12px; text-align: center; border: 1px solid #bbf7d0;">Količina</th>
                 </tr>
               </thead>
               <tbody>
-                ${data.currentInventory.map((item, index) => `
+                ${data.inventorySummary.map((item, index) => `
                   <tr style="background: ${index % 2 === 0 ? '#f7fef7' : 'white'};">
                     <td style="padding: 12px; border: 1px solid #bbf7d0;">${index + 1}</td>
-                    <td style="padding: 12px; border: 1px solid #bbf7d0;">${item.category || 'N/A'}</td>
-                    <td style="padding: 12px; border: 1px solid #bbf7d0;">${item.description || 'N/A'}</td>
-                    <td style="padding: 12px; border: 1px solid #bbf7d0;">${item.serialNumber || 'N/A'}</td>
+                    <td style="padding: 12px; border: 1px solid #bbf7d0;"><strong>${item.model}</strong></td>
+                    <td style="padding: 12px; border: 1px solid #bbf7d0; text-align: center; color: #16a34a; font-weight: 600;">${item.count} kom</td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
             <p style="color: #16a34a; font-size: 14px; font-weight: 500;">
-              📊 Preostalo u magacinu: ${data.currentInventory.length} ${data.currentInventory.length === 1 ? 'stavka' : 'stavki'}
+              📊 Ukupno u magacinu: ${data.totalItems} ${data.totalItems === 1 ? 'stavka' : 'stavki'}
             </p>
           </div>
           ` : `
@@ -187,31 +220,29 @@ const createEmailTemplate = (type, data) => {
           
           <p style="color: #dc2626; font-weight: 600;">⚠️ Molimo vas da proverite sve stavke i potvrdite prijem</p>
 
-          ${(data.currentInventory && data.currentInventory.length > 0) ? `
+          ${(data.inventorySummary && data.inventorySummary.length > 0) ? `
           <div style="margin-top: 30px;">
-            <h3 style="color: #1e40af; margin-bottom: 15px;">📋 Vaš trenutni magacin</h3>
+            <h3 style="color: #1e40af; margin-bottom: 15px;">📋 Vaš trenutni magacin (sumirano)</h3>
             <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
               <thead>
                 <tr style="background: #e0f2fe;">
                   <th style="padding: 12px; text-align: left; border: 1px solid #81d4fa;">RB</th>
-                  <th style="padding: 12px; text-align: left; border: 1px solid #81d4fa;">Kategorija</th>
-                  <th style="padding: 12px; text-align: left; border: 1px solid #81d4fa;">Opis</th>
-                  <th style="padding: 12px; text-align: left; border: 1px solid #81d4fa;">Serijski broj</th>
+                  <th style="padding: 12px; text-align: left; border: 1px solid #81d4fa;">Model/Tip opreme</th>
+                  <th style="padding: 12px; text-align: center; border: 1px solid #81d4fa;">Količina</th>
                 </tr>
               </thead>
               <tbody>
-                ${data.currentInventory.map((item, index) => `
+                ${data.inventorySummary.map((item, index) => `
                   <tr style="background: ${index % 2 === 0 ? '#f0f9ff' : 'white'};">
                     <td style="padding: 12px; border: 1px solid #81d4fa;">${index + 1}</td>
-                    <td style="padding: 12px; border: 1px solid #81d4fa;">${item.category || 'N/A'}</td>
-                    <td style="padding: 12px; border: 1px solid #81d4fa;">${item.description || 'N/A'}</td>
-                    <td style="padding: 12px; border: 1px solid #81d4fa;">${item.serialNumber || 'N/A'}</td>
+                    <td style="padding: 12px; border: 1px solid #81d4fa;"><strong>${item.model}</strong></td>
+                    <td style="padding: 12px; border: 1px solid #81d4fa; text-align: center; color: #1e40af; font-weight: 600;">${item.count} kom</td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
             <p style="color: #1e40af; font-size: 14px; font-weight: 500;">
-              📊 Ukupno u magacinu: ${data.currentInventory.length} ${data.currentInventory.length === 1 ? 'stavka' : 'stavki'}
+              📊 Ukupno u magacinu: ${data.totalItems} ${data.totalItems === 1 ? 'stavka' : 'stavki'}
             </p>
           </div>
           ` : ''}
@@ -424,4 +455,4 @@ const createEmailTemplate = (type, data) => {
   return templates[type] || null;
 };
 
-module.exports = { createEmailTemplate };
+module.exports = { createEmailTemplate, createInventorySummary };

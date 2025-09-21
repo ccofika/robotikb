@@ -7,6 +7,7 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const { Equipment, Log, Technician } = require('../models');
 const emailService = require('../services/emailService');
+const { createInventorySummary } = require('../utils/emailTemplates');
 
 // Konfiguracija za multer (upload fajlova)
 const storage = multer.diskStorage({
@@ -335,6 +336,9 @@ router.put('/:id', async (req, res) => {
             status: { $ne: 'installed' }
           });
 
+          // Kreiranje sumirane tabele inventara
+          const inventorySummaryData = createInventorySummary(currentInventory);
+
           const emailResult = await emailService.sendEmailToTechnician(
             technicianId,
             'equipmentAssignment',
@@ -347,12 +351,7 @@ router.put('/:id', async (req, res) => {
                 serialNumber: equipment.serialNumber,
                 status: equipment.status
               }],
-              currentInventory: currentInventory.map(eq => ({
-                category: eq.category,
-                description: eq.description,
-                serialNumber: eq.serialNumber,
-                status: eq.status
-              }))
+              ...inventorySummaryData
             }
           );
           

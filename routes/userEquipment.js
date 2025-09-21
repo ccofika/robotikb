@@ -407,38 +407,15 @@ router.put('/:id/remove', async (req, res) => {
     try {
       const evidence = await WorkOrderEvidence.findOne({ workOrderId });
       if (evidence) {
-        const mappedEquipmentType = mapEquipmentTypeToEnum(equipment.category);
-        console.log(`Mapping equipment category '${equipment.category}' to '${mappedEquipmentType}' for removal`);
-        
-        const equipmentData = {
-          equipmentType: mappedEquipmentType,
-          serialNumber: equipment.serialNumber || '',
-          condition: isWorking ? 'N' : 'R', // N-ispravno, R-neispravno
-          removedAt: new Date(),
-          reason: isWorking ? 'Zamena' : 'Kvar',
-          notes: removalReason || `Uklonjeno od tehničara - ${equipment.description || ''}`
-        };
+        const serialNumber = equipment.serialNumber;
 
-        console.log('Removed equipment data to be added:', equipmentData);
-        
-        // Logika za uklanjanje duplikata i premestanje između array-eva
-        const serialNumber = equipmentData.serialNumber;
-        
-        // 1. Ukloni iz installedEquipment ako postoji (premestamo uređaj u removed)
+        // Ukloni opremu iz installedEquipment array-a
         evidence.installedEquipment = evidence.installedEquipment.filter(
           installedEq => installedEq.serialNumber !== serialNumber
         );
         
-        // 2. Proveri da li već postoji u removedEquipment i ukloni postojeći
-        evidence.removedEquipment = evidence.removedEquipment.filter(
-          removedEq => removedEq.serialNumber !== serialNumber
-        );
-        
-        // 3. Dodaj novi zapis u removedEquipment
-        evidence.removedEquipment.push(equipmentData);
-        
         await evidence.save();
-        console.log('WorkOrderEvidence updated with removed equipment - duplicates removed');
+        console.log('WorkOrderEvidence updated - equipment removed from installedEquipment');
       } else {
         console.log('WorkOrderEvidence not found for workOrderId:', workOrderId);
       }
@@ -469,12 +446,147 @@ router.put('/:id/remove', async (req, res) => {
   }
 });
 
+// POST - Ukloni opremu po serijskom broju
+router.post('/remove-by-serial', async (req, res) => {
+  const { workOrderId, technicianId, equipmentName, serialNumber, condition } = req.body;
+
+  if (!workOrderId || !technicianId || !equipmentName || !serialNumber || !condition) {
+    return res.status(400).json({ error: 'Nedostaju obavezni podaci' });
+  }
+
+  try {
+    // Pronađi radni nalog
+    const workOrder = await WorkOrder.findById(workOrderId);
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    // Pronađi opremu po serijskom broju koja je kod korisnika
+    const equipment = await Equipment.findOne({
+      serialNumber: serialNumber,
+      location: `user-${workOrder.tisId}`,
+      status: 'installed'
+    });
+
+    let equipmentRemoved = false;
+    let equipmentDetails = null;
+
+    if (equipment) {
+      // Oprema postoji u sistemu - ukloni je iz korisnikovog inventara
+      console.log('Found equipment in system:', equipment);
+
+      if (condition === 'ispravna') {
+        // Ako je oprema ispravna, vrati je tehničaru
+        equipment.location = `tehnicar-${technicianId}`;
+        equipment.status = 'assigned';
+        equipment.assignedToUser = null;
+        equipment.removedAt = new Date();
+      } else {
+        // Ako je oprema neispravna, označi je kao neispravnu
+        equipment.location = 'defective';
+        equipment.status = 'defective';
+        equipment.assignedToUser = null;
+        equipment.assignedTo = null;
+        equipment.removedAt = new Date();
+      }
+
+      await equipment.save();
+      equipmentRemoved = true;
+      equipmentDetails = equipment;
+
+      // Ukloni opremu iz radnog naloga
+      if (workOrder.installedEquipment) {
+        workOrder.installedEquipment = workOrder.installedEquipment.filter(
+          item => item.equipmentId.toString() !== equipment._id.toString()
+        );
+      }
+
+      if (workOrder.equipment) {
+        workOrder.equipment = workOrder.equipment.filter(
+          eq => eq.toString() !== equipment._id.toString()
+        );
+      }
+
+      await workOrder.save();
+
+    } else {
+      console.log('Equipment not found in system - will only add to removedEquipment');
+      equipmentDetails = {
+        category: equipmentName,
+        serialNumber: serialNumber,
+        status: condition === 'ispravna' ? 'working' : 'defective'
+      };
+    }
+
+    // Ažuriranje WorkOrderEvidence sa uklonjenom opremom
+    try {
+      const evidence = await WorkOrderEvidence.findOne({ workOrderId });
+      if (evidence) {
+        // Proveri da li oprema već postoji u removedEquipment
+        const alreadyRemoved = evidence.removedEquipment.some(
+          removedEq => removedEq.serialNumber === serialNumber
+        );
+
+        if (alreadyRemoved) {
+          return res.status(400).json({ error: 'Ova oprema je već uklonjena u ovom radnom nalogu' });
+        }
+
+        const mappedEquipmentType = mapEquipmentTypeToEnum(equipmentName);
+
+        // Ukloni iz installedEquipment ako postoji
+        evidence.installedEquipment = evidence.installedEquipment.filter(
+          installedEq => installedEq.serialNumber !== serialNumber
+        );
+
+        // Dodaj u removedEquipment
+        const removedEquipmentData = {
+          equipmentType: mappedEquipmentType,
+          serialNumber: serialNumber,
+          condition: condition === 'ispravna' ? 'N' : 'R',
+          removedAt: new Date(),
+          notes: `Uklonjeno od tehničara - ${equipmentName}`
+        };
+
+        evidence.removedEquipment.push(removedEquipmentData);
+
+        await evidence.save();
+        console.log('WorkOrderEvidence updated with removed equipment');
+      } else {
+        console.log('WorkOrderEvidence not found for workOrderId:', workOrderId);
+      }
+    } catch (evidenceError) {
+      console.error('Greška pri ažuriranju WorkOrderEvidence:', evidenceError);
+      // Ne prekidamo proces zbog greške u evidenciji
+    }
+
+    // Log equipment removal
+    try {
+      const technician = await Technician.findById(technicianId);
+      if (technician) {
+        await logEquipmentRemoved(technicianId, technician.name, workOrder, equipmentDetails, condition === 'ispravna', `Uklonjeno po serijskom broju: ${equipmentName}`);
+      }
+    } catch (logError) {
+      console.error('Greška pri logovanju uklanjanja opreme:', logError);
+    }
+
+    res.json({
+      success: true,
+      message: 'Oprema uspešno uklonjena',
+      equipmentRemoved,
+      equipment: equipmentDetails
+    });
+  } catch (error) {
+    console.error('Greška pri uklanjanju opreme po serijskom broju:', error);
+    res.status(500).json({ error: 'Greška pri uklanjanju opreme' });
+  }
+});
+
 // GET - Dohvati opremu po radnom nalogu
 router.get('/workorder/:workOrderId', async (req, res) => {
   try {
     const { workOrderId } = req.params;
     const workOrder = await WorkOrder.findById(workOrderId);
-    
+
     if (!workOrder) {
       return res.json([]);
     }
@@ -488,6 +600,34 @@ router.get('/workorder/:workOrderId', async (req, res) => {
   } catch (error) {
     console.error('Greška pri dohvatanju opreme radnog naloga:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju opreme radnog naloga' });
+  }
+});
+
+// GET - Dohvati uklonjenu opremu za radni nalog
+router.get('/workorder/:workOrderId/removed', async (req, res) => {
+  try {
+    const { workOrderId } = req.params;
+
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId });
+
+    if (!evidence || !evidence.removedEquipment) {
+      return res.json([]);
+    }
+
+    // Formatiraj podatke za frontend
+    const formattedRemovedEquipment = evidence.removedEquipment.map((eq, index) => ({
+      id: `removed-${index}`,
+      equipmentType: eq.equipmentType,
+      serialNumber: eq.serialNumber,
+      condition: eq.condition === 'N' ? 'ispravna' : 'neispravna',
+      removedAt: eq.removedAt,
+      notes: eq.notes
+    }));
+
+    res.json(formattedRemovedEquipment);
+  } catch (error) {
+    console.error('Greška pri dohvatanju uklonjene opreme:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju uklonjene opreme' });
   }
 });
 

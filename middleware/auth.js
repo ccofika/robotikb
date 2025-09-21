@@ -5,21 +5,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'telco-super-secret-key';
 
 const auth = async (req, res, next) => {
   try {
-    console.log('=== AUTH MIDDLEWARE ===');
-    
     // Dohvati token iz header-a
     const token = req.header('Authorization')?.replace('Bearer ', '');
-    console.log('Token received:', token ? 'YES' : 'NO');
-    if (token) console.log('Token preview:', token.substring(0, 20) + '...');
     
     if (!token) {
-      console.log('No token provided');
       return res.status(401).json({ error: 'Pristup odbijen. Token nije obezbeđen.' });
     }
     
     // Verifikuj token
     const decoded = jwt.verify(token, JWT_SECRET);
-    console.log('Token decoded:', decoded);
     
     // Ako je admin, propusti dalje
     if (decoded.role === 'admin') {

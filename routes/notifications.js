@@ -6,9 +6,6 @@ const { auth } = require('../middleware/auth');
 // GET /api/notifications - Get all notifications for current user
 router.get('/', auth, async (req, res) => {
   try {
-    console.log('=== NOTIFICATIONS GET REQUEST ===');
-    console.log('req.user:', req.user);
-    console.log('Looking for notifications with recipientId:', req.user.id);
     
     const notifications = await Notification.find({
       recipientId: req.user.id
@@ -20,13 +17,6 @@ router.get('/', auth, async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(50); // Limit to latest 50 notifications
     
-    console.log('Found notifications:', notifications.length);
-    console.log('Sample notification:', notifications[0] ? {
-      id: notifications[0]._id,
-      type: notifications[0].type,
-      workOrderId: notifications[0].workOrderId,
-      workOrder_populated: !!notifications[0].workOrderId
-    } : 'No notifications');
 
     const formattedNotifications = notifications.map(notification => ({
       id: notification._id,
@@ -92,16 +82,12 @@ router.get('/', auth, async (req, res) => {
 // GET /api/notifications/unread - Get only unread notifications count
 router.get('/unread', auth, async (req, res) => {
   try {
-    console.log('=== UNREAD NOTIFICATIONS REQUEST ===');
-    console.log('req.user:', req.user);
-    console.log('Looking for unread notifications with recipientId:', req.user.id);
     
     const unreadCount = await Notification.countDocuments({
       recipientId: req.user.id,
       isRead: false
     });
     
-    console.log('Found unread notifications count:', unreadCount);
 
     res.json({
       success: true,
@@ -251,26 +237,20 @@ router.delete('/:id', auth, async (req, res) => {
 // Utility function to create notifications (for internal use)
 async function createNotification(type, data) {
   try {
-    console.log('=== CreateNotification pozvan ===');
-    console.log('Tip:', type);
-    console.log('Data:', JSON.stringify(data, null, 2));
     
     let notification;
     
     switch (type) {
       case 'work_order_verification':
-        console.log('Pozivam Notification.createWorkOrderVerification...');
         notification = await Notification.createWorkOrderVerification(
           data.workOrderId,
           data.technicianId,
           data.technicianName,
           data.recipientId
         );
-        console.log('Notifikacija kreirana uspešno:', notification);
         break;
         
       case 'material_anomaly':
-        console.log('Pozivam Notification.createMaterialAnomaly...');
         notification = await Notification.createMaterialAnomaly(
           data.logId,
           data.technicianId,
@@ -283,7 +263,6 @@ async function createNotification(type, data) {
         break;
         
       case 'vehicle_registration_expiry':
-        console.log('Pozivam Notification.createVehicleRegistrationExpiry...');
         notification = await Notification.createVehicleRegistrationExpiry(
           data.vehicleId,
           data.vehicleName,
@@ -297,13 +276,10 @@ async function createNotification(type, data) {
         throw new Error('Nepoznat tip notifikacije');
     }
     
-    console.log('=== CreateNotification završen uspešno ===');
     return notification;
     
   } catch (error) {
-    console.error('=== Error u createNotification ===');
     console.error('Error creating notification:', error);
-    console.error('Error stack:', error.stack);
     throw error;
   }
 }

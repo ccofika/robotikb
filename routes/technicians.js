@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const { Technician, Equipment, Material, BasicEquipment } = require('../models');
 const { uploadImage } = require('../config/cloudinary');
 const emailService = require('../services/emailService');
+const { createInventorySummary } = require('../utils/emailTemplates');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'telco-super-secret-key';
 
@@ -642,6 +643,9 @@ router.post('/:id/equipment', async (req, res) => {
           status: { $ne: 'installed' }
         });
 
+        // Kreiranje sumirane tabele inventara
+        const inventorySummaryData = createInventorySummary(currentInventory);
+
         const emailResult = await emailService.sendEmailToTechnician(
           id,
           'equipmentAssignment',
@@ -654,12 +658,7 @@ router.post('/:id/equipment', async (req, res) => {
               serialNumber: eq.serialNumber,
               status: eq.status
             })),
-            currentInventory: currentInventory.map(eq => ({
-              category: eq.category,
-              description: eq.description,
-              serialNumber: eq.serialNumber,
-              status: eq.status
-            }))
+            ...inventorySummaryData
           }
         );
         
@@ -741,6 +740,9 @@ router.post('/:id/equipment/return', async (req, res) => {
           status: { $ne: 'installed' }
         });
 
+        // Kreiranje sumirane tabele inventara
+        const inventorySummaryData = createInventorySummary(currentInventory);
+
         const emailResult = await emailService.sendEmailToTechnician(
           id,
           'equipmentUnassignment',
@@ -752,12 +754,7 @@ router.post('/:id/equipment/return', async (req, res) => {
               serialNumber: item.serialNumber,
               status: item.status
             })),
-            currentInventory: currentInventory.map(eq => ({
-              category: eq.category,
-              description: eq.description,
-              serialNumber: eq.serialNumber,
-              status: eq.status
-            }))
+            ...inventorySummaryData
           }
         );
         

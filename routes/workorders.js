@@ -381,18 +381,9 @@ router.get('/:id/user-equipment', async (req, res) => {
       return res.json(installedEquipmentData);
     }
     
-    // Ako nema installedEquipment, pokušaj naći opremu po tisId korisnika
-    if (!workOrder.tisId) {
-      return res.json([]);
-    }
-    
-    // Pronađi opremu koja pripada korisniku
-    const equipment = await Equipment.find({
-      assignedToUser: workOrder.tisId,
-      status: 'installed'
-    });
-    
-    res.json(equipment);
+    // Ako nema installedEquipment, vrati prazan niz
+    // Radni nalog treba da prikazuje samo opremu instaliranu kroz taj konkretan nalog
+    return res.json([]);
   } catch (error) {
     console.error('Greška pri dohvatanju opreme korisnika:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju opreme korisnika' });
