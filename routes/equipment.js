@@ -81,13 +81,16 @@ router.get('/', async (req, res) => {
 // GET - Dohvati opremu za prikaz (samo magacin i tehničari)
 router.get('/display', async (req, res) => {
   try {
-    // Filtriraj opremu da prikaže samo onu iz magacina i kod tehničara
+    // Za sada vraćam originalnu funkcionalnost sa performanse optimizacijama
     const displayEquipment = await Equipment.find({
       $or: [
         { location: 'magacin' },
         { assignedTo: { $ne: null } }
       ]
-    });
+    })
+    .sort({ createdAt: -1 })
+    .lean(); // Dodano lean() za bolje performance
+
     res.json(displayEquipment);
   } catch (error) {
     console.error('Greška pri dohvatanju opreme za prikaz:', error);

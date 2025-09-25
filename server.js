@@ -5,11 +5,12 @@ const morgan = require('morgan');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
-const connectDB = require('./config/db');
+const { connectDB, isDBConnected, getConnectionStats } = require('./config/db');
 const { startWorkOrderScheduler } = require('./services/workOrderScheduler');
+const { ensureDBConnection, logSlowQueries, logPerformanceStats } = require('./middleware/dbHealthCheck');
 require('dotenv').config();
 
-// Povezivanje sa MongoDB
+// Povezivanje sa MongoDB sa optimizovanim pool-om
 connectDB();
 
 // Inicijalizacija Express aplikacije
@@ -36,13 +37,59 @@ app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(morgan('dev'));
 
-// Test route - dodaj na vrh da testiraš
+// DB connection check middleware for API routes
+app.use('/api', ensureDBConnection);
+
+// Slow query detection middleware (log queries > 1000ms)
+app.use('/api', logSlowQueries(1000));
+
+// Enhanced cache middleware za GET zahteve
+app.use((req, res, next) => {
+  if (req.method === 'GET') {
+    if (
+      req.url.includes('/api/equipment') ||
+      req.url.includes('/api/materials') ||
+      req.url.includes('/api/technicians') ||
+      req.url.includes('/api/workorders/statistics')
+    ) {
+      // Cache za 5 minuta za često korišćene API pozive
+      res.set('Cache-Control', 'public, max-age=300');
+    } else if (
+      req.url.includes('/api/logs/dashboard') ||
+      req.url.includes('/api/workorders?recent')
+    ) {
+      // Kratki cache za dashboard i recent podatke (1 minut)
+      res.set('Cache-Control', 'public, max-age=60');
+    } else if (req.url.includes('/api/users?statsOnly=true')) {
+      // Cache za user stats (2 minuta)
+      res.set('Cache-Control', 'public, max-age=120');
+    }
+  }
+  next();
+});
+
+// Health check route with MongoDB connection status
 app.get('/', (req, res) => {
-  res.json({ 
+  const dbStats = getConnectionStats();
+  res.json({
     message: 'TelCo Inventory Management API is running!',
     timestamp: new Date().toISOString(),
     port: PORT,
-    cors: corsOptions.origin
+    cors: corsOptions.origin,
+    database: {
+      connected: isDBConnected(),
+      ...dbStats
+    }
+  });
+});
+
+// MongoDB connection status endpoint
+app.get('/api/health/db', (req, res) => {
+  const dbStats = getConnectionStats();
+  res.json({
+    status: isDBConnected() ? 'connected' : 'disconnected',
+    ...dbStats,
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -159,6 +206,7 @@ const logsRoutes = require('./routes/logs');
 const defectiveEquipmentRoutes = require('./routes/defectiveEquipment');
 const vehiclesRoutes = require('./routes/vehicles');
 const notificationsRoutes = require('./routes/notifications');
+const financesRoutes = require('./routes/finances');
 
 // Definisanje ruta
 app.use('/api/auth', authRoutes);
@@ -174,6 +222,7 @@ app.use('/api/logs', logsRoutes);
 app.use('/api/defective-equipment', defectiveEquipmentRoutes);
 app.use('/api/vehicles', vehiclesRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/finances', financesRoutes);
 
 // Rukovanje greškama
 app.use((err, req, res, next) => {
@@ -181,13 +230,20 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Došlo je do greške na serveru!' });
 });
 
-// Pokretanje servera - ISPRAVKA!
+// Pokretanje servera - OPTIMIZOVANO!
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server pokrenut na portu: ${PORT}`);
-  console.log(`CORS omogućen za: ${corsOptions.origin.join(', ')}`);
-  
+  console.log(`🚀 Server pokrenut na portu: ${PORT}`);
+  console.log(`🌐 CORS omogućen za: ${corsOptions.origin.join(', ')}`);
+
   // Pokretanje scheduler-a za radne naloge
   startWorkOrderScheduler();
+
+  // Log performance stats every 10 minutes
+  setInterval(() => {
+    logPerformanceStats();
+  }, 10 * 60 * 1000);
+
+  console.log(`✅ Server is ready for high-performance operations!`);
 });
 
 module.exports = app;

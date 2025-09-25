@@ -35,6 +35,11 @@ const TechnicianSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'Equipment'
   }],
+  role: {
+    type: String,
+    enum: ['technician', 'admin', 'superadmin'],
+    default: 'technician'
+  },
   isAdmin: {
     type: Boolean,
     default: false

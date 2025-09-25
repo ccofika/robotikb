@@ -3,9 +3,27 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const { Material } = require('../models');
 
-// GET - Dohvati sve materijale
+// GET - Dohvati sve materijale sa podrškom za query parametre
 router.get('/', async (req, res) => {
   try {
+    const { stats, limit } = req.query;
+
+    // Ako je traženo samo stats=true, vrati samo potrebne podatke za statistike
+    if (stats === 'true') {
+      const materials = await Material.find().select('type quantity'); // Samo type i quantity fields
+      res.json(materials);
+      return;
+    }
+
+    // Ako je tražen limit, ograniči rezultate
+    if (limit) {
+      const limitNum = parseInt(limit, 10);
+      const materials = await Material.find().limit(limitNum);
+      res.json(materials);
+      return;
+    }
+
+    // Default - dohvati sve materijale
     const materials = await Material.find();
     res.json(materials);
   } catch (error) {

@@ -56,4 +56,11 @@ const EquipmentSchema = new Schema({
   }
 }, { timestamps: true });
 
+// Dodavanje indeksa za optimizaciju performansi
+EquipmentSchema.index({ serialNumber: 1 });
+EquipmentSchema.index({ status: 1 });
+EquipmentSchema.index({ location: 1 });
+EquipmentSchema.index({ assignedTo: 1 });
+EquipmentSchema.index({ status: 1, location: 1 }); // Kompozitni indeks za česte kombinovane upite
+
 module.exports = mongoose.model('Equipment', EquipmentSchema); 

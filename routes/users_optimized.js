@@ -110,55 +110,14 @@ router.get('/', async (req, res) => {
       });
     }
 
-    // Build search condition with text search (including equipment and work orders)
+    // Build search condition with text search
     let searchCondition = {};
     if (search) {
-      // If searching for equipment or work order data, we need to use aggregation
-      if (search.length > 1) {
-        // First check if search might be for equipment S/N or work order data
-        const [equipmentUsers, workOrderUsers] = await Promise.all([
-          // Find users by equipment serial numbers
-          Equipment.distinct('location', {
-            serialNumber: { $regex: search, $options: 'i' },
-            location: { $regex: /^user-/ }
-          }),
-          // Find users by work order data (using correct field names)
-          WorkOrder.distinct('user', {
-            $or: [
-              { tisJobId: { $regex: search, $options: 'i' } },
-              { details: { $regex: search, $options: 'i' } },
-              { tisId: { $regex: search, $options: 'i' } }
-            ]
-          })
-        ]);
-
-        // Extract user tisIds from equipment locations (user-{tisId} format)
-        const equipmentTisIds = equipmentUsers
-          .filter(loc => loc && loc.startsWith('user-'))
-          .map(loc => loc.substring(5));
-
-        // Build comprehensive search condition
-        const searchConditions = [
-          // Direct user field searches
-          { name: { $regex: search, $options: 'i' } },
-          { address: { $regex: search, $options: 'i' } },
-          { phone: { $regex: search, $options: 'i' } },
-          { tisId: { $regex: search, $options: 'i' } }
-        ];
-
-        // Add equipment-based search
-        if (equipmentTisIds.length > 0) {
-          searchConditions.push({ tisId: { $in: equipmentTisIds } });
-        }
-
-        // Add work order-based search
-        if (workOrderUsers.length > 0) {
-          searchConditions.push({ _id: { $in: workOrderUsers } });
-        }
-
-        searchCondition = { $or: searchConditions };
+      // Use text index for better performance
+      if (search.length > 2) {
+        searchCondition = { $text: { $search: search } };
       } else {
-        // Short search - only direct fields
+        // Fallback to regex for short searches
         searchCondition = {
           $or: [
             { name: { $regex: search, $options: 'i' } },
@@ -236,51 +195,13 @@ router.get('/', async (req, res) => {
         .lean() // Use lean() for faster queries
     ]);
 
-    // Get work orders and equipment counts for current page users (optimized batch queries)
-    const userIds = users.map(u => u._id);
-    const userTisIds = users.map(u => u.tisId);
-
-
-    const [workOrderCounts, equipmentCounts] = await Promise.all([
-      // Aggregate work orders count by user (field is 'user', not 'userId')
-      WorkOrder.aggregate([
-        { $match: { user: { $in: userIds } } },
-        { $group: { _id: '$user', count: { $sum: 1 } } }
-      ]),
-      // Aggregate equipment count by location (user-{tisId})
-      Equipment.aggregate([
-        {
-          $match: {
-            location: { $in: userTisIds.map(tisId => `user-${tisId}`) },
-            status: 'installed'
-          }
-        },
-        {
-          $group: {
-            _id: { $substr: ['$location', 5, -1] }, // Extract tisId from 'user-{tisId}'
-            count: { $sum: 1 }
-          }
-        }
-      ])
-    ]);
-
-    // Create lookup maps for O(1) access
-    const workOrderMap = new Map();
-    workOrderCounts.forEach(item => {
-      workOrderMap.set(item._id.toString(), item.count);
-    });
-
-    const equipmentMap = new Map();
-    equipmentCounts.forEach(item => {
-      equipmentMap.set(item._id, item.count);
-    });
-
-    // Add counts to users
+    // For the basic user list, we don't need work orders or equipment counts
+    // These will be loaded on-demand when user clicks on a specific user
     const usersWithBasicInfo = users.map(user => ({
       ...user,
-      workOrdersCount: workOrderMap.get(user._id.toString()) || 0,
-      equipmentCount: equipmentMap.get(user.tisId) || 0,
-      workOrders: [] // Empty for list view
+      workOrdersCount: 0, // Placeholder - will load on demand
+      equipmentCount: 0,  // Placeholder - will load on demand
+      workOrders: []      // Empty array - will load on demand
     }));
 
     const totalPages = Math.ceil(totalCount / limitNum);

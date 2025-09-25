@@ -9,6 +9,10 @@ const { v4: uuidv4 } = require('uuid');
 const mongoose = require('mongoose');
 const { WorkOrder, User, Technician, Equipment, Material } = require('../models');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
+const FinancialTransaction = require('../models/FinancialTransaction');
+const FinancialSettings = require('../models/FinancialSettings');
+const FailedFinancialTransaction = require('../models/FailedFinancialTransaction');
+const MunicipalityDiscountConfirmation = require('../models/MunicipalityDiscountConfirmation');
 const { uploadImage, deleteImage } = require('../config/cloudinary');
 const { 
   logCommentAdded, 
@@ -25,6 +29,283 @@ const {
 const { testScheduler } = require('../services/workOrderScheduler');
 const notificationsRouter = require('./notifications');
 const createNotification = notificationsRouter.createNotification;
+
+// Pomoćna funkcija za brisanje failed transaction zapisa
+async function removeFailedFinancialTransaction(workOrderId) {
+  try {
+    await FailedFinancialTransaction.findOneAndDelete({ workOrderId: workOrderId });
+  } catch (error) {
+    console.error('Error removing failed financial transaction:', error);
+  }
+}
+
+// Pomoćna funkcija za kreiranje failed transaction zapisa
+async function createFailedFinancialTransaction(workOrderId, failureReason, failureMessage, missingFields = [], pendingConfirmations = []) {
+  try {
+    // Pronađi osnovne podatke o radnom nalogu
+    const workOrder = await WorkOrder.findById(workOrderId).populate('technicianId technician2Id');
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId: workOrderId });
+
+    const workOrderDetails = {
+      tisJobId: workOrder?.tisJobId || '',
+      address: workOrder?.address || '',
+      municipality: workOrder?.municipality || '',
+      technicianNames: [
+        workOrder?.technicianId?.name,
+        workOrder?.technician2Id?.name
+      ].filter(Boolean),
+      customerStatus: evidence?.customerStatus || '',
+      status: workOrder?.status || '',
+      verified: workOrder?.verified || false
+    };
+
+    // Proveri da li već postoji zapis
+    const existingFailed = await FailedFinancialTransaction.findOne({ workOrderId });
+
+    if (existingFailed) {
+      // Ažuriraj postojeći zapis
+      existingFailed.attemptCount += 1;
+      existingFailed.lastAttemptAt = new Date();
+      existingFailed.failureReason = failureReason;
+      existingFailed.failureMessage = failureMessage;
+      existingFailed.missingFields = missingFields;
+      existingFailed.workOrderDetails = workOrderDetails;
+      existingFailed.requiresAdminAction = failureReason === 'PENDING_DISCOUNT_CONFIRMATION';
+      if (pendingConfirmations.length > 0) {
+        existingFailed.pendingDiscountConfirmation = pendingConfirmations[0];
+      }
+      await existingFailed.save();
+    } else {
+      // Kreiraj novi zapis
+      const failedTransaction = new FailedFinancialTransaction({
+        workOrderId,
+        failureReason,
+        failureMessage,
+        missingFields,
+        workOrderDetails,
+        requiresAdminAction: failureReason === 'PENDING_DISCOUNT_CONFIRMATION',
+        pendingDiscountConfirmation: pendingConfirmations.length > 0 ? pendingConfirmations[0] : undefined
+      });
+      await failedTransaction.save();
+    }
+
+    console.log('Failed financial transaction logged for work order:', workOrderId);
+  } catch (error) {
+    console.error('Error creating failed financial transaction:', error);
+  }
+}
+
+// Pomoćna funkcija za kreiranje finansijske transakcije
+async function createFinancialTransaction(workOrderId) {
+  try {
+    console.log('=== CREATING FINANCIAL TRANSACTION ===');
+    console.log('WorkOrder ID:', workOrderId);
+
+    // Proveri da li transakcija već postoji
+    const existingTransaction = await FinancialTransaction.findOne({ workOrderId: workOrderId });
+    if (existingTransaction) {
+      console.log('Financial transaction already exists for this work order');
+      await removeFailedFinancialTransaction(workOrderId);
+      return;
+    }
+
+    // VALIDACIJA 1: Pronađi radni nalog
+    const workOrder = await WorkOrder.findById(workOrderId).populate('technicianId technician2Id');
+    if (!workOrder) {
+      console.log('WorkOrder not found');
+      await createFailedFinancialTransaction(
+        workOrderId,
+        'WORK_ORDER_NOT_FOUND',
+        'Radni nalog nije pronađen u bazi podataka',
+        [{ field: 'workOrder', description: 'Radni nalog ne postoji' }]
+      );
+      return;
+    }
+
+    // VALIDACIJA 2: Pronađi WorkOrderEvidence
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId: workOrderId });
+    if (!evidence) {
+      console.log('WorkOrderEvidence not found');
+      await createFailedFinancialTransaction(
+        workOrderId,
+        'MISSING_WORK_ORDER_EVIDENCE',
+        'WorkOrderEvidence zapis nije pronađen za ovaj radni nalog',
+        [{ field: 'workOrderEvidence', description: 'Potrebno je kreirati WorkOrderEvidence zapis' }]
+      );
+      return;
+    }
+
+    // VALIDACIJA 3: CustomerStatus mora postojati
+    if (!evidence.customerStatus) {
+      console.log('CustomerStatus not set in evidence');
+      await createFailedFinancialTransaction(
+        workOrderId,
+        'MISSING_CUSTOMER_STATUS',
+        'CustomerStatus nije postavljen u WorkOrderEvidence zapisu',
+        [{ field: 'customerStatus', description: 'Potrebno je postaviti tip usluge (customerStatus) u evidenciji radnog naloga' }]
+      );
+      return;
+    }
+
+    // VALIDACIJA 4: Finansijske postavke moraju postojati
+    const settings = await FinancialSettings.findOne();
+    if (!settings) {
+      console.log('Financial settings not found');
+      await createFailedFinancialTransaction(
+        workOrderId,
+        'MISSING_FINANCIAL_SETTINGS',
+        'Finansijske postavke nisu konfigurisane u sistemu',
+        [{ field: 'financialSettings', description: 'Potrebno je konfigurisati finansijske postavke u Finansije sekciji' }]
+      );
+      return;
+    }
+
+    // VALIDACIJA 5: Osnovna cena mora postojati za dati tip usluge
+    const basePrice = settings.pricesByCustomerStatus[evidence.customerStatus] || 0;
+    console.log('Base price for', evidence.customerStatus, ':', basePrice);
+
+    if (basePrice === 0) {
+      console.log('No price configured for customer status:', evidence.customerStatus);
+      await createFailedFinancialTransaction(
+        workOrderId,
+        'NO_PRICE_FOR_CUSTOMER_STATUS',
+        `Cena nije postavljena za tip usluge: ${evidence.customerStatus}`,
+        [{ field: 'pricesByCustomerStatus', description: `Potrebno je postaviti cenu za tip usluge "${evidence.customerStatus}" u Finansije sekciji` }]
+      );
+      return;
+    }
+
+    // VALIDACIJA 6: Tehnički moraju biti dodeljeni
+    const technicians = [];
+    if (workOrder.technicianId) {
+      technicians.push({
+        technicianId: workOrder.technicianId._id,
+        name: workOrder.technicianId.name
+      });
+    }
+    if (workOrder.technician2Id) {
+      technicians.push({
+        technicianId: workOrder.technician2Id._id,
+        name: workOrder.technician2Id.name
+      });
+    }
+
+    if (technicians.length === 0) {
+      console.log('No technicians assigned to work order');
+      await createFailedFinancialTransaction(
+        workOrderId,
+        'NO_TECHNICIANS_ASSIGNED',
+        'Nijedan tehničar nije dodeljen radnom nalogu',
+        [{ field: 'technicianId', description: 'Potrebno je dodeliti najmanje jednog tehničara radnom nalogu' }]
+      );
+      return;
+    }
+
+    // VALIDACIJA 7: Cene za tehničare moraju postojati
+    let totalTechnicianExpenses = 0;
+    for (const tech of technicians) {
+      const technicianPricing = settings.technicianPrices.find(
+        tp => tp.technicianId.toString() === tech.technicianId.toString()
+      );
+
+      if (!technicianPricing || !technicianPricing.pricesByCustomerStatus[evidence.customerStatus]) {
+        console.log('Missing technician pricing for:', tech.name, 'customer status:', evidence.customerStatus);
+        await createFailedFinancialTransaction(
+          workOrderId,
+          'MISSING_TECHNICIAN_PRICING',
+          `Cena za tehničara "${tech.name}" nije postavljena za tip usluge: ${evidence.customerStatus}`,
+          [{ field: 'technicianPrices', description: `Potrebno je postaviti cenu za tehničara "${tech.name}" za tip usluge "${evidence.customerStatus}" u Finansije sekciji` }]
+        );
+        return;
+      }
+
+      const technicianPrice = technicianPricing.pricesByCustomerStatus[evidence.customerStatus];
+      const earnings = technicianPrice; // Svaki tehničar dobija punu svoju cenu
+      tech.earnings = earnings;
+      totalTechnicianExpenses += earnings;
+    }
+
+    // VALIDACIJA 8: Popust po opštini - proveri da li je potvrđen
+    let discount = 0;
+    if (workOrder.municipality) {
+      // Prvo proveri da li je popust potvrđen u MunicipalityDiscountConfirmation
+      const confirmedDiscount = await MunicipalityDiscountConfirmation.findOne({
+        municipality: workOrder.municipality
+      });
+
+      if (confirmedDiscount && confirmedDiscount.confirmedByAdmin) {
+        discount = confirmedDiscount.discountPercent;
+        console.log('Using confirmed discount for', workOrder.municipality, ':', discount, '%');
+      } else {
+        // Proveri da li postoji u settings
+        const municipalDiscount = settings.discountsByMunicipality.find(
+          d => d.municipality === workOrder.municipality
+        );
+
+        if (municipalDiscount && municipalDiscount.discountPercent >= 0) {
+          discount = municipalDiscount.discountPercent;
+          console.log('Using settings discount for', workOrder.municipality, ':', discount, '%');
+        } else {
+          // Nema popusta u settings - treba admin potvrda za 0% popust
+          console.log('Discount not confirmed for municipality:', workOrder.municipality);
+          await createFailedFinancialTransaction(
+            workOrderId,
+            'PENDING_DISCOUNT_CONFIRMATION',
+            `Popust za opštinu "${workOrder.municipality}" nije potvrđen od strane administratora`,
+            [{ field: 'municipalDiscount', description: `Potrebno je potvrditi popust za opštinu "${workOrder.municipality}"` }],
+            [{
+              municipality: workOrder.municipality,
+              suggestedDiscount: 0
+            }]
+          );
+          return;
+        }
+      }
+    }
+
+    // KALKULACIJA - Ispravka: Prihod = basePrice - discount, Rashod = technician expenses
+    const finalRevenue = basePrice * (1 - discount / 100); // PRIHOD
+    const totalExpenses = totalTechnicianExpenses; // RASHOD
+    const companyProfit = finalRevenue - totalExpenses; // PROFIT
+
+    console.log('Financial calculation:');
+    console.log('- Base price:', basePrice);
+    console.log('- Discount:', discount, '%');
+    console.log('- Final revenue:', finalRevenue);
+    console.log('- Technician expenses:', totalExpenses);
+    console.log('- Company profit:', companyProfit);
+
+    // Kreiraj transakciju
+    const transaction = new FinancialTransaction({
+      workOrderId: workOrderId,
+      customerStatus: evidence.customerStatus,
+      municipality: workOrder.municipality,
+      basePrice: basePrice,
+      discountPercent: discount,
+      discountAmount: basePrice * (discount / 100),
+      finalPrice: finalRevenue, // Ovo je PRIHOD
+      technicians: technicians,
+      totalTechnicianEarnings: totalExpenses, // Ovo je RASHOD
+      companyProfit: companyProfit,
+      verifiedAt: new Date()
+    });
+
+    await transaction.save();
+    console.log('Financial transaction created successfully');
+
+    // Ukloni failed zapis ako postoji
+    await removeFailedFinancialTransaction(workOrderId);
+
+  } catch (error) {
+    console.error('Error creating financial transaction:', error);
+    await createFailedFinancialTransaction(
+      workOrderId,
+      'OTHER_ERROR',
+      `Greška pri kreiranju finansijske transakcije: ${error.message}`,
+      [{ field: 'system', description: 'Sistemska greška - kontaktirajte administratora' }]
+    );
+  }
+}
 
 // Funkcija za kreiranje WorkOrderEvidence zapisa
 async function createWorkOrderEvidence(workOrder) {
@@ -207,14 +488,31 @@ const imageUpload = multer({
 // GET - Dohvati sve radne naloge
 router.get('/', async (req, res) => {
   try {
-    const workOrders = await WorkOrder.find()
+    const { recent } = req.query;
+    const startTime = Date.now();
+
+    let query = {};
+    let sort = { date: -1 }; // Default sort by newest first
+
+    // Recent filter for optimization
+    if (recent) {
+      const daysAgo = new Date();
+      daysAgo.setDate(daysAgo.getDate() - parseInt(recent));
+      query.date = { $gte: daysAgo };
+    }
+
+    const workOrders = await WorkOrder.find(query)
       .populate('technicianId', 'name _id')
       .populate('technician2Id', 'name _id')
       .populate('statusChangedBy', 'name _id')
       .populate('materials.material', 'type')
+      .sort(sort)
       .lean()
       .exec();
-      
+
+    const duration = Date.now() - startTime;
+    console.log(`Work orders query completed in ${duration}ms (${workOrders.length} orders)`);
+
     res.json(workOrders);
   } catch (error) {
     console.error('Greška pri dohvatanju radnih naloga:', error);
@@ -283,14 +581,31 @@ router.get('/technician/:technicianId/overdue', async (req, res) => {
 // GET - Dohvati nedodeljene radne naloge
 router.get('/unassigned', async (req, res) => {
   try {
-    const unassignedOrders = await WorkOrder.find({
+    const { recent } = req.query;
+    const startTime = Date.now();
+
+    let query = {
       $or: [
         { technicianId: null },
         { technicianId: { $exists: false } }
       ]
-    })
-    .lean()
-    .exec();
+    };
+
+    // Recent filter for optimization
+    if (recent) {
+      const daysAgo = new Date();
+      daysAgo.setDate(daysAgo.getDate() - parseInt(recent));
+      query.date = { $gte: daysAgo };
+    }
+
+    const unassignedOrders = await WorkOrder.find(query)
+      .sort({ date: -1 })
+      .lean()
+      .exec();
+
+    const duration = Date.now() - startTime;
+    console.log(`Unassigned orders query completed in ${duration}ms (${unassignedOrders.length} orders)`);
+
     res.json(unassignedOrders);
   } catch (error) {
     console.error('Greška pri dohvatanju nedodeljenih radnih naloga:', error);
@@ -979,7 +1294,7 @@ router.put('/:id', async (req, res) => {
     // Check if status was changed to "zavrsen" and create notifications for admins
     const oldStatus = workOrder.status;
     const newStatus = updatedWorkOrder.status;
-    
+
     if (oldStatus !== 'zavrsen' && newStatus === 'zavrsen') {
       // Kreiraj notifikaciju za admin kada se radni nalog označi kao završen
       try {
@@ -1016,6 +1331,15 @@ router.put('/:id', async (req, res) => {
         console.error('Greška pri kreiranju notifikacije:', notificationError);
         // Ne prekidamo proces zbog greške u notifikaciji
       }
+    }
+
+    // FINANSIJSKA KALKULACIJA - Kada admin promeni status na 'zavrsen' i radni nalog je verifikovan
+    console.log('=== ADMIN UPDATE - Checking for financial calculation ===');
+    if (newStatus === 'zavrsen' && updatedWorkOrder.verified) {
+      console.log('Work order is completed and verified by admin update, creating financial transaction...');
+      await createFinancialTransaction(updatedWorkOrder._id);
+    } else {
+      console.log('Work order not ready for financial calculation - Status:', newStatus, 'Verified:', updatedWorkOrder.verified);
     }
 
     // Ažuriranje WorkOrderEvidence zapisa
@@ -1189,6 +1513,15 @@ router.put('/:id/technician-update', async (req, res) => {
           console.error('Greška pri kreiranju notifikacije za završetak radnog naloga:', notificationError);
           console.error('Error stack:', notificationError.stack);
           // Ne prekidamo proces zbog greške u notifikaciji
+        }
+
+        // FINANSIJSKA KALKULACIJA - Kada tehničar završi radni nalog i on je verifikovan
+        console.log('=== TECHNICIAN UPDATE - Checking for financial calculation ===');
+        if (workOrder.verified) {
+          console.log('Work order is completed and verified by technician update, creating financial transaction...');
+          await createFinancialTransaction(workOrder._id);
+        } else {
+          console.log('Work order completed but not yet verified - Status:', status, 'Verified:', workOrder.verified);
         }
       } 
       // Ako je status promenjen na "odlozen", dodaj novo vreme i datum
@@ -1460,13 +1793,22 @@ router.put('/:id/verify', async (req, res) => {
     // koji će ažurirati samo navedena polja
     const updatedWorkOrder = await WorkOrder.findByIdAndUpdate(
       id,
-      { 
+      {
         verified: true,
         verifiedAt: new Date()
       },
       { new: true } // Vraća ažurirani dokument
     );
-    
+
+    // FINANSIJSKA KALKULACIJA - Kada admin verifikuje radni nalog
+    console.log('=== ADMIN VERIFICATION - Checking for financial calculation ===');
+    if (updatedWorkOrder && updatedWorkOrder.status === 'zavrsen' && updatedWorkOrder.verified) {
+      console.log('Work order is completed and verified, creating financial transaction...');
+      await createFinancialTransaction(updatedWorkOrder._id);
+    } else {
+      console.log('Work order not ready for financial calculation - Status:', updatedWorkOrder?.status, 'Verified:', updatedWorkOrder?.verified);
+    }
+
     res.json({
       message: 'Radni nalog je uspešno verifikovan',
       workOrder: updatedWorkOrder
@@ -2485,4 +2827,6 @@ router.get('/debug/overdue-status', async (req, res) => {
   }
 });
 
+// Eksportuj funkciju za korišćenje u drugim rutama
 module.exports = router;
+module.exports.createFinancialTransaction = createFinancialTransaction;

@@ -15,13 +15,13 @@ const auth = async (req, res, next) => {
     // Verifikuj token
     const decoded = jwt.verify(token, JWT_SECRET);
     
-    // Ako je admin, propusti dalje
-    if (decoded.role === 'admin') {
+    // Ako je admin ili superadmin, propusti dalje
+    if (decoded.role === 'admin' || decoded.role === 'superadmin') {
       req.user = {
         _id: decoded._id,
         id: decoded._id.toString(), // Dodaj id za konsistentnost
         name: decoded.name,
-        role: 'admin'
+        role: decoded.role
       };
       return next();
     }
@@ -49,38 +49,47 @@ const auth = async (req, res, next) => {
 };
 
 const isAdmin = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
     return next();
   }
-  
+
   return res.status(403).json({ error: 'Nemate dozvolu za pristup ovom resursu.' });
 };
 
 const isTechnicianOrAdmin = (req, res, next) => {
-  if (req.user && (req.user.role === 'admin' || req.user.role === 'technician')) {
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'technician')) {
     return next();
   }
-  
+
   return res.status(403).json({ error: 'Nemate dozvolu za pristup ovom resursu.' });
 };
 
 const isTechnicianOwner = (req, res, next) => {
   const requestedTechId = req.params.id || req.params.technicianId;
-  
-  if (req.user.role === 'admin') {
+
+  if (req.user.role === 'admin' || req.user.role === 'superadmin') {
     return next();
   }
-  
+
   if (req.user.role === 'technician' && (req.user._id === requestedTechId || req.user.id === requestedTechId)) {
     return next();
   }
-  
+
   return res.status(403).json({ error: 'Nemate dozvolu za pristup tuđim podacima.' });
+};
+
+const isSuperAdmin = (req, res, next) => {
+  if (req.user && req.user.role === 'superadmin') {
+    return next();
+  }
+
+  return res.status(403).json({ error: 'Pristup dozvoljen samo SuperAdmin korisnicima.' });
 };
 
 module.exports = {
   auth,
   isAdmin,
   isTechnicianOrAdmin,
-  isTechnicianOwner
+  isTechnicianOwner,
+  isSuperAdmin
 };
