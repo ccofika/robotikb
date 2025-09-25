@@ -326,4 +326,33 @@ router.post('/confirm-discount', auth, isSuperAdmin, async (req, res) => {
   }
 });
 
+// POST /api/finances/exclude-from-finances/:workOrderId - Isključiti iz finansijskih kalkulacija
+router.post('/exclude-from-finances/:workOrderId', auth, isSuperAdmin, async (req, res) => {
+  try {
+    const { workOrderId } = req.params;
+
+    // Pronađi neuspešnu transakciju
+    const failedTransaction = await FailedFinancialTransaction.findOne({ workOrderId });
+    if (!failedTransaction) {
+      return res.status(404).json({ error: 'Neuspešna transakcija nije pronađena' });
+    }
+
+    // Označiti kao potpuno isključen iz finansija
+    failedTransaction.excludedFromFinances = true;
+    failedTransaction.excludedAt = new Date();
+    failedTransaction.excludedBy = req.user.name || 'SuperAdmin';
+    failedTransaction.resolved = true; // Takođe označi kao razrešen
+    failedTransaction.resolvedAt = new Date();
+    await failedTransaction.save();
+
+    res.json({
+      message: 'Radni nalog je potpuno isključen iz finansijskih kalkulacija'
+    });
+
+  } catch (error) {
+    console.error('Greška pri isključivanju iz finansija:', error);
+    res.status(500).json({ error: 'Greška pri isključivanju radnog naloga iz finansija' });
+  }
+});
+
 module.exports = router;

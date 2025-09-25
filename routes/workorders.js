@@ -101,6 +101,16 @@ async function createFinancialTransaction(workOrderId) {
     console.log('=== CREATING FINANCIAL TRANSACTION ===');
     console.log('WorkOrder ID:', workOrderId);
 
+    // PROVERA: Da li je radni nalog isključen iz finansijskih kalkulacija
+    const excludedTransaction = await FailedFinancialTransaction.findOne({
+      workOrderId: workOrderId,
+      excludedFromFinances: true
+    });
+    if (excludedTransaction) {
+      console.log('Work order is excluded from financial calculations');
+      return;
+    }
+
     // Proveri da li transakcija već postoji
     const existingTransaction = await FinancialTransaction.findOne({ workOrderId: workOrderId });
     if (existingTransaction) {

@@ -63,6 +63,17 @@ const FailedFinancialTransactionSchema = new Schema({
   requiresAdminAction: {
     type: Boolean,
     default: false
+  },
+  // Da li je radni nalog potpuno isključen iz finansijskih kalkulacija
+  excludedFromFinances: {
+    type: Boolean,
+    default: false
+  },
+  excludedAt: {
+    type: Date
+  },
+  excludedBy: {
+    type: String
   }
 }, {
   timestamps: true

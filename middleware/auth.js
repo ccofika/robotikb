@@ -30,7 +30,10 @@ const auth = async (req, res, next) => {
         }
         // Nastavi sa obrađivanjem kao da je token važeći
       } else {
-        console.error('Greška pri autentifikaciji:', error);
+        // Ne loguj TokenExpiredError jer je to normalno ponašanje
+        if (error.name !== 'TokenExpiredError') {
+          console.error('Greška pri autentifikaciji:', error);
+        }
         return res.status(401).json({ error: 'Pristup odbijen. Neispravan token.' });
       }
     }
