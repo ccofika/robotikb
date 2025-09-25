@@ -189,10 +189,14 @@ router.post('/login', async (req, res) => {
 });
 
 // POST - Refresh token endpoint (NO AUTH MIDDLEWARE - handles expired tokens internally)
-router.post('/refresh', async (req, res) => {
+router.post('/refresh-token', async (req, res) => {
+  console.log('🔄 REFRESH TOKEN endpoint called');
+  console.log('🔄 Request path:', req.path);
+  console.log('🔄 Request originalUrl:', req.originalUrl);
   try {
     const authHeader = req.header('Authorization');
     const token = authHeader && authHeader.replace('Bearer ', '');
+    console.log('🔄 Token received:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
 
     if (!token) {
       return res.status(401).json({ error: 'Token nije obezbeđen' });
@@ -293,6 +297,13 @@ router.post('/refresh', async (req, res) => {
     console.error('Greška pri obnovi tokena:', error);
     res.status(500).json({ error: 'Greška pri obnovi tokena' });
   }
+});
+
+// POST - Legacy refresh token endpoint (backward compatibility)
+router.post('/refresh', async (req, res) => {
+  // Redirect to new endpoint
+  req.url = '/refresh-token';
+  return router.handle(req, res);
 });
 
 module.exports = router;
