@@ -7,13 +7,28 @@ const auth = async (req, res, next) => {
   try {
     // Dohvati token iz header-a
     const token = req.header('Authorization')?.replace('Bearer ', '');
-    
+
     if (!token) {
       return res.status(401).json({ error: 'Pristup odbijen. Token nije obezbeđen.' });
     }
-    
-    // Verifikuj token
-    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Verifikuj token - za refresh endpoint dopusti i expired token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (error) {
+      if (error.name === 'TokenExpiredError' && (req.path === '/refresh' || req.originalUrl === '/api/auth/refresh')) {
+        // Za refresh endpoint, dekodira expired token bez verifikacije
+        decoded = jwt.decode(token);
+        if (!decoded) {
+          return res.status(401).json({ error: 'Token se ne može dekodirati.' });
+        }
+        // Nastavi sa obrađivanjem kao da je token važeći
+      } else {
+        console.error('Greška pri autentifikaciji:', error);
+        return res.status(401).json({ error: 'Pristup odbijen. Neispravan token.' });
+      }
+    }
     
     // Ako je admin ili superadmin, propusti dalje
     if (decoded.role === 'admin' || decoded.role === 'superadmin') {

@@ -188,7 +188,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// POST - Refresh token endpoint
+// POST - Refresh token endpoint (NO AUTH MIDDLEWARE - handles expired tokens internally)
 router.post('/refresh', async (req, res) => {
   try {
     const authHeader = req.header('Authorization');
