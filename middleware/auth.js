@@ -1,7 +1,12 @@
 const jwt = require('jsonwebtoken');
 const { Technician } = require('../models');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'telco-super-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  console.error('❌ FATAL: JWT_SECRET environment variable is not set!');
+  process.exit(1);
+}
 
 const auth = async (req, res, next) => {
   try {

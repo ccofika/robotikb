@@ -9,7 +9,12 @@ const { uploadImage } = require('../config/cloudinary');
 const emailService = require('../services/emailService');
 const { createInventorySummary } = require('../utils/emailTemplates');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'telco-super-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  console.error('❌ FATAL: JWT_SECRET environment variable is not set!');
+  process.exit(1);
+}
 
 // Helper funkcija da dobije korisnika iz tokena
 const getUserFromToken = async (req) => {

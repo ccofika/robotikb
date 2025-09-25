@@ -4,7 +4,12 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { Technician } = require('../models');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'telco-super-secret-key';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  console.error('❌ FATAL: JWT_SECRET environment variable is not set!');
+  process.exit(1);
+}
 
 // POST - Login za tehničara
 router.post('/login', async (req, res) => {
@@ -190,13 +195,15 @@ router.post('/login', async (req, res) => {
 
 // POST - Refresh token endpoint (NO AUTH MIDDLEWARE - handles expired tokens internally)
 router.post('/refresh-token', async (req, res) => {
-  console.log('🔄 REFRESH TOKEN endpoint called');
+  console.log('🔄 REFRESH TOKEN endpoint called at', new Date().toISOString());
   console.log('🔄 Request path:', req.path);
   console.log('🔄 Request originalUrl:', req.originalUrl);
+  console.log('🔄 User-Agent:', req.get('User-Agent')?.substring(0, 50) + '...');
+
   try {
     const authHeader = req.header('Authorization');
     const token = authHeader && authHeader.replace('Bearer ', '');
-    console.log('🔄 Token received:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
+    console.log('🔄 Token received:', token ? `${token.substring(0, 20)}...${token.substring(token.length - 10)}` : 'NO TOKEN');
 
     if (!token) {
       return res.status(401).json({ error: 'Token nije obezbeđen' });
@@ -286,6 +293,8 @@ router.post('/refresh-token', async (req, res) => {
     } else {
       return res.status(401).json({ error: 'Nepoznata uloga' });
     }
+
+    console.log('✅ Token successfully refreshed for user:', userData.name, 'role:', userData.role);
 
     res.json({
       message: 'Token je uspešno obnovljen',
