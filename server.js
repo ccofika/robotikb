@@ -43,28 +43,15 @@ app.use('/api', ensureDBConnection);
 // Slow query detection middleware (log queries > 1000ms)
 app.use('/api', logSlowQueries(1000));
 
-// Enhanced cache middleware za GET zahteve
+// Disable caching completely for instant data updates
 app.use((req, res, next) => {
-  if (req.method === 'GET') {
-    if (
-      req.url.includes('/api/equipment') ||
-      req.url.includes('/api/materials') ||
-      req.url.includes('/api/technicians') ||
-      req.url.includes('/api/workorders/statistics')
-    ) {
-      // Cache za 5 minuta za često korišćene API pozive
-      res.set('Cache-Control', 'public, max-age=300');
-    } else if (
-      req.url.includes('/api/logs/dashboard') ||
-      req.url.includes('/api/workorders?recent')
-    ) {
-      // Kratki cache za dashboard i recent podatke (1 minut)
-      res.set('Cache-Control', 'public, max-age=60');
-    } else if (req.url.includes('/api/users?statsOnly=true')) {
-      // Cache za user stats (2 minuta)
-      res.set('Cache-Control', 'public, max-age=120');
-    }
-  }
+  // Force fresh data on every request
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
   next();
 });
 

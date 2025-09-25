@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const FailedFinancialTransaction = require('../models/FailedFinancialTransaction');
+const WorkOrder = require('../models/WorkOrder');
 
 async function cleanFailedTransactions() {
   try {
