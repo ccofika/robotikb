@@ -24,7 +24,13 @@ class EmailService {
         html: template.html
       };
 
-      const result = await transporter.sendMail(mailOptions);
+      // Dodaj timeout od 10 sekundi za email slanje
+      const result = await Promise.race([
+        transporter.sendMail(mailOptions),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Email sending timeout after 10 seconds')), 10000)
+        )
+      ]);
 
       console.log(`✅ Email poslat tehničaru ${technician.name} (${technician.gmail}):`, result.messageId);
 

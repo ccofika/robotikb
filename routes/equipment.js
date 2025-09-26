@@ -342,27 +342,34 @@ router.put('/:id', async (req, res) => {
           // Kreiranje sumirane tabele inventara
           const inventorySummaryData = createInventorySummary(currentInventory);
 
-          const emailResult = await emailService.sendEmailToTechnician(
-            technicianId,
-            'equipmentAssignment',
-            {
-              technicianName: technician.name,
-              assignmentType: 'edit',
-              equipment: [{
-                category: equipment.category,
-                description: equipment.description,
-                serialNumber: equipment.serialNumber,
-                status: equipment.status
-              }],
-              ...inventorySummaryData
+          // Send email asynchronously (non-blocking)
+          setImmediate(async () => {
+            try {
+              const emailResult = await emailService.sendEmailToTechnician(
+                technicianId,
+                'equipmentAssignment',
+                {
+                  technicianName: technician.name,
+                  assignmentType: 'edit',
+                  equipment: [{
+                    category: equipment.category,
+                    description: equipment.description,
+                    serialNumber: equipment.serialNumber,
+                    status: equipment.status
+                  }],
+                  ...inventorySummaryData
+                }
+              );
+
+              if (emailResult.success) {
+                console.log(`✅ Email sent to technician ${technician.name} about equipment location change`);
+              } else {
+                console.error('❌ Failed to send email notification:', emailResult.error);
+              }
+            } catch (emailError) {
+              console.error('❌ Error sending equipment assignment email:', emailError.message);
             }
-          );
-          
-          if (emailResult.success) {
-            console.log(`Email sent to technician ${technician.name} about equipment location change`);
-          } else {
-            console.error('Failed to send email notification:', emailResult.error);
-          }
+          });
         }
       }
     } catch (emailError) {

@@ -1025,41 +1025,43 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         }
       }
       
-      // Send emails to each technician with their assigned work orders
-      for (const [techId, workOrders] of Object.entries(workOrdersByTechnician)) {
-        try {
-          const technician = await Technician.findById(techId);
-          if (technician && technician.gmail && workOrders.length > 0) {
-            const emailResult = await emailService.sendEmailToTechnician(
-              techId,
-              'workOrderAssignment',
-              {
-                technicianName: technician.name,
-                workOrders: workOrders.map(order => ({
-                  date: order.date,
-                  time: order.time,
-                  municipality: order.municipality,
-                  address: order.address,
-                  type: order.type,
-                  userName: order.userName,
-                  userPhone: order.userPhone,
-                  details: order.details,
-                  technology: order.technology,
-                  tisId: order.tisId
-                }))
+      // Send emails to each technician with their assigned work orders (asinhrono)
+      setImmediate(async () => {
+        for (const [techId, workOrders] of Object.entries(workOrdersByTechnician)) {
+          try {
+            const technician = await Technician.findById(techId);
+            if (technician && technician.gmail && workOrders.length > 0) {
+              const emailResult = await emailService.sendEmailToTechnician(
+                techId,
+                'workOrderAssignment',
+                {
+                  technicianName: technician.name,
+                  workOrders: workOrders.map(order => ({
+                    date: order.date,
+                    time: order.time,
+                    municipality: order.municipality,
+                    address: order.address,
+                    type: order.type,
+                    userName: order.userName,
+                    userPhone: order.userPhone,
+                    details: order.details,
+                    technology: order.technology,
+                    tisId: order.tisId
+                  }))
+                }
+              );
+
+              if (emailResult.success) {
+                console.log(`✅ Bulk work order assignment email sent to technician ${technician.name} about ${workOrders.length} work orders`);
+              } else {
+                console.error('❌ Failed to send bulk work order assignment email notification:', emailResult.error);
               }
-            );
-            
-            if (emailResult.success) {
-              console.log(`Bulk work order assignment email sent to technician ${technician.name} about ${workOrders.length} work orders`);
-            } else {
-              console.error('Failed to send bulk work order assignment email notification:', emailResult.error);
             }
+          } catch (emailError) {
+            console.error(`❌ Error sending email to technician ${techId}:`, emailError.message);
           }
-        } catch (emailError) {
-          console.error(`Error sending email to technician ${techId}:`, emailError);
         }
-      }
+      });
     } catch (emailError) {
       console.error('Error sending bulk work order assignment emails:', emailError);
       // Ne prekidamo proces ako email ne uspe
@@ -1222,34 +1224,40 @@ router.post('/', async (req, res) => {
         }
       }
       
-      // Send emails to all assigned technicians
-      for (const tech of techniciansToNotify) {
-        const emailResult = await emailService.sendEmailToTechnician(
-          tech.id,
-          'workOrderAssignment',
-          {
-            technicianName: tech.name,
-            workOrders: [{
-              date: savedWorkOrder.date,
-              time: savedWorkOrder.time,
-              municipality: savedWorkOrder.municipality,
-              address: savedWorkOrder.address,
-              type: savedWorkOrder.type,
-              userName: savedWorkOrder.userName,
-              userPhone: savedWorkOrder.userPhone,
-              details: savedWorkOrder.details,
-              technology: savedWorkOrder.technology,
-              tisId: savedWorkOrder.tisId
-            }]
+      // Send emails to all assigned technicians (asinhrono - ne čeka)
+      setImmediate(async () => {
+        for (const tech of techniciansToNotify) {
+          try {
+            const emailResult = await emailService.sendEmailToTechnician(
+              tech.id,
+              'workOrderAssignment',
+              {
+                technicianName: tech.name,
+                workOrders: [{
+                  date: savedWorkOrder.date,
+                  time: savedWorkOrder.time,
+                  municipality: savedWorkOrder.municipality,
+                  address: savedWorkOrder.address,
+                  type: savedWorkOrder.type,
+                  userName: savedWorkOrder.userName,
+                  userPhone: savedWorkOrder.userPhone,
+                  details: savedWorkOrder.details,
+                  technology: savedWorkOrder.technology,
+                  tisId: savedWorkOrder.tisId
+                }]
+              }
+            );
+
+            if (emailResult.success) {
+              console.log(`✅ Work order assignment email sent to technician ${tech.name}`);
+            } else {
+              console.error('❌ Failed to send work order assignment email notification:', emailResult.error);
+            }
+          } catch (emailError) {
+            console.error(`❌ Error sending email to technician ${tech.name}:`, emailError.message);
           }
-        );
-        
-        if (emailResult.success) {
-          console.log(`Work order assignment email sent to technician ${tech.name} about new work order`);
-        } else {
-          console.error('Failed to send work order assignment email notification:', emailResult.error);
         }
-      }
+      });
     } catch (emailError) {
       console.error('Error sending work order assignment email:', emailError);
       // Ne prekidamo proces ako email ne uspe
