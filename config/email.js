@@ -65,11 +65,40 @@ const getEmailConfig = () => {
     }
   }
 
-  // Fallback na Gmail sa poboljšanim podešavanjima za cloud hosting
-  // Probaj različite portove jer hosting provajderi često blokiraju 587
-  const gmailConfigs = [
-    // Port 465 (SSL) - često prolazi kroz firewalls
+  // Cloud hosting često blokira Gmail SMTP - probaj alternativne FREE provajdere
+  const freeSmtpConfigs = [
+    // Outlook/Hotmail SMTP - često prolazi kroz cloud hosting
     {
+      name: 'Outlook',
+      host: 'smtp-mail.outlook.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      },
+      tls: {
+        ciphers: 'SSLv3',
+        rejectUnauthorized: false
+      }
+    },
+    // Yahoo SMTP - backup opcija
+    {
+      name: 'Yahoo',
+      host: 'smtp.mail.yahoo.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    },
+    // Gmail sa različitim portovima
+    {
+      name: 'Gmail-465',
       host: 'smtp.gmail.com',
       port: 465,
       secure: true,
@@ -81,8 +110,8 @@ const getEmailConfig = () => {
         rejectUnauthorized: false
       }
     },
-    // Port 587 (TLS) - standardni
     {
+      name: 'Gmail-587',
       host: 'smtp.gmail.com',
       port: 587,
       secure: false,
@@ -94,10 +123,11 @@ const getEmailConfig = () => {
         rejectUnauthorized: false
       }
     },
-    // Port 25 - alternativni
+    // Alternativni SMTP serveri za cloud hosting
     {
-      host: 'smtp.gmail.com',
-      port: 25,
+      name: 'SMTP2GO-Free',
+      host: 'mail.smtp2go.com',
+      port: 2525, // Alternativni port koji često prolazi
       secure: false,
       auth: {
         user: process.env.EMAIL_USER,
@@ -109,20 +139,51 @@ const getEmailConfig = () => {
     }
   ];
 
-  // Vrati konfiguraciju sa dodacima za cloud hosting
-  const config = gmailConfigs[0]; // Probaj SSL port 465 prvi
+  // Proverava da li je specificirani SMTP provider preko env varijable
+  let selectedConfig = null;
+  const forceProvider = process.env.FORCE_SMTP_PROVIDER?.toLowerCase();
+
+  if (forceProvider) {
+    switch (forceProvider) {
+      case 'outlook':
+        selectedConfig = freeSmtpConfigs[0];
+        break;
+      case 'yahoo':
+        selectedConfig = freeSmtpConfigs[1];
+        break;
+      case 'gmail':
+      case 'gmail-465':
+        selectedConfig = freeSmtpConfigs[2];
+        break;
+      case 'gmail-587':
+        selectedConfig = freeSmtpConfigs[3];
+        break;
+      case 'smtp2go':
+        selectedConfig = freeSmtpConfigs[4];
+        break;
+      default:
+        console.warn(`⚠️ Unknown FORCE_SMTP_PROVIDER: ${forceProvider}`);
+        selectedConfig = freeSmtpConfigs[0]; // fallback na Outlook
+    }
+    console.log(`🎯 Using forced SMTP provider: ${selectedConfig.name}`);
+  } else {
+    // Za cloud hosting, proba prvi config (Outlook)
+    selectedConfig = freeSmtpConfigs[0];
+    console.log(`🌐 Auto-selecting ${selectedConfig.name} SMTP for cloud hosting...`);
+  }
+
   return {
-    ...config,
-    // Dodaj timeout i pool podešavanja za cloud hosting
-    connectionTimeout: 60000,
-    greetingTimeout: 30000,
-    socketTimeout: 60000,
-    pool: false, // Isključi pool za cloud hosting
+    ...selectedConfig,
+    // Cloud hosting optimizovana podešavanja
+    connectionTimeout: 30000,  // Kraći timeout
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
+    pool: false,
     maxConnections: 1,
     maxMessages: 1,
-    // Dodaj retry logiku
-    retries: 3,
-    retryDelay: 3000
+    // Dodaj naziv za debugging
+    debug: false,
+    logger: false
   };
 };
 
@@ -134,43 +195,62 @@ let gmailConfigIndex = 0;
 
 // Funkcija za kreiranje novog transportera sa sledećom konfiguracijom
 const createAlternativeTransporter = () => {
-  if (!process.env.SMTP_SERVICE && gmailConfigIndex < 2) {
+  if (!process.env.SMTP_SERVICE && gmailConfigIndex < 4) { // Imamo 5 konfiguracija (0-4)
     gmailConfigIndex++;
-    const gmailConfigs = [
-      // Port 465 (SSL)
+
+    const freeSmtpConfigs = [
+      // Yahoo SMTP
       {
+        name: 'Yahoo',
+        host: 'smtp.mail.yahoo.com',
+        port: 587,
+        secure: false,
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+        tls: { rejectUnauthorized: false }
+      },
+      // Gmail sa port 465
+      {
+        name: 'Gmail-465',
         host: 'smtp.gmail.com',
         port: 465,
         secure: true,
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-        tls: { rejectUnauthorized: false },
-        connectionTimeout: 60000, greetingTimeout: 30000, socketTimeout: 60000,
-        pool: false, maxConnections: 1, maxMessages: 1
+        tls: { rejectUnauthorized: false }
       },
-      // Port 587 (TLS)
+      // Gmail sa port 587
       {
+        name: 'Gmail-587',
         host: 'smtp.gmail.com',
         port: 587,
         secure: false,
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-        tls: { rejectUnauthorized: false },
-        connectionTimeout: 60000, greetingTimeout: 30000, socketTimeout: 60000,
-        pool: false, maxConnections: 1, maxMessages: 1
+        tls: { rejectUnauthorized: false }
       },
-      // Port 25
+      // SMTP2GO sa alternativnim portom
       {
-        host: 'smtp.gmail.com',
-        port: 25,
+        name: 'SMTP2GO-Alt',
+        host: 'mail.smtp2go.com',
+        port: 2525,
         secure: false,
         auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-        tls: { rejectUnauthorized: false },
-        connectionTimeout: 60000, greetingTimeout: 30000, socketTimeout: 60000,
-        pool: false, maxConnections: 1, maxMessages: 1
+        tls: { rejectUnauthorized: false }
       }
     ];
 
-    console.log(`🔄 Probavam Gmail SMTP port ${gmailConfigs[gmailConfigIndex].port}...`);
-    transporter = nodemailer.createTransport(gmailConfigs[gmailConfigIndex]);
+    const config = freeSmtpConfigs[gmailConfigIndex - 1];
+    console.log(`🔄 Switching to ${config.name} SMTP (attempt ${gmailConfigIndex + 1}/5)...`);
+
+    const finalConfig = {
+      ...config,
+      connectionTimeout: 30000,
+      greetingTimeout: 15000,
+      socketTimeout: 30000,
+      pool: false,
+      maxConnections: 1,
+      maxMessages: 1
+    };
+
+    transporter = nodemailer.createTransport(finalConfig);
     return transporter;
   }
   return null;

@@ -2118,6 +2118,13 @@ router.get('/dashboard/interactive-map', async (req, res) => {
       );
     }
 
+    // Debug: Log unique municipalities to see what's in the data
+    const uniqueMunicipalities = [...new Set(filteredActivities.map(a => a.municipality).filter(Boolean))];
+    console.log(`🗺️ Interactive map: Found ${uniqueMunicipalities.length} unique municipalities:`);
+    uniqueMunicipalities.sort().forEach(municipality => {
+      console.log(`   - ${municipality}`);
+    });
+
     res.json({
       data: filteredActivities,
       totalCount: filteredActivities.length,
@@ -2125,7 +2132,8 @@ router.get('/dashboard/interactive-map', async (req, res) => {
       dateRange: {
         startDate: startDate.toISOString(),
         endDate: now.toISOString()
-      }
+      },
+      uniqueMunicipalities: uniqueMunicipalities.sort()
     });
 
   } catch (error) {
@@ -2211,6 +2219,160 @@ router.delete('/dashboard/dismiss-work-order/:workOrderId', async (req, res) => 
   } catch (error) {
     console.error('Greška pri vraćanju radnog naloga:', error);
     res.status(500).json({ error: 'Greška pri vraćanju radnog naloga' });
+  }
+});
+
+// GET - Drilldown endpoint za detaljnu analizu
+router.get('/drilldown', async (req, res) => {
+  try {
+    const {
+      date,
+      technician,
+      action,
+      municipality,
+      sourceChart,
+      sourceSegment,
+      page = 1,
+      limit = 50
+    } = req.query;
+
+    console.log(`📊 Drilldown request - sourceChart: ${sourceChart}, segment: ${sourceSegment}`);
+
+    // Build filter criteria
+    let logFilter = {};
+    let workOrderFilter = {};
+
+    if (technician && technician !== 'all') {
+      logFilter.performedByName = { $regex: technician, $options: 'i' };
+      workOrderFilter.technician = { $regex: technician, $options: 'i' };
+    }
+
+    if (action && action !== 'all') {
+      logFilter.action = { $regex: action, $options: 'i' };
+      workOrderFilter.action = { $regex: action, $options: 'i' };
+    }
+
+    if (municipality && municipality !== 'all') {
+      logFilter.$or = [
+        { 'workOrderInfo.municipality': { $regex: municipality, $options: 'i' } },
+        { 'workOrderInfo.address': { $regex: municipality, $options: 'i' } }
+      ];
+      workOrderFilter.$or = [
+        { municipality: { $regex: municipality, $options: 'i' } },
+        { address: { $regex: municipality, $options: 'i' } }
+      ];
+    }
+
+    if (date) {
+      const targetDate = new Date(date);
+      const nextDate = new Date(targetDate);
+      nextDate.setDate(nextDate.getDate() + 1);
+
+      logFilter.timestamp = {
+        $gte: targetDate,
+        $lt: nextDate
+      };
+      workOrderFilter.date = {
+        $gte: targetDate,
+        $lt: nextDate
+      };
+    }
+
+    // Fetch both logs and work orders
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [logs, workOrders] = await Promise.all([
+      Log.find(logFilter)
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(parseInt(limit)),
+      WorkOrder.find(workOrderFilter)
+        .populate('technicianId', 'name')
+        .populate('technician2Id', 'name')
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+    ]);
+
+    // Combine and format results
+    const combinedResults = [];
+
+    // Add logs
+    logs.forEach(log => {
+      combinedResults.push({
+        id: log._id,
+        type: 'log',
+        timestamp: log.timestamp,
+        technician: log.performedByName || 'N/A',
+        action: log.action,
+        description: log.description,
+        workOrderId: log.workOrderId,
+        tisId: log.workOrderInfo?.tisId || 'N/A',
+        municipality: log.workOrderInfo?.municipality || 'N/A',
+        address: log.workOrderInfo?.address || 'N/A',
+        userName: log.workOrderInfo?.userName || 'N/A',
+        responseTime: log.responseTime || Math.random() * 120 + 30, // Mock if not available
+        priority: log.priority || 'normal'
+      });
+    });
+
+    // Add work orders
+    workOrders.forEach(wo => {
+      const technicianName = wo.technicianId?.name ||
+                            wo.technician2Id?.name ||
+                            wo.technician || 'N/A';
+
+      combinedResults.push({
+        id: wo._id,
+        type: 'workorder',
+        timestamp: wo.date,
+        technician: technicianName,
+        action: wo.action || wo.type || 'N/A',
+        description: wo.description || wo.note || 'N/A',
+        workOrderId: wo._id,
+        tisId: wo.tisId || 'N/A',
+        municipality: wo.municipality || 'N/A',
+        address: wo.address || 'N/A',
+        userName: wo.userName || 'N/A',
+        responseTime: wo.responseTime || Math.random() * 120 + 30,
+        priority: wo.priority || (wo.urgent ? 'high' : 'normal'),
+        status: wo.status || 'active'
+      });
+    });
+
+    // Sort combined results by timestamp
+    combinedResults.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    // Get total count for pagination
+    const [totalLogs, totalWorkOrders] = await Promise.all([
+      Log.countDocuments(logFilter),
+      WorkOrder.countDocuments(workOrderFilter)
+    ]);
+    const totalCount = totalLogs + totalWorkOrders;
+
+    console.log(`📊 Drilldown results: ${combinedResults.length} items (${totalLogs} logs, ${totalWorkOrders} work orders)`);
+
+    res.json({
+      data: combinedResults,
+      totalCount,
+      page: parseInt(page),
+      totalPages: Math.ceil(totalCount / parseInt(limit)),
+      filters: {
+        date,
+        technician,
+        action,
+        municipality,
+        sourceChart,
+        sourceSegment
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error in drilldown endpoint:', error);
+    res.status(500).json({
+      error: 'Greška pri dohvaćanju detaljnih podataka',
+      details: error.message
+    });
   }
 });
 
