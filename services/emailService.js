@@ -1,4 +1,5 @@
-const transporter = require('../config/email');
+const emailConfig = require('../config/email');
+const transporter = emailConfig;
 const { createEmailTemplate } = require('../utils/emailTemplates');
 const Technician = require('../models/Technician');
 
@@ -24,13 +25,40 @@ class EmailService {
         html: template.html
       };
 
-      // Pokušaj slanje emaila sa timeout-om
-      const result = await Promise.race([
-        transporter.sendMail(mailOptions),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Email sending timeout after 30 seconds')), 30000)
-        )
-      ]);
+      // Pokušaj slanje emaila sa timeout-om i fallback logikom
+      let result;
+      let currentTransporter = transporter;
+      let attempts = 0;
+      const maxAttempts = 3;
+
+      while (attempts < maxAttempts) {
+        try {
+          result = await Promise.race([
+            currentTransporter.sendMail(mailOptions),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Email sending timeout after 30 seconds')), 30000)
+            )
+          ]);
+          break; // Uspešno poslat, izađi iz loop-a
+        } catch (error) {
+          attempts++;
+          console.warn(`🔄 Email sending attempt ${attempts} failed:`, error.message);
+
+          if (attempts < maxAttempts) {
+            // Pokušaj sa alternativnim transporterom
+            const alternativeTransporter = emailConfig.createAlternativeTransporter();
+            if (alternativeTransporter) {
+              currentTransporter = alternativeTransporter;
+              console.log(`🔄 Switching to alternative SMTP configuration (attempt ${attempts + 1}/${maxAttempts})`);
+            } else {
+              console.warn('❌ No more alternative SMTP configurations available');
+              throw error;
+            }
+          } else {
+            throw error;
+          }
+        }
+      }
 
       console.log(`✅ Email poslat tehničaru ${technician.name} (${technician.gmail}):`, result.messageId);
 

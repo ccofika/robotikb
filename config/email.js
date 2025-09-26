@@ -66,31 +66,115 @@ const getEmailConfig = () => {
   }
 
   // Fallback na Gmail sa poboljšanim podešavanjima za cloud hosting
+  // Probaj različite portove jer hosting provajderi često blokiraju 587
+  const gmailConfigs = [
+    // Port 465 (SSL) - često prolazi kroz firewalls
+    {
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    },
+    // Port 587 (TLS) - standardni
+    {
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    },
+    // Port 25 - alternativni
+    {
+      host: 'smtp.gmail.com',
+      port: 25,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    }
+  ];
+
+  // Vrati konfiguraciju sa dodacima za cloud hosting
+  const config = gmailConfigs[0]; // Probaj SSL port 465 prvi
   return {
-    service: 'gmail',
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    },
-    tls: {
-      rejectUnauthorized: false
-    },
+    ...config,
     // Dodaj timeout i pool podešavanja za cloud hosting
     connectionTimeout: 60000,
     greetingTimeout: 30000,
     socketTimeout: 60000,
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 100
+    pool: false, // Isključi pool za cloud hosting
+    maxConnections: 1,
+    maxMessages: 1,
+    // Dodaj retry logiku
+    retries: 3,
+    retryDelay: 3000
   };
 };
 
 const emailConfig = getEmailConfig();
 
-const transporter = nodemailer.createTransport(emailConfig);
+// Kreiraj transporter sa fallback logikom
+let transporter = nodemailer.createTransport(emailConfig);
+let gmailConfigIndex = 0;
+
+// Funkcija za kreiranje novog transportera sa sledećom konfiguracijom
+const createAlternativeTransporter = () => {
+  if (!process.env.SMTP_SERVICE && gmailConfigIndex < 2) {
+    gmailConfigIndex++;
+    const gmailConfigs = [
+      // Port 465 (SSL)
+      {
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 60000, greetingTimeout: 30000, socketTimeout: 60000,
+        pool: false, maxConnections: 1, maxMessages: 1
+      },
+      // Port 587 (TLS)
+      {
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 60000, greetingTimeout: 30000, socketTimeout: 60000,
+        pool: false, maxConnections: 1, maxMessages: 1
+      },
+      // Port 25
+      {
+        host: 'smtp.gmail.com',
+        port: 25,
+        secure: false,
+        auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 60000, greetingTimeout: 30000, socketTimeout: 60000,
+        pool: false, maxConnections: 1, maxMessages: 1
+      }
+    ];
+
+    console.log(`🔄 Probavam Gmail SMTP port ${gmailConfigs[gmailConfigIndex].port}...`);
+    transporter = nodemailer.createTransport(gmailConfigs[gmailConfigIndex]);
+    return transporter;
+  }
+  return null;
+};
 
 // Poboljšana verifikacija sa timeout-om
 const verifyEmailConnection = () => {
@@ -161,3 +245,5 @@ const createFallbackTransporter = () => {
 };
 
 module.exports = transporter;
+module.exports.createAlternativeTransporter = createAlternativeTransporter;
+module.exports.getTransporter = () => transporter;
