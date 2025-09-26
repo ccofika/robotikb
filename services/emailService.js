@@ -1,5 +1,4 @@
-const emailConfig = require('../config/email');
-const transporter = emailConfig;
+const transporter = require('../config/email');
 const { createEmailTemplate } = require('../utils/emailTemplates');
 const Technician = require('../models/Technician');
 
@@ -19,46 +18,13 @@ class EmailService {
       }
 
       const mailOptions = {
-        from: process.env.EMAIL_USER || process.env.SMTP_USER || 'noreply@robotik.rs',
+        from: process.env.EMAIL_USER || 'robotik.magacin@gmail.com',
         to: technician.gmail,
         subject: template.subject,
         html: template.html
       };
 
-      // Pokušaj slanje emaila sa timeout-om i fallback logikom
-      let result;
-      let currentTransporter = transporter;
-      let attempts = 0;
-      const maxAttempts = 3;
-
-      while (attempts < maxAttempts) {
-        try {
-          result = await Promise.race([
-            currentTransporter.sendMail(mailOptions),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Email sending timeout after 30 seconds')), 30000)
-            )
-          ]);
-          break; // Uspešno poslat, izađi iz loop-a
-        } catch (error) {
-          attempts++;
-          console.warn(`🔄 Email sending attempt ${attempts} failed:`, error.message);
-
-          if (attempts < maxAttempts) {
-            // Pokušaj sa alternativnim transporterom
-            const alternativeTransporter = emailConfig.createAlternativeTransporter();
-            if (alternativeTransporter) {
-              currentTransporter = alternativeTransporter;
-              console.log(`🔄 Switching to alternative SMTP configuration (attempt ${attempts + 1}/${maxAttempts})`);
-            } else {
-              console.warn('❌ No more alternative SMTP configurations available');
-              throw error;
-            }
-          } else {
-            throw error;
-          }
-        }
-      }
+      const result = await transporter.sendMail(mailOptions);
 
       console.log(`✅ Email poslat tehničaru ${technician.name} (${technician.gmail}):`, result.messageId);
 
@@ -70,36 +36,10 @@ class EmailService {
       };
 
     } catch (error) {
-      console.error(`❌ Greška pri slanju email-a tehničaru ${technicianId}:`, error.message);
-
-      // Log details za debugging
-      if (error.code === 'ETIMEDOUT' || error.code === 'ECONNECTION') {
-        console.warn('🌐 Network connection issue - email service may be blocked by hosting provider');
-        console.warn('💡 Consider using SendGrid, Mailgun, or SMTP2GO for cloud hosting');
-      }
-
-      // Alternativno, logiraj email umesto slanja (za development/testing)
-      if (process.env.NODE_ENV === 'development' || process.env.LOG_EMAILS === 'true') {
-        console.log('📧 EMAIL WOULD BE SENT:', {
-          to: mailOptions.to,
-          subject: mailOptions.subject,
-          html: mailOptions.html.substring(0, 200) + '...'
-        });
-
-        return {
-          success: true,
-          messageId: 'logged-' + Date.now(),
-          recipient: mailOptions.to,
-          technicianName: technician.name,
-          logged: true
-        };
-      }
-
+      console.error('Greška pri slanju email-a:', error);
       return {
         success: false,
-        error: error.message,
-        technicianName: technician.name,
-        recipient: technician.gmail
+        error: error.message
       };
     }
   }
