@@ -6,28 +6,34 @@ class EmailService {
   async sendEmailToTechnician(technicianId, emailType, data) {
     try {
       const technician = await Technician.findById(technicianId);
-      
+
       if (!technician || !technician.gmail) {
         throw new Error('Tehničar nije pronađen ili nema email adresu');
       }
 
       const template = createEmailTemplate(emailType, data);
-      
+
       if (!template) {
         throw new Error('Nepoznat tip email template-a');
       }
 
       const mailOptions = {
-        from: process.env.EMAIL_USER,
+        from: process.env.EMAIL_USER || process.env.SMTP_USER || 'noreply@robotik.rs',
         to: technician.gmail,
         subject: template.subject,
         html: template.html
       };
 
-      const result = await transporter.sendMail(mailOptions);
-      
-      console.log(`Email poslat tehničaru ${technician.name} (${technician.gmail}):`, result.messageId);
-      
+      // Pokušaj slanje emaila sa timeout-om
+      const result = await Promise.race([
+        transporter.sendMail(mailOptions),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Email sending timeout after 30 seconds')), 30000)
+        )
+      ]);
+
+      console.log(`✅ Email poslat tehničaru ${technician.name} (${technician.gmail}):`, result.messageId);
+
       return {
         success: true,
         messageId: result.messageId,
@@ -36,10 +42,36 @@ class EmailService {
       };
 
     } catch (error) {
-      console.error('Greška pri slanju email-a:', error);
+      console.error(`❌ Greška pri slanju email-a tehničaru ${technicianId}:`, error.message);
+
+      // Log details za debugging
+      if (error.code === 'ETIMEDOUT' || error.code === 'ECONNECTION') {
+        console.warn('🌐 Network connection issue - email service may be blocked by hosting provider');
+        console.warn('💡 Consider using SendGrid, Mailgun, or SMTP2GO for cloud hosting');
+      }
+
+      // Alternativno, logiraj email umesto slanja (za development/testing)
+      if (process.env.NODE_ENV === 'development' || process.env.LOG_EMAILS === 'true') {
+        console.log('📧 EMAIL WOULD BE SENT:', {
+          to: mailOptions.to,
+          subject: mailOptions.subject,
+          html: mailOptions.html.substring(0, 200) + '...'
+        });
+
+        return {
+          success: true,
+          messageId: 'logged-' + Date.now(),
+          recipient: mailOptions.to,
+          technicianName: technician.name,
+          logged: true
+        };
+      }
+
       return {
         success: false,
-        error: error.message
+        error: error.message,
+        technicianName: technician.name,
+        recipient: technician.gmail
       };
     }
   }
