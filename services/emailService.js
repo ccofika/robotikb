@@ -18,19 +18,13 @@ class EmailService {
       }
 
       const mailOptions = {
-        from: process.env.EMAIL_USER || 'robotik.magacin@gmail.com',
+        from: process.env.EMAIL_USER,
         to: technician.gmail,
         subject: template.subject,
         html: template.html
       };
 
-      // Dodaj timeout od 10 sekundi za email slanje
-      const result = await Promise.race([
-        transporter.sendMail(mailOptions),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Email sending timeout after 10 seconds')), 10000)
-        )
-      ]);
+      const result = await transporter.sendMail(mailOptions);
 
       console.log(`✅ Email poslat tehničaru ${technician.name} (${technician.gmail}):`, result.messageId);
 

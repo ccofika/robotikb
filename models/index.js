@@ -8,6 +8,8 @@ const WorkOrderEvidence = require('./WorkOrderEvidence');
 const Log = require('./Log');
 const DismissedWorkOrder = require('./DismissedWorkOrder');
 const Notification = require('./Notification');
+const FinancialTransaction = require('./FinancialTransaction');
+const FinancialSettings = require('./FinancialSettings');
 
 module.exports = {
   User,
@@ -19,5 +21,7 @@ module.exports = {
   WorkOrderEvidence,
   Log,
   DismissedWorkOrder,
-  Notification
+  Notification,
+  FinancialTransaction,
+  FinancialSettings
 }; 

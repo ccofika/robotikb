@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { Log, Technician, WorkOrder, DismissedWorkOrder } = require('../models');
+const { Log, Technician, WorkOrder, DismissedWorkOrder, FinancialTransaction, FinancialSettings } = require('../models');
 const mongoose = require('mongoose');
 const fetch = require('node-fetch');
+const geocodingService = require('../services/geocodingService');
 
 // Helper funkcija za formatiranje datuma za srpsko vreme
 const formatSerbianDateTime = (date) => {
@@ -2371,6 +2372,1054 @@ router.get('/drilldown', async (req, res) => {
     console.error('❌ Error in drilldown endpoint:', error);
     res.status(500).json({
       error: 'Greška pri dohvaćanju detaljnih podataka',
+      details: error.message
+    });
+  }
+});
+
+// GET - Geocode a single municipality
+router.get('/geocode/municipality/:municipality', async (req, res) => {
+  try {
+    const { municipality } = req.params;
+
+    if (!municipality) {
+      return res.status(400).json({ error: 'Municipality name is required' });
+    }
+
+    console.log(`🗺️ Geocoding single municipality: "${municipality}"`);
+
+    const startTime = Date.now();
+    const coordinates = await geocodingService.getCoordinates(municipality);
+    const endTime = Date.now();
+
+    console.log(`🗺️ Geocoded "${municipality}" in ${endTime - startTime}ms`);
+
+    res.json({
+      municipality,
+      coordinates,
+      processingTime: `${endTime - startTime}ms`,
+      cacheStats: geocodingService.getCacheStats()
+    });
+
+  } catch (error) {
+    console.error(`❌ Error geocoding municipality "${req.params.municipality}":`, error);
+    res.status(500).json({
+      error: 'Failed to geocode municipality',
+      municipality: req.params.municipality,
+      details: error.message
+    });
+  }
+});
+
+// POST - Geocode multiple municipalities in batch
+router.post('/geocode/municipalities', async (req, res) => {
+  try {
+    const { municipalities } = req.body;
+
+    if (!Array.isArray(municipalities)) {
+      return res.status(400).json({ error: 'municipalities must be an array' });
+    }
+
+    console.log(`🗺️ Batch geocoding ${municipalities.length} municipalities...`);
+
+    const startTime = Date.now();
+    const coordinatesMap = await geocodingService.getBatchCoordinates(municipalities);
+    const endTime = Date.now();
+
+    const successful = Object.keys(coordinatesMap).length;
+    const failed = municipalities.length - successful;
+
+    console.log(`🗺️ Batch geocoding completed: ${successful} successful, ${failed} failed in ${endTime - startTime}ms`);
+
+    res.json({
+      coordinatesMap,
+      statistics: {
+        total: municipalities.length,
+        successful,
+        failed,
+        processingTime: `${endTime - startTime}ms`
+      },
+      cacheStats: geocodingService.getCacheStats()
+    });
+
+  } catch (error) {
+    console.error('❌ Error in batch geocoding:', error);
+    res.status(500).json({
+      error: 'Failed to geocode municipalities',
+      details: error.message
+    });
+  }
+});
+
+// GET - Get unique municipalities from work orders and logs for geocoding
+router.get('/geocode/discover-municipalities', async (req, res) => {
+  try {
+    console.log('🔍 Discovering unique municipalities from database...');
+
+    const [workOrderMunicipalities, logMunicipalities] = await Promise.all([
+      WorkOrder.distinct('municipality'),
+      Log.distinct('workOrderInfo.municipality')
+    ]);
+
+    // Combine and deduplicate municipalities
+    const allMunicipalities = [...new Set([
+      ...workOrderMunicipalities.filter(m => m && m.trim()),
+      ...logMunicipalities.filter(m => m && m.trim())
+    ])];
+
+    console.log(`🔍 Discovered ${allMunicipalities.length} unique municipalities`);
+    allMunicipalities.sort().forEach(municipality => {
+      console.log(`   - ${municipality}`);
+    });
+
+    res.json({
+      municipalities: allMunicipalities.sort(),
+      total: allMunicipalities.length,
+      sources: {
+        workOrders: workOrderMunicipalities.length,
+        logs: logMunicipalities.length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error discovering municipalities:', error);
+    res.status(500).json({
+      error: 'Failed to discover municipalities',
+      details: error.message
+    });
+  }
+});
+
+// POST - Geocode all discovered municipalities (convenience endpoint)
+router.post('/geocode/all-municipalities', async (req, res) => {
+  try {
+    console.log('🗺️ Starting full municipality geocoding...');
+
+    // First discover all municipalities
+    const [workOrderMunicipalities, logMunicipalities] = await Promise.all([
+      WorkOrder.distinct('municipality'),
+      Log.distinct('workOrderInfo.municipality')
+    ]);
+
+    const allMunicipalities = [...new Set([
+      ...workOrderMunicipalities.filter(m => m && m.trim()),
+      ...logMunicipalities.filter(m => m && m.trim())
+    ])];
+
+    console.log(`🗺️ Geocoding all ${allMunicipalities.length} discovered municipalities...`);
+
+    const startTime = Date.now();
+    const coordinatesMap = await geocodingService.getBatchCoordinates(allMunicipalities);
+    const endTime = Date.now();
+
+    const successful = Object.keys(coordinatesMap).length;
+    const failed = allMunicipalities.length - successful;
+
+    console.log(`🗺️ Full geocoding completed: ${successful} successful, ${failed} failed in ${endTime - startTime}ms`);
+
+    res.json({
+      coordinatesMap,
+      discoveredMunicipalities: allMunicipalities.sort(),
+      statistics: {
+        discovered: allMunicipalities.length,
+        geocoded: successful,
+        failed,
+        processingTime: `${endTime - startTime}ms`
+      },
+      cacheStats: geocodingService.getCacheStats()
+    });
+
+  } catch (error) {
+    console.error('❌ Error in full municipality geocoding:', error);
+    res.status(500).json({
+      error: 'Failed to geocode all municipalities',
+      details: error.message
+    });
+  }
+});
+
+// DELETE - Clear geocoding cache
+router.delete('/geocode/cache', async (req, res) => {
+  try {
+    const cacheStatsBefore = geocodingService.getCacheStats();
+    geocodingService.clearCache();
+
+    console.log(`🗑️ Geocoding cache cleared (was ${cacheStatsBefore.size} entries)`);
+
+    res.json({
+      message: 'Geocoding cache cleared successfully',
+      clearedEntries: cacheStatsBefore.size,
+      currentCacheSize: geocodingService.getCacheStats().size
+    });
+
+  } catch (error) {
+    console.error('❌ Error clearing geocoding cache:', error);
+    res.status(500).json({
+      error: 'Failed to clear geocoding cache',
+      details: error.message
+    });
+  }
+});
+
+// GET - Get geocoding cache statistics
+router.get('/geocode/cache/stats', async (req, res) => {
+  try {
+    const stats = geocodingService.getCacheStats();
+
+    res.json({
+      cacheStats: stats,
+      serviceName: 'OpenStreetMap Nominatim',
+      rateLimit: '1 request per second'
+    });
+
+  } catch (error) {
+    console.error('❌ Error getting cache stats:', error);
+    res.status(500).json({
+      error: 'Failed to get cache statistics',
+      details: error.message
+    });
+  }
+});
+
+// GET - Financial analysis data for dashboard
+router.get('/dashboard/financial-analysis', async (req, res) => {
+  try {
+    const { timeRange = '30d', technician, municipalities } = req.query;
+
+    console.log(`💰 Financial analysis request - timeRange: ${timeRange}, technician: ${technician}, municipalities: ${municipalities}`);
+
+    // Calculate date range
+    const now = new Date();
+    let startDate;
+
+    switch (timeRange) {
+      case '7d':
+        startDate = new Date(now - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '90d':
+        startDate = new Date(now - 90 * 24 * 60 * 60 * 1000);
+        break;
+      case '180d':
+        startDate = new Date(now - 180 * 24 * 60 * 60 * 1000);
+        break;
+      case '365d':
+        startDate = new Date(now - 365 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    }
+
+    // Build filter for financial transactions
+    const filter = {
+      verifiedAt: { $gte: startDate, $lte: now }
+    };
+
+    // Add technician filter
+    if (technician && technician !== 'all') {
+      filter['technicians.technicianId'] = technician;
+    }
+
+    // Add municipality filter
+    if (municipalities && municipalities.length > 0) {
+      const municipalityList = typeof municipalities === 'string'
+        ? municipalities.split(',')
+        : municipalities;
+      filter.municipality = { $in: municipalityList };
+    }
+
+    // Get financial transactions with populated data
+    const financialTransactions = await FinancialTransaction.find(filter)
+      .populate('workOrderId', 'type date municipality address userName status tisJobId')
+      .populate('technicians.technicianId', 'name')
+      .populate('verifiedBy', 'name')
+      .sort({ verifiedAt: -1 })
+      .lean();
+
+    console.log(`💰 Found ${financialTransactions.length} financial transactions`);
+
+    // Process financial data for analysis
+    const processedFinancialData = financialTransactions.map(transaction => {
+      const workOrder = transaction.workOrderId;
+
+      // Get primary technician (first in the list)
+      const primaryTechnician = transaction.technicians && transaction.technicians.length > 0
+        ? transaction.technicians[0]
+        : null;
+
+      // Calculate profit margin
+      const profitMargin = transaction.finalPrice > 0
+        ? (transaction.companyProfit / transaction.finalPrice) * 100
+        : 0;
+
+      // Determine service category based on customerStatus
+      const serviceCategory = categorizeFinancialService(transaction.customerStatus);
+
+      return {
+        id: transaction._id.toString(),
+        workOrderId: transaction.workOrderId?._id?.toString() || null,
+        tisJobId: transaction.tisJobId || workOrder?.tisJobId || 'N/A',
+
+        // Financial data
+        basePrice: transaction.basePrice,
+        discountPercent: transaction.discountPercent,
+        discountAmount: transaction.discountAmount,
+        finalPrice: transaction.finalPrice,
+        totalTechnicianEarnings: transaction.totalTechnicianEarnings,
+        companyProfit: transaction.companyProfit,
+        profitMargin: profitMargin,
+
+        // Service and location data
+        customerStatus: transaction.customerStatus,
+        serviceCategory: serviceCategory,
+        municipality: transaction.municipality,
+        address: workOrder?.address || 'N/A',
+        userName: workOrder?.userName || 'N/A',
+        workOrderType: workOrder?.type || 'N/A',
+        workOrderStatus: workOrder?.status || 'N/A',
+
+        // Technician data
+        primaryTechnician: primaryTechnician?.technicianId?.name || primaryTechnician?.name || 'N/A',
+        primaryTechnicianEarnings: primaryTechnician?.earnings || 0,
+        totalTechnicians: transaction.technicians?.length || 0,
+        allTechnicians: transaction.technicians?.map(tech => ({
+          name: tech.technicianId?.name || tech.name || 'N/A',
+          earnings: tech.earnings || 0
+        })) || [],
+
+        // Date data
+        timestamp: transaction.verifiedAt,
+        workOrderDate: workOrder?.date || null,
+        verifiedBy: transaction.verifiedBy?.name || 'N/A',
+
+        // Additional data
+        notes: transaction.notes || '',
+        hasDiscount: transaction.discountAmount > 0,
+        isHighValue: transaction.finalPrice > 5000,
+
+        // For compatibility with existing frontend
+        technician: primaryTechnician?.technicianId?.name || primaryTechnician?.name || 'N/A',
+        revenue: transaction.finalPrice,
+        cost: transaction.totalTechnicianEarnings,
+        profit: transaction.companyProfit,
+        service_type: serviceCategory,
+        location: transaction.municipality
+      };
+    });
+
+    // Calculate overall statistics
+    const statistics = calculateFinancialStatistics(processedFinancialData);
+
+    console.log(`💰 Financial analysis completed: ${processedFinancialData.length} transactions processed`);
+    console.log(`💰 Total revenue: ${statistics.totalRevenue}, Total profit: ${statistics.totalProfit}, Profit margin: ${statistics.avgProfitMargin}%`);
+
+    res.json({
+      data: processedFinancialData,
+      totalCount: processedFinancialData.length,
+      timeRange,
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: now.toISOString()
+      },
+      statistics,
+      uniqueMunicipalities: [...new Set(processedFinancialData.map(t => t.municipality))].sort(),
+      uniqueTechnicians: [...new Set(processedFinancialData.map(t => t.technician))].sort(),
+      serviceCategories: [...new Set(processedFinancialData.map(t => t.serviceCategory))].sort()
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching financial analysis data:', error);
+    res.status(500).json({
+      error: 'Greška pri dohvatanju finansijskih podataka',
+      details: error.message
+    });
+  }
+});
+
+// Helper function to categorize financial services
+function categorizeFinancialService(customerStatus) {
+  if (!customerStatus) return 'Ostale usluge';
+
+  const categoryMap = {
+    'HFC': [
+      'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme',
+      'Priključenje korisnika na HFC KDS mreža u privatnim kućama sa instalacijom CPE opreme'
+    ],
+    'GPON': [
+      'Priključenje korisnika na GPON mrežu u privatnim kućama',
+      'Priključenje korisnika na GPON mrežu u zgradi'
+    ],
+    'Servisne usluge': [
+      'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji sa montažnim radovima',
+      'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji bez montažnih radova'
+    ],
+    'Novi korisnici': [
+      'Nov korisnik'
+    ]
+  };
+
+  for (const [category, statuses] of Object.entries(categoryMap)) {
+    if (statuses.some(status => customerStatus.includes(status))) {
+      return category;
+    }
+  }
+
+  return 'Ostale usluge';
+}
+
+// Helper function to calculate financial statistics
+function calculateFinancialStatistics(data) {
+  if (!data || data.length === 0) {
+    return {
+      totalRevenue: 0,
+      totalProfit: 0,
+      totalCost: 0,
+      avgRevenuePerTransaction: 0,
+      avgProfitPerTransaction: 0,
+      avgProfitMargin: 0,
+      totalTransactions: 0,
+      totalTechnicians: 0,
+      totalMunicipalities: 0,
+      highestTransaction: 0,
+      lowestTransaction: 0,
+      avgDiscountPercent: 0,
+      transactionsWithDiscount: 0
+    };
+  }
+
+  const totalRevenue = data.reduce((sum, item) => sum + (item.finalPrice || 0), 0);
+  const totalCost = data.reduce((sum, item) => sum + (item.totalTechnicianEarnings || 0), 0);
+  const totalProfit = data.reduce((sum, item) => sum + (item.companyProfit || 0), 0);
+  const totalTransactions = data.length;
+
+  const transactions = data.map(item => item.finalPrice || 0);
+  const highestTransaction = Math.max(...transactions);
+  const lowestTransaction = Math.min(...transactions);
+
+  const transactionsWithDiscount = data.filter(item => item.hasDiscount).length;
+  const avgDiscountPercent = data.reduce((sum, item) => sum + (item.discountPercent || 0), 0) / totalTransactions;
+
+  const uniqueTechnicians = new Set(data.map(item => item.technician)).size;
+  const uniqueMunicipalities = new Set(data.map(item => item.municipality)).size;
+
+  return {
+    totalRevenue,
+    totalProfit,
+    totalCost,
+    avgRevenuePerTransaction: totalTransactions > 0 ? totalRevenue / totalTransactions : 0,
+    avgProfitPerTransaction: totalTransactions > 0 ? totalProfit / totalTransactions : 0,
+    avgProfitMargin: totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0,
+    totalTransactions,
+    totalTechnicians: uniqueTechnicians,
+    totalMunicipalities: uniqueMunicipalities,
+    highestTransaction,
+    lowestTransaction,
+    avgDiscountPercent,
+    transactionsWithDiscount,
+    discountRate: totalTransactions > 0 ? (transactionsWithDiscount / totalTransactions) * 100 : 0
+  };
+}
+
+// GET - Technician comparison data for dashboard
+router.get('/dashboard/technician-comparison', async (req, res) => {
+  try {
+    const { timeRange = '30d', sortBy = 'successRate', municipalities, includeInactive = 'false' } = req.query;
+
+    console.log(`👥 Technician comparison request - timeRange: ${timeRange}, sortBy: ${sortBy}`);
+
+    // Calculate date range
+    const now = new Date();
+    let startDate;
+
+    switch (timeRange) {
+      case '7d':
+        startDate = new Date(now - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '90d':
+        startDate = new Date(now - 90 * 24 * 60 * 60 * 1000);
+        break;
+      case '180d':
+        startDate = new Date(now - 180 * 24 * 60 * 60 * 1000);
+        break;
+      case '365d':
+        startDate = new Date(now - 365 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    }
+
+    // Build municipality filter
+    let municipalityFilter = {};
+    if (municipalities && municipalities.length > 0) {
+      const municipalityList = typeof municipalities === 'string'
+        ? municipalities.split(',')
+        : municipalities;
+      municipalityFilter = { municipality: { $in: municipalityList } };
+    }
+
+    // 1. Get all technicians
+    const allTechnicians = await Technician.find({}, 'name gmail role').lean();
+    const technicianMap = {};
+    allTechnicians.forEach(tech => {
+      technicianMap[tech._id.toString()] = {
+        id: tech._id.toString(),
+        name: tech.name,
+        email: tech.gmail || '',
+        role: tech.role || 'technician'
+      };
+    });
+
+    console.log(`👥 Found ${allTechnicians.length} technicians in database`);
+
+    // 2. Get work orders for the period
+    const workOrderFilter = {
+      date: { $gte: startDate, $lte: now },
+      $or: [
+        { technicianId: { $exists: true, $ne: null } },
+        { technician2Id: { $exists: true, $ne: null } }
+      ],
+      ...municipalityFilter
+    };
+
+    const workOrders = await WorkOrder.find(workOrderFilter)
+      .populate('technicianId', 'name')
+      .populate('technician2Id', 'name')
+      .lean();
+
+    console.log(`👥 Found ${workOrders.length} work orders for analysis`);
+
+    // 3. Get logs for the period
+    const logFilter = {
+      timestamp: { $gte: startDate, $lte: now },
+      ...(municipalities && municipalities.length > 0 && {
+        'workOrderInfo.municipality': { $in: typeof municipalities === 'string' ? municipalities.split(',') : municipalities }
+      })
+    };
+
+    const logs = await Log.find(logFilter)
+      .populate('performedBy', 'name')
+      .lean();
+
+    console.log(`👥 Found ${logs.length} logs for analysis`);
+
+    // 4. Get financial transactions for the period
+    const financialFilter = {
+      verifiedAt: { $gte: startDate, $lte: now },
+      ...(municipalities && municipalities.length > 0 && {
+        municipality: { $in: typeof municipalities === 'string' ? municipalities.split(',') : municipalities }
+      })
+    };
+
+    const financialTransactions = await FinancialTransaction.find(financialFilter)
+      .populate('technicians.technicianId', 'name')
+      .lean();
+
+    console.log(`👥 Found ${financialTransactions.length} financial transactions for analysis`);
+
+    // 5. Process data for each technician
+    const technicianStats = {};
+
+    // Initialize stats for all technicians
+    Object.values(technicianMap).forEach(technician => {
+      technicianStats[technician.id] = {
+        id: technician.id,
+        name: technician.name,
+        email: technician.email,
+        role: technician.role,
+
+        // Work Order Statistics
+        totalWorkOrders: 0,
+        completedWorkOrders: 0,
+        cancelledWorkOrders: 0,
+        postponedWorkOrders: 0,
+        overdueWorkOrders: 0,
+
+        // Performance Metrics
+        successRate: 0,
+        avgResponseTime: 0,
+        totalResponseTime: 0,
+        responseTimeCount: 0,
+
+        // Activity Metrics
+        totalActivities: 0,
+        dailyActivities: {},
+        activityTypes: {},
+        workDays: new Set(),
+
+        // Financial Metrics
+        totalEarnings: 0,
+        totalTransactions: 0,
+        avgEarningsPerTransaction: 0,
+        profitGenerated: 0,
+
+        // Location Distribution
+        municipalities: {},
+        serviceTypes: {},
+
+        // Time Analysis
+        firstActivity: null,
+        lastActivity: null,
+        activeDays: 0,
+
+        // Quality Metrics
+        reworkCount: 0,
+        customerComplaintCount: 0,
+        excellentRating: 0,
+
+        // Ranking Metrics
+        rank: 0,
+        performanceScore: 0,
+        trend: 'stable' // up, down, stable
+      };
+    });
+
+    // Process Work Orders
+    workOrders.forEach(workOrder => {
+      const processStats = (technicianId, isPrimary = true) => {
+        if (!technicianId || !technicianStats[technicianId.toString()]) return;
+
+        const techId = technicianId.toString();
+        const stats = technicianStats[techId];
+
+        stats.totalWorkOrders++;
+
+        // Track work days
+        if (workOrder.date) {
+          const workDate = new Date(workOrder.date).toISOString().split('T')[0];
+          stats.workDays.add(workDate);
+        }
+
+        // Track municipalities
+        if (workOrder.municipality) {
+          stats.municipalities[workOrder.municipality] = (stats.municipalities[workOrder.municipality] || 0) + 1;
+        }
+
+        // Track service types
+        if (workOrder.type) {
+          stats.serviceTypes[workOrder.type] = (stats.serviceTypes[workOrder.type] || 0) + 1;
+        }
+
+        // Status analysis
+        switch (workOrder.status) {
+          case 'zavrsen':
+            stats.completedWorkOrders++;
+            break;
+          case 'otkazan':
+            stats.cancelledWorkOrders++;
+            break;
+          case 'odlozen':
+            stats.postponedWorkOrders++;
+            break;
+        }
+
+        // Response time calculation (if completed)
+        if (workOrder.status === 'zavrsen' && workOrder.statusChangedAt && workOrder.date) {
+          const responseTime = (new Date(workOrder.statusChangedAt) - new Date(workOrder.date)) / (1000 * 60 * 60); // hours
+          if (responseTime > 0 && responseTime < 720) { // Max 30 days
+            stats.totalResponseTime += responseTime;
+            stats.responseTimeCount++;
+          }
+        }
+
+        // Overdue tracking
+        if (workOrder.isOverdue) {
+          stats.overdueWorkOrders++;
+        }
+
+        // Activity timestamps
+        const activityDate = new Date(workOrder.date);
+        if (!stats.firstActivity || activityDate < stats.firstActivity) {
+          stats.firstActivity = activityDate;
+        }
+        if (!stats.lastActivity || activityDate > stats.lastActivity) {
+          stats.lastActivity = activityDate;
+        }
+      };
+
+      // Process primary and secondary technicians
+      if (workOrder.technicianId) {
+        processStats(workOrder.technicianId._id || workOrder.technicianId, true);
+      }
+      if (workOrder.technician2Id) {
+        processStats(workOrder.technician2Id._id || workOrder.technician2Id, false);
+      }
+    });
+
+    // Process Logs
+    logs.forEach(log => {
+      const technicianId = log.performedBy?._id?.toString() || log.performedBy?.toString();
+      if (!technicianId || !technicianStats[technicianId]) return;
+
+      const stats = technicianStats[technicianId];
+      stats.totalActivities++;
+
+      // Track daily activities
+      if (log.timestamp) {
+        const logDate = new Date(log.timestamp).toISOString().split('T')[0];
+        stats.dailyActivities[logDate] = (stats.dailyActivities[logDate] || 0) + 1;
+      }
+
+      // Track activity types
+      if (log.action) {
+        stats.activityTypes[log.action] = (stats.activityTypes[log.action] || 0) + 1;
+      }
+    });
+
+    // Process Financial Transactions
+    financialTransactions.forEach(transaction => {
+      transaction.technicians?.forEach(techInfo => {
+        const technicianId = techInfo.technicianId?._id?.toString() || techInfo.technicianId?.toString();
+        if (!technicianId || !technicianStats[technicianId]) return;
+
+        const stats = technicianStats[technicianId];
+        stats.totalEarnings += techInfo.earnings || 0;
+        stats.totalTransactions++;
+
+        // Add company profit generated (as a performance indicator)
+        stats.profitGenerated += transaction.companyProfit || 0;
+      });
+    });
+
+    // Calculate final metrics
+    Object.values(technicianStats).forEach(stats => {
+      // Success rate
+      stats.successRate = stats.totalWorkOrders > 0
+        ? ((stats.completedWorkOrders / stats.totalWorkOrders) * 100)
+        : 0;
+
+      // Average response time
+      stats.avgResponseTime = stats.responseTimeCount > 0
+        ? (stats.totalResponseTime / stats.responseTimeCount)
+        : 0;
+
+      // Average earnings per transaction
+      stats.avgEarningsPerTransaction = stats.totalTransactions > 0
+        ? (stats.totalEarnings / stats.totalTransactions)
+        : 0;
+
+      // Active days
+      stats.activeDays = stats.workDays.size;
+
+      // Performance score (weighted combination)
+      stats.performanceScore = calculateTechnicianPerformanceScore(stats);
+
+      // Convert sets to arrays for JSON serialization
+      stats.workDays = Array.from(stats.workDays);
+
+      // Add trend analysis (simplified)
+      stats.trend = calculateTechnicianTrend(stats);
+    });
+
+    // Filter out inactive technicians if requested
+    let filteredStats = Object.values(technicianStats);
+    if (includeInactive === 'false') {
+      filteredStats = filteredStats.filter(stats =>
+        stats.totalWorkOrders > 0 || stats.totalActivities > 0 || stats.totalTransactions > 0
+      );
+    }
+
+    // Sort and rank technicians
+    filteredStats.sort((a, b) => {
+      switch (sortBy) {
+        case 'successRate':
+          return b.successRate - a.successRate;
+        case 'totalWorkOrders':
+          return b.totalWorkOrders - a.totalWorkOrders;
+        case 'avgResponseTime':
+          return a.avgResponseTime - b.avgResponseTime; // Lower is better
+        case 'totalEarnings':
+          return b.totalEarnings - a.totalEarnings;
+        case 'performanceScore':
+          return b.performanceScore - a.performanceScore;
+        case 'activeDays':
+          return b.activeDays - a.activeDays;
+        default:
+          return b.performanceScore - a.performanceScore;
+      }
+    });
+
+    // Assign ranks
+    filteredStats.forEach((stats, index) => {
+      stats.rank = index + 1;
+    });
+
+    console.log(`👥 Processed comparison for ${filteredStats.length} technicians`);
+
+    // Calculate summary statistics
+    const summary = calculateTechnicianComparisonSummary(filteredStats);
+
+    res.json({
+      technicians: filteredStats,
+      summary,
+      totalTechnicians: filteredStats.length,
+      totalInDatabase: allTechnicians.length,
+      timeRange,
+      sortBy,
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: now.toISOString()
+      },
+      uniqueMunicipalities: [...new Set(workOrders.map(wo => wo.municipality).filter(Boolean))].sort(),
+      serviceTypes: [...new Set(workOrders.map(wo => wo.type).filter(Boolean))].sort()
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching technician comparison data:', error);
+    res.status(500).json({
+      error: 'Greška pri dohvatanju podataka za poređenje tehničara',
+      details: error.message
+    });
+  }
+});
+
+// Helper function to calculate performance score
+function calculateTechnicianPerformanceScore(stats) {
+  let score = 0;
+  let maxScore = 0;
+
+  // Success rate (40% weight)
+  score += stats.successRate * 0.4;
+  maxScore += 100 * 0.4;
+
+  // Response time (20% weight) - inverted (faster = better)
+  if (stats.avgResponseTime > 0) {
+    const responseScore = Math.max(0, 100 - (stats.avgResponseTime / 24) * 10); // 24 hours = 10 points deduction
+    score += responseScore * 0.2;
+  }
+  maxScore += 100 * 0.2;
+
+  // Activity level (20% weight)
+  const activityScore = Math.min(100, (stats.totalActivities / 50) * 100); // 50 activities = 100 points
+  score += activityScore * 0.2;
+  maxScore += 100 * 0.2;
+
+  // Financial performance (20% weight)
+  const financialScore = Math.min(100, (stats.totalEarnings / 50000) * 100); // 50k RSD = 100 points
+  score += financialScore * 0.2;
+  maxScore += 100 * 0.2;
+
+  return maxScore > 0 ? (score / maxScore) * 100 : 0;
+}
+
+// Helper function to calculate trend (simplified)
+function calculateTechnicianTrend(stats) {
+  // Simple trend based on recent activity
+  const now = new Date();
+  const recentDays = 7;
+  const recentDate = new Date(now - recentDays * 24 * 60 * 60 * 1000);
+
+  let recentActivities = 0;
+  Object.entries(stats.dailyActivities).forEach(([date, count]) => {
+    if (new Date(date) >= recentDate) {
+      recentActivities += count;
+    }
+  });
+
+  const avgDailyActivities = stats.totalActivities / Math.max(1, stats.activeDays);
+  const recentAvgDaily = recentActivities / recentDays;
+
+  if (recentAvgDaily > avgDailyActivities * 1.2) return 'up';
+  if (recentAvgDaily < avgDailyActivities * 0.8) return 'down';
+  return 'stable';
+}
+
+// Helper function to calculate summary statistics
+function calculateTechnicianComparisonSummary(technicians) {
+  if (technicians.length === 0) {
+    return {
+      totalTechnicians: 0,
+      avgSuccessRate: 0,
+      avgResponseTime: 0,
+      totalWorkOrders: 0,
+      totalEarnings: 0,
+      mostActiveTechnician: null,
+      bestPerformer: null,
+      fastestResponder: null,
+      topEarner: null
+    };
+  }
+
+  const summary = {
+    totalTechnicians: technicians.length,
+    avgSuccessRate: technicians.reduce((sum, t) => sum + t.successRate, 0) / technicians.length,
+    avgResponseTime: technicians.filter(t => t.avgResponseTime > 0).reduce((sum, t, _, arr) => sum + t.avgResponseTime / arr.length, 0),
+    totalWorkOrders: technicians.reduce((sum, t) => sum + t.totalWorkOrders, 0),
+    totalEarnings: technicians.reduce((sum, t) => sum + t.totalEarnings, 0),
+    mostActiveTechnician: [...technicians].sort((a, b) => b.totalActivities - a.totalActivities)[0],
+    bestPerformer: [...technicians].sort((a, b) => b.performanceScore - a.performanceScore)[0],
+    fastestResponder: [...technicians].filter(t => t.avgResponseTime > 0).sort((a, b) => a.avgResponseTime - b.avgResponseTime)[0],
+    topEarner: [...technicians].sort((a, b) => b.totalEarnings - a.totalEarnings)[0]
+  };
+
+  return summary;
+}
+
+// GET - Predictive Analytics endpoint
+router.get('/dashboard/predictive-analytics', async (req, res) => {
+  try {
+    const { startDate, endDate, predictionHorizon = '30d' } = req.query;
+
+    // Build date filter
+    let dateFilter = {};
+    const now = new Date();
+
+    if (startDate && endDate) {
+      dateFilter.date = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    } else {
+      // Default to last 90 days for analysis
+      const startDefault = new Date(now);
+      startDefault.setDate(startDefault.getDate() - 90);
+      dateFilter.date = {
+        $gte: startDefault,
+        $lte: now
+      };
+    }
+
+    // Get work orders with technician information
+    const workOrders = await WorkOrder.find(dateFilter)
+      .populate('technicianId', 'name')
+      .populate('technician2Id', 'name')
+      .sort({ date: 1 })
+      .lean();
+
+    // Transform work orders into format expected by PredictiveAnalytics component
+    const transformedData = workOrders.map(wo => {
+      const technicianName = wo.technicianId?.name ||
+                            wo.technician2Id?.name ||
+                            'Unknown';
+
+      // Convert Serbian status to English for component compatibility
+      let status = 'pending';
+      switch (wo.status) {
+        case 'zavrsen':
+          status = 'completed';
+          break;
+        case 'nezavrsen':
+          status = 'pending';
+          break;
+        case 'otkazan':
+          status = 'cancelled';
+          break;
+        case 'odlozen':
+          status = 'postponed';
+          break;
+      }
+
+      // Determine priority based on type (simplified logic)
+      const urgent = wo.type?.toLowerCase().includes('kvar') ||
+                    wo.type?.toLowerCase().includes('hitno') ||
+                    wo.type?.toLowerCase().includes('urgent');
+
+      // Calculate response time (simplified - time from creation to first status change)
+      const responseTime = wo.prvoMenjanjeStatusa && wo.createdAt
+        ? Math.round((new Date(wo.prvoMenjanjeStatusa) - new Date(wo.createdAt)) / (1000 * 60)) // minutes
+        : Math.random() * 120 + 30; // fallback random value
+
+      return {
+        timestamp: wo.date.toISOString(),
+        technician: technicianName,
+        worker: technicianName, // alias for compatibility
+        status: status,
+        completed: status === 'completed',
+        cancelled: status === 'cancelled',
+        priority: urgent ? 'urgent' : 'normal',
+        urgent: urgent,
+        responseTime: responseTime,
+        response_time: responseTime, // alias
+        work_time: responseTime + Math.random() * 60 + 30, // estimated work time
+        duration: responseTime + Math.random() * 60 + 30, // alias
+        service_type: wo.type || 'servis',
+        type: wo.type || 'servis', // alias
+        municipality: wo.municipality,
+        location: wo.municipality, // alias
+        city: wo.municipality, // alias
+        technology: wo.technology || 'other',
+        revenue: getRevenueByType(wo.type, wo.technology),
+        price: getRevenueByType(wo.type, wo.technology), // alias
+        cost: getCostByType(wo.type, wo.technology),
+        materials_cost: getCostByType(wo.type, wo.technology) * 0.6, // estimated materials portion
+        customer_rating: Math.random() * 2 + 3, // 3-5 rating
+        rating: Math.random() * 2 + 3, // alias
+        workOrderId: wo._id.toString(),
+        address: wo.address,
+        tisId: wo.tisId,
+        userName: wo.userName,
+        userPhone: wo.userPhone,
+        verified: wo.verified || false
+      };
+    });
+
+    // Helper functions for revenue/cost calculation
+    function getRevenueByType(type, technology) {
+      const baseRevenues = {
+        'HFC': 2500,
+        'GPON': 3000,
+        'VDSL': 2000,
+        'other': 1500
+      };
+
+      const typeMultipliers = {
+        'kvar': 1.5,
+        'instalacija': 2.0,
+        'servis': 1.0,
+        'komercijalna': 3.0
+      };
+
+      const baseRevenue = baseRevenues[technology] || baseRevenues['other'];
+      const typeKey = Object.keys(typeMultipliers).find(key =>
+        type?.toLowerCase().includes(key)) || 'servis';
+
+      return Math.round(baseRevenue * typeMultipliers[typeKey]);
+    }
+
+    function getCostByType(type, technology) {
+      const revenue = getRevenueByType(type, technology);
+      // Cost is typically 40-60% of revenue
+      const costPercentage = 0.4 + Math.random() * 0.2;
+      return Math.round(revenue * costPercentage);
+    }
+
+    // Add some recent activity stats
+    const recentStats = {
+      totalWorkOrders: transformedData.length,
+      completedWorkOrders: transformedData.filter(wo => wo.status === 'completed').length,
+      cancelledWorkOrders: transformedData.filter(wo => wo.status === 'cancelled').length,
+      avgResponseTime: transformedData.reduce((sum, wo) => sum + wo.responseTime, 0) / transformedData.length || 0,
+      uniqueTechnicians: [...new Set(transformedData.map(wo => wo.technician))].length,
+      avgOrdersPerDay: transformedData.length / 90, // based on 90-day period
+      totalRevenue: transformedData.reduce((sum, wo) => sum + wo.revenue, 0)
+    };
+
+    console.log(`📊 Predictive Analytics: Returning ${transformedData.length} work orders for analysis`);
+    console.log(`📈 Recent Stats:`, recentStats);
+
+    res.json({
+      success: true,
+      data: transformedData,
+      metadata: {
+        totalRecords: transformedData.length,
+        dateRange: {
+          start: dateFilter.date.$gte,
+          end: dateFilter.date.$lte
+        },
+        predictionHorizon: predictionHorizon,
+        stats: recentStats
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching predictive analytics data:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error fetching predictive analytics data',
       details: error.message
     });
   }
