@@ -1644,6 +1644,531 @@ router.post('/dashboard/dismiss-work-order', async (req, res) => {
   }
 });
 
+// GET - Cancellation analysis data for dashboard
+router.get('/dashboard/cancellation-analysis', async (req, res) => {
+  try {
+    const { timeRange = '30d', technician, municipalities } = req.query;
+
+    // Calculate date range
+    const now = new Date();
+    let startDate;
+
+    switch (timeRange) {
+      case '7d':
+        startDate = new Date(now - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '90d':
+        startDate = new Date(now - 90 * 24 * 60 * 60 * 1000);
+        break;
+      case '180d':
+        startDate = new Date(now - 180 * 24 * 60 * 60 * 1000);
+        break;
+      case '365d':
+        startDate = new Date(now - 365 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    }
+
+    // Build filter for cancelled work orders
+    const filter = {
+      status: 'otkazan',
+      statusChangedAt: { $gte: startDate, $lte: now }
+    };
+
+    // Add technician filter
+    if (technician && technician !== 'all') {
+      filter.$or = [
+        { 'technicianId': technician },
+        { 'technician2Id': technician }
+      ];
+    }
+
+    // Add municipality filter
+    if (municipalities && municipalities.length > 0) {
+      const municipalityList = typeof municipalities === 'string'
+        ? municipalities.split(',')
+        : municipalities;
+      filter.municipality = { $in: municipalityList };
+    }
+
+    // Get cancelled work orders with populated technician data
+    const cancelledWorkOrders = await WorkOrder.find(filter)
+      .populate('technicianId', 'name')
+      .populate('technician2Id', 'name')
+      .populate('statusChangedBy', 'name')
+      .lean();
+
+    // Process cancellation data for analysis
+    const cancellationData = cancelledWorkOrders.map(wo => {
+      // Get the most recent cancellation from cancelHistory
+      const latestCancellation = wo.cancelHistory && wo.cancelHistory.length > 0
+        ? wo.cancelHistory[wo.cancelHistory.length - 1]
+        : null;
+
+      // Determine primary technician
+      const primaryTechnician = wo.technicianId?.name || wo.technician2Id?.name || 'Nepoznat tehničar';
+
+      // Extract and categorize cancellation reason
+      const cancellationComment = latestCancellation?.comment || 'Nespecifikovano';
+      const cancellationReason = categorizeCancellationReason(cancellationComment);
+
+      // Calculate response time (from creation to cancellation)
+      const createdAt = wo.createdAt || wo.date;
+      const cancelledAt = wo.statusChangedAt || latestCancellation?.canceledAt || now;
+      const responseTime = Math.round((new Date(cancelledAt) - new Date(createdAt)) / (1000 * 60)); // in minutes
+
+      return {
+        id: wo._id.toString(),
+        workOrderId: wo._id.toString(),
+        tisJobId: wo.tisJobId || null,
+        municipality: wo.municipality,
+        address: wo.address,
+        userName: wo.userName,
+        type: wo.type,
+        technician: primaryTechnician,
+        statusChangedBy: wo.statusChangedBy?.name || primaryTechnician,
+        timestamp: cancelledAt,
+        cancellationReason: cancellationReason,
+        cancellationComment: cancellationComment,
+        responseTime: responseTime > 0 ? responseTime : 30, // Fallback to 30 min if calculation fails
+        status: 'cancelled',
+        date: wo.date,
+        createdAt: createdAt
+      };
+    });
+
+    // Also get cancellation logs for additional context
+    const cancellationLogs = await Log.find({
+      action: 'workorder_cancelled',
+      timestamp: { $gte: startDate, $lte: now }
+    })
+      .populate('performedBy', 'name')
+      .populate('workOrderId', 'municipality address userName tisId tisJobId')
+      .lean();
+
+    // Merge log data with work order data
+    const enhancedCancellationData = cancellationData.map(cancellation => {
+      const relatedLog = cancellationLogs.find(log =>
+        log.workOrderId?._id.toString() === cancellation.workOrderId
+      );
+
+      if (relatedLog) {
+        return {
+          ...cancellation,
+          logDescription: relatedLog.description,
+          logPerformedBy: relatedLog.performedBy?.name || relatedLog.performedByName,
+          logTimestamp: relatedLog.timestamp
+        };
+      }
+
+      return cancellation;
+    });
+
+    res.json({
+      data: enhancedCancellationData,
+      totalCount: enhancedCancellationData.length,
+      timeRange,
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: now.toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Greška pri dohvatanju analize otkazivanja:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju analize otkazivanja' });
+  }
+});
+
+// GET - Hourly activity distribution data for dashboard
+router.get('/dashboard/hourly-activity-distribution', async (req, res) => {
+  try {
+    const { timeRange = '30d', technician, municipalities } = req.query;
+
+    // Calculate date range
+    const now = new Date();
+    let startDate;
+
+    switch (timeRange) {
+      case '7d':
+        startDate = new Date(now - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '90d':
+        startDate = new Date(now - 90 * 24 * 60 * 60 * 1000);
+        break;
+      case '180d':
+        startDate = new Date(now - 180 * 24 * 60 * 60 * 1000);
+        break;
+      case '365d':
+        startDate = new Date(now - 365 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    }
+
+    // Build filter for activity logs
+    const filter = {
+      timestamp: { $gte: startDate, $lte: now }
+    };
+
+    // Add technician filter
+    if (technician && technician !== 'all') {
+      filter.performedByName = technician;
+    }
+
+    // Add municipality filter
+    if (municipalities && municipalities.length > 0) {
+      const municipalityList = typeof municipalities === 'string'
+        ? municipalities.split(',')
+        : municipalities;
+      filter['workOrderInfo.municipality'] = { $in: municipalityList };
+    }
+
+    // Get activity logs with populated data
+    const activityLogs = await Log.find(filter)
+      .populate('performedBy', 'name')
+      .populate('workOrderId', 'municipality address type userName tisId tisJobId date prvoMenjanjeStatusa')
+      .sort({ timestamp: 1 }) // Sort by time for better analysis
+      .lean();
+
+    // Process activity data for hourly distribution analysis
+    const hourlyActivityData = activityLogs.map(log => {
+      const workOrder = log.workOrderId;
+
+      // Calculate response time if we have workorder creation and status change times
+      let responseTime = null;
+      if (workOrder?.date && workOrder?.prvoMenjanjeStatusa) {
+        responseTime = Math.round((new Date(workOrder.prvoMenjanjeStatusa) - new Date(workOrder.date)) / (1000 * 60)); // in minutes
+      }
+
+      // Categorize activity type for better analysis
+      const activityCategory = categorizeActivityType(log.action);
+      const activityPriority = getActivityPriority(log.action);
+
+      return {
+        id: log._id.toString(),
+        timestamp: log.timestamp,
+        hour: new Date(log.timestamp).getHours(),
+        dayOfWeek: getDayOfWeek(new Date(log.timestamp)),
+        technician: log.performedByName || log.performedBy?.name || 'Nepoznat tehničar',
+        municipality: log.workOrderInfo?.municipality || workOrder?.municipality || 'Nepoznato',
+        address: log.workOrderInfo?.address || workOrder?.address || '',
+        workOrderId: log.workOrderId?._id?.toString() || null,
+        tisJobId: log.workOrderInfo?.tisId || workOrder?.tisJobId || workOrder?.tisId || null,
+        action: log.action,
+        activityType: activityCategory,
+        activityPriority: activityPriority,
+        description: log.description,
+        responseTime: responseTime || null,
+        workOrderType: workOrder?.type || null,
+        userName: log.workOrderInfo?.userName || workOrder?.userName || null
+      };
+    });
+
+    res.json({
+      data: hourlyActivityData,
+      totalCount: hourlyActivityData.length,
+      timeRange,
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: now.toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Greška pri dohvatanju distribucije aktivnosti po satima:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju distribucije aktivnosti po satima' });
+  }
+});
+
+// Helper function to categorize activity types
+function categorizeActivityType(action) {
+  const categories = {
+    'Rad sa nalozima': ['workorder_created', 'workorder_assigned', 'workorder_updated', 'workorder_finished'],
+    'Upravljanje statusom': ['workorder_status_changed', 'workorder_postponed', 'workorder_cancelled'],
+    'Materijali': ['material_added', 'material_removed'],
+    'Oprema': ['equipment_added', 'equipment_removed'],
+    'Dokumentacija': ['comment_added', 'image_added', 'image_removed'],
+  };
+
+  for (const [category, actions] of Object.entries(categories)) {
+    if (actions.includes(action)) {
+      return category;
+    }
+  }
+
+  return 'Ostale aktivnosti';
+}
+
+// Helper function to determine activity priority
+function getActivityPriority(action) {
+  const highPriority = ['workorder_finished', 'workorder_cancelled', 'equipment_added', 'equipment_removed'];
+  const mediumPriority = ['workorder_created', 'workorder_assigned', 'workorder_status_changed', 'material_added'];
+  const lowPriority = ['comment_added', 'image_added', 'image_removed', 'workorder_updated'];
+
+  if (highPriority.includes(action)) return 'high';
+  if (mediumPriority.includes(action)) return 'medium';
+  if (lowPriority.includes(action)) return 'low';
+
+  return 'normal';
+}
+
+// Helper function to get day of week
+function getDayOfWeek(date) {
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  return days[date.getDay()];
+}
+
+// Helper function to categorize cancellation reasons
+function categorizeCancellationReason(comment) {
+  if (!comment) return 'Ostali razlozi';
+
+  const commentLower = comment.toLowerCase();
+
+  // Define categories and keywords
+  const categories = {
+    'Korisnik nije kod kuće': [
+      'nije kod kuće', 'not at home', 'nema kod kuće', 'nema doma',
+      'otišao', 'nije tu', 'absent', 'away'
+    ],
+    'Neispravna adresa': [
+      'pogrešna adresa', 'neispravna adresa', 'wrong address', 'bad address',
+      'ne postoji adresa', 'nema adrese', 'ne mogu da nađem'
+    ],
+    'Nema signala': [
+      'nema signal', 'no signal', 'slab signal', 'poor signal',
+      'problem sa signalom', 'signal issue', 'interferenca'
+    ],
+    'Materijal nedostupan': [
+      'nema materijal', 'no material', 'nedostaje materijal', 'material shortage',
+      'čeka se materijal', 'waiting for material', 'skladište'
+    ],
+    'Kvar opreme': [
+      'kvar', 'broken', 'ne radi', 'not working', 'equipment failure',
+      'tehnički problem', 'technical issue', 'defekt'
+    ],
+    'Korisnik odustao': [
+      'korisnik odustao', 'customer cancelled', 'ne želi', 'odbio',
+      'refused', 'declined', 'predomislio se', 'changed mind'
+    ],
+    'Vremenski uslovi': [
+      'kiša', 'rain', 'sneg', 'snow', 'vreme', 'weather',
+      'oluja', 'storm', 'loši uslovi'
+    ],
+    'Kašnjenje tehničara': [
+      'kasni', 'late', 'zakasni', 'delayed', 'čeka se tehničar',
+      'tehnički problem', 'tehnička podrška'
+    ]
+  };
+
+  // Check each category
+  for (const [category, keywords] of Object.entries(categories)) {
+    if (keywords.some(keyword => commentLower.includes(keyword))) {
+      return category;
+    }
+  }
+
+  return 'Ostali razlozi';
+}
+
+// GET - Interactive map activity data for dashboard
+router.get('/dashboard/interactive-map', async (req, res) => {
+  try {
+    const { timeRange = '30d', technician, municipalities, activityType } = req.query;
+
+    // Calculate date range
+    const now = new Date();
+    let startDate;
+
+    switch (timeRange) {
+      case '7d':
+        startDate = new Date(now - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '90d':
+        startDate = new Date(now - 90 * 24 * 60 * 60 * 1000);
+        break;
+      case '180d':
+        startDate = new Date(now - 180 * 24 * 60 * 60 * 1000);
+        break;
+      case '365d':
+        startDate = new Date(now - 365 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    }
+
+    // Get work orders for map data
+    const workOrderFilter = {
+      date: { $gte: startDate, $lte: now }
+    };
+
+    // Add technician filter
+    if (technician && technician !== 'all') {
+      workOrderFilter.$or = [
+        { technicianId: technician },
+        { technician2Id: technician }
+      ];
+    }
+
+    // Add municipality filter
+    if (municipalities && municipalities.length > 0) {
+      const municipalityList = typeof municipalities === 'string'
+        ? municipalities.split(',')
+        : municipalities;
+      workOrderFilter.municipality = { $in: municipalityList };
+    }
+
+    // Get work orders with populated technician data
+    const workOrders = await WorkOrder.find(workOrderFilter)
+      .populate('technicianId', 'name')
+      .populate('technician2Id', 'name')
+      .populate('statusChangedBy', 'name')
+      .lean();
+
+    // Get activity logs for enhanced data
+    const logFilter = {
+      timestamp: { $gte: startDate, $lte: now }
+    };
+
+    if (technician && technician !== 'all') {
+      logFilter.performedByName = technician;
+    }
+
+    const activityLogs = await Log.find(logFilter)
+      .populate('performedBy', 'name')
+      .populate('workOrderId', 'municipality address type userName date status')
+      .lean();
+
+    // Combine work orders and activity logs for comprehensive map data
+    const mapActivities = [];
+
+    // Process work orders
+    workOrders.forEach(wo => {
+      const primaryTechnician = wo.technicianId?.name || wo.technician2Id?.name || 'Nepoznat tehničar';
+
+      // Calculate response time
+      let responseTime = null;
+      if (wo.date && wo.prvoMenjanjeStatusa) {
+        responseTime = Math.round((new Date(wo.prvoMenjanjeStatusa) - new Date(wo.date)) / (1000 * 60));
+      }
+
+      // Determine activity type based on work order
+      let workOrderActivityType = 'workorder_created';
+      if (wo.status === 'zavrsen') workOrderActivityType = 'workorder_finished';
+      else if (wo.status === 'otkazan') workOrderActivityType = 'workorder_cancelled';
+      else if (wo.status === 'odlozen') workOrderActivityType = 'workorder_postponed';
+
+      mapActivities.push({
+        id: wo._id.toString(),
+        timestamp: wo.date,
+        municipality: wo.municipality,
+        address: wo.address,
+        technician: primaryTechnician,
+        userName: wo.userName,
+        action: workOrderActivityType,
+        activityType: categorizeMapActivityType(workOrderActivityType),
+        priority: getMapActivityPriority(wo.status),
+        status: wo.status,
+        type: wo.type,
+        responseTime: responseTime,
+        workOrderId: wo._id.toString(),
+        source: 'workorder'
+      });
+    });
+
+    // Process activity logs for additional context
+    activityLogs.forEach(log => {
+      const workOrder = log.workOrderId;
+      if (!workOrder) return;
+
+      mapActivities.push({
+        id: log._id.toString(),
+        timestamp: log.timestamp,
+        municipality: workOrder.municipality,
+        address: workOrder.address,
+        technician: log.performedByName || log.performedBy?.name || 'Nepoznat tehničar',
+        userName: workOrder.userName,
+        action: log.action,
+        activityType: categorizeMapActivityType(log.action),
+        priority: getMapActivityPriority(log.action),
+        status: workOrder.status,
+        type: workOrder.type,
+        responseTime: null, // Not available for individual logs
+        workOrderId: log.workOrderId._id.toString(),
+        description: log.description,
+        source: 'log'
+      });
+    });
+
+    // Filter by activity type if specified
+    let filteredActivities = mapActivities;
+    if (activityType && activityType !== 'all') {
+      filteredActivities = mapActivities.filter(activity =>
+        activity.activityType === activityType
+      );
+    }
+
+    res.json({
+      data: filteredActivities,
+      totalCount: filteredActivities.length,
+      timeRange,
+      dateRange: {
+        startDate: startDate.toISOString(),
+        endDate: now.toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Greška pri dohvatanju podataka za interaktivnu mapu:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju podataka za interaktivnu mapu' });
+  }
+});
+
+// Helper function to categorize map activity types
+function categorizeMapActivityType(action) {
+  const categories = {
+    'Radni nalozi': [
+      'workorder_created', 'workorder_assigned', 'workorder_updated',
+      'workorder_finished', 'workorder_cancelled', 'workorder_postponed'
+    ],
+    'Materijali': ['material_added', 'material_removed'],
+    'Oprema': ['equipment_added', 'equipment_removed'],
+    'Dokumentacija': ['comment_added', 'image_added', 'image_removed'],
+    'Status promene': ['workorder_status_changed']
+  };
+
+  for (const [category, actions] of Object.entries(categories)) {
+    if (actions.includes(action)) {
+      return category;
+    }
+  }
+
+  return 'Ostale aktivnosti';
+}
+
+// Helper function to determine map activity priority
+function getMapActivityPriority(statusOrAction) {
+  const highPriority = ['workorder_finished', 'workorder_cancelled', 'zavrsen', 'otkazan'];
+  const mediumPriority = ['workorder_created', 'workorder_assigned', 'workorder_status_changed', 'nezavrsen'];
+  const lowPriority = ['comment_added', 'image_added', 'workorder_updated', 'odlozen'];
+
+  if (highPriority.includes(statusOrAction)) return 'high';
+  if (mediumPriority.includes(statusOrAction)) return 'medium';
+  if (lowPriority.includes(statusOrAction)) return 'low';
+
+  return 'normal';
+}
+
 // GET - Get list of dismissed work orders
 router.get('/dashboard/dismissed-work-orders', async (req, res) => {
   try {
@@ -1651,9 +2176,9 @@ router.get('/dashboard/dismissed-work-orders', async (req, res) => {
       .populate('workOrderId', 'tisJobId municipality address userName status')
       .sort({ dismissedAt: -1 })
       .lean();
-    
+
     res.json(dismissedWorkOrders);
-    
+
   } catch (error) {
     console.error('Greška pri dohvatanju uklonjenih radnih naloga:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju uklonjenih radnih naloga' });

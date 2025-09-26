@@ -197,6 +197,8 @@ WorkOrderSchema.index({ technicianId: 1 });
 WorkOrderSchema.index({ technician2Id: 1 });
 WorkOrderSchema.index({ date: 1 });
 WorkOrderSchema.index({ municipality: 1 });
+WorkOrderSchema.index({ statusChangedAt: 1 }); // Za cancellation analysis
+WorkOrderSchema.index({ status: 1, statusChangedAt: 1 }); // Za cancellation analysis sa vremenskim opsegom
 WorkOrderSchema.index({ status: 1, technicianId: 1 }); // Kompozitni indeks za filtriranje po statusu i tehničaru
 WorkOrderSchema.index({ date: 1, status: 1 }); // Kompozitni indeks za sortiranje po datumu i statusu
 

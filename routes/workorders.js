@@ -836,6 +836,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const newUsers = [];
     const existingUsers = [];
     const errors = [];
+    const duplicates = [];
     
     for (const row of data) {
       try {
@@ -873,12 +874,17 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 }
               }
             }
-            if (parts.length > 1) {
-              time = parts[1];
+            if (parts.length > 1 && parts[1].trim()) {
+              time = parts[1].trim();
             }
           } catch (error) {
             console.error('Greška pri parsiranju datuma:', error);
           }
+        }
+
+        // Validacija da time nije prazan
+        if (!time || time.trim() === '') {
+          time = '09:00';
         }
         
         // Pronalaženje tehničara po imenu
@@ -904,6 +910,18 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
         if (existingWorkOrder) {
           console.log('Radni nalog već postoji, preskačem:', { address, tisId, tisJobId });
+          duplicates.push({
+            address,
+            userName,
+            tisId,
+            tisJobId,
+            date,
+            time,
+            technicianName1,
+            technicianName2,
+            packageName,
+            reason: 'Radni nalog sa identičnim podacima već postoji u sistemu'
+          });
           continue;
         }
         
@@ -1051,7 +1069,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       newWorkOrders,
       newUsers,
       existingUsers,
-      errors
+      errors,
+      duplicates
     });
     
   } catch (error) {

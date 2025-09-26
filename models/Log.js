@@ -116,5 +116,8 @@ LogSchema.index({ workOrderId: 1, timestamp: -1 });
 LogSchema.index({ action: 1, timestamp: -1 });
 LogSchema.index({ 'workOrderInfo.userName': 1, timestamp: -1 });
 LogSchema.index({ 'workOrderInfo.tisId': 1, timestamp: -1 });
+LogSchema.index({ timestamp: -1 }); // Za hourly activity distribution
+LogSchema.index({ performedByName: 1, timestamp: -1 }); // Za filter po tehničaru
+LogSchema.index({ 'workOrderInfo.municipality': 1, timestamp: -1 }); // Za filter po opštini
 
 module.exports = mongoose.model('Log', LogSchema); 
