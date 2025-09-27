@@ -5,6 +5,16 @@ const mongoose = require('mongoose');
 const fetch = require('node-fetch');
 const geocodingService = require('../services/geocodingService');
 
+// Import optimized queries and cache middleware
+const { cacheMiddleware, invalidateDashboardCache } = require('../middleware/cacheMiddleware');
+const {
+  getOptimizedKPIData,
+  getOptimizedChartsData,
+  getOptimizedTablesData,
+  getOptimizedInteractiveMapData,
+  getOptimizedCancellationAnalysis
+} = require('../utils/optimizedQueries');
+
 // Helper funkcija za formatiranje datuma za srpsko vreme
 const formatSerbianDateTime = (date) => {
   const serbianDate = new Date(date);

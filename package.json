@@ -5,7 +5,13 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "optimize-db": "node scripts/runOptimizations.js",
+    "create-indexes": "node scripts/createOptimizedIndexes.js",
+    "clear-equipment": "node scripts/clearEquipment.js",
+    "clear-users": "node scripts/clearUsers.js",
+    "migrate-data": "node scripts/migrateData.js",
+    "test-images": "node scripts/testImageDuplicates.js"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +36,7 @@
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.6",
     "nodemon": "^3.1.10",
+    "redis": "^4.6.7",
     "uuid": "^11.1.0",
     "xlsx": "^0.18.5"
   }
