@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const FinancialSettings = require('../models/FinancialSettings');
 const FinancialTransaction = require('../models/FinancialTransaction');
 const FailedFinancialTransaction = require('../models/FailedFinancialTransaction');
@@ -8,6 +9,21 @@ const WorkOrder = require('../models/WorkOrder');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const Technician = require('../models/Technician');
 const { auth, isSuperAdmin } = require('../middleware/auth');
+
+// Cache for financial reports
+let financialReportsCache = new Map();
+const FINANCIAL_REPORTS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+// Function to invalidate financial reports cache
+const invalidateFinancialReportsCache = () => {
+  console.log('🗑️ Invalidating financial reports cache due to financial data change');
+  financialReportsCache.clear();
+};
+
+// Function to generate cache key
+const generateCacheKey = (dateFrom, dateTo) => {
+  return `reports_${dateFrom || 'all'}_${dateTo || 'all'}`;
+};
 
 // GET /api/finances/settings - Dobijanje finansijskih postavki
 router.get('/settings', auth, isSuperAdmin, async (req, res) => {
@@ -67,9 +83,17 @@ router.post('/settings', auth, isSuperAdmin, async (req, res) => {
   }
 });
 
-// GET /api/finances/municipalities - Lista svih opština iz WorkOrder tabele
+// GET /api/finances/municipalities - Lista svih opština iz WorkOrder tabele (optimized)
 router.get('/municipalities', auth, isSuperAdmin, async (req, res) => {
   try {
+    const { statsOnly } = req.query;
+
+    // Za dashboard, vrati samo broj elemenata
+    if (statsOnly === 'true') {
+      const count = await WorkOrder.distinct('municipality').then(m => m.filter(municipality => municipality && municipality.trim() !== '').length);
+      return res.json({ total: count });
+    }
+
     const municipalities = await WorkOrder.distinct('municipality');
     res.json(municipalities.filter(m => m && m.trim() !== '').sort());
   } catch (error) {
@@ -115,12 +139,24 @@ router.get('/customer-status-options', auth, isSuperAdmin, async (req, res) => {
   }
 });
 
-// GET /api/finances/technicians - Lista svih tehničara
+// GET /api/finances/technicians - Lista svih tehničara (optimized)
 router.get('/technicians', auth, isSuperAdmin, async (req, res) => {
   try {
+    const { statsOnly } = req.query;
+
+    // Za dashboard, vrati samo broj elemenata
+    if (statsOnly === 'true') {
+      const count = await Technician.countDocuments({
+        role: { $nin: ['admin', 'superadmin'] },
+        isAdmin: { $ne: true }
+      });
+      return res.json({ total: count });
+    }
+
     const allTechnicians = await Technician.find({})
       .select('_id name role isAdmin')
-      .sort({ name: 1 });
+      .sort({ name: 1 })
+      .lean(); // Dodano lean za performance
 
     // Traži tehničare koji nisu admin ili superadmin
     const technicians = allTechnicians.filter(tech =>
@@ -142,13 +178,37 @@ router.get('/technicians', auth, isSuperAdmin, async (req, res) => {
   }
 });
 
-// GET /api/finances/reports - Finansijski izveštaj
+// GET /api/finances/reports - Finansijski izveštaj (optimized with caching, aggregation & server-side pagination)
 router.get('/reports', auth, isSuperAdmin, async (req, res) => {
   try {
-    const { dateFrom, dateTo } = req.query;
+    const {
+      dateFrom,
+      dateTo,
+      statsOnly,
+      page = 1,
+      limit = 10,
+      search = '',
+      technicianFilter = ''
+    } = req.query;
+    const now = Date.now();
+
+    // Modified cache key to include pagination params
+    const cacheKey = generateCacheKey(dateFrom, dateTo) + `_${page}_${limit}_${search}_${technicianFilter}`;
+
+    // Check cache first (only for first page without search/filters)
+    if ((!page || page === '1') && !search && (!technicianFilter || technicianFilter.trim() === '' || technicianFilter === 'all')) {
+      const cachedData = financialReportsCache.get(cacheKey);
+      if (cachedData && (now - cachedData.timestamp) < FINANCIAL_REPORTS_CACHE_TTL) {
+        console.log('Returning cached financial reports for:', cacheKey);
+        return res.json(cachedData.data);
+      }
+    }
+
+    console.log('Calculating fresh financial reports...');
+    console.log('📊 Finances filter params:', { search, technicianFilter, dateFrom, dateTo });
+    const startTime = Date.now();
 
     let filter = {};
-
     if (dateFrom && dateTo) {
       filter.verifiedAt = {
         $gte: new Date(dateFrom),
@@ -156,43 +216,393 @@ router.get('/reports', auth, isSuperAdmin, async (req, res) => {
       };
     }
 
-    const transactions = await FinancialTransaction.find(filter)
-      .populate('technicians.technicianId', 'name')
-      .populate('workOrderId', 'tisJobId date')
-      .sort({ verifiedAt: -1 });
+    // Search is now handled in aggregation pipeline for proper $lookup
+    // (removed from basic filter to avoid conflicts)
 
-    // Ukupne sume
-    const totalRevenue = transactions.reduce((sum, t) => sum + t.finalPrice, 0);
-    const totalPayouts = transactions.reduce((sum, t) => sum + t.totalTechnicianEarnings, 0);
-    const totalProfit = transactions.reduce((sum, t) => sum + t.companyProfit, 0);
+    // Add technician filter - IMPORTANT: Only add when filter is truly present
+    if (technicianFilter && technicianFilter.trim() !== '' && technicianFilter !== 'all') {
+      try {
+        filter['technicians.technicianId'] = new mongoose.Types.ObjectId(technicianFilter);
+      } catch (error) {
+        console.error('Invalid technician filter ObjectId:', technicianFilter);
+        // Ignore invalid ObjectId, don't apply filter
+      }
+    }
 
-    // Grupa po tehničarima
-    const technicianStats = {};
-    transactions.forEach(transaction => {
-      transaction.technicians.forEach(tech => {
-        if (!technicianStats[tech.technicianId._id]) {
-          technicianStats[tech.technicianId._id] = {
-            technicianId: tech.technicianId._id,
-            name: tech.name,
-            totalEarnings: 0,
-            workOrdersCount: 0
-          };
+    // Determine if we need aggregation (search or valid technician filter)
+    const needsAggregation = search || (technicianFilter && technicianFilter.trim() !== '' && technicianFilter !== 'all');
+
+    console.log('📊 Final MongoDB filter:', JSON.stringify(filter, null, 2));
+
+    // Za dashboard stats, vrati samo osnovne brojke
+    if (statsOnly === 'true') {
+      const [summaryAgg] = await FinancialTransaction.aggregate([
+        { $match: filter },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$finalPrice' },
+            totalPayouts: { $sum: '$totalTechnicianEarnings' },
+            totalProfit: { $sum: '$companyProfit' },
+            transactionsCount: { $sum: 1 }
+          }
         }
-        technicianStats[tech.technicianId._id].totalEarnings += tech.earnings;
-        technicianStats[tech.technicianId._id].workOrdersCount += 1;
-      });
-    });
+      ]);
 
-    res.json({
-      summary: {
-        totalRevenue,
-        totalPayouts,
-        totalProfit,
-        transactionsCount: transactions.length
-      },
-      technicianStats: Object.values(technicianStats),
-      transactions
-    });
+      const result = summaryAgg || {
+        totalRevenue: 0,
+        totalPayouts: 0,
+        totalProfit: 0,
+        transactionsCount: 0
+      };
+
+      return res.json({ summary: result });
+    }
+
+    // Server-side pagination setup
+    const pageNum = parseInt(page);
+    const limitNum = Math.min(parseInt(limit), 100); // Max 100 per page
+    const skip = (pageNum - 1) * limitNum;
+
+    // Use aggregation pipeline for better performance with pagination
+    const [summaryAgg, technicianStatsAgg, transactions, totalCount] = await Promise.all([
+      // Summary aggregation (only for first page or when no pagination)
+      pageNum === 1 ? (
+        needsAggregation ?
+          // Use aggregation with lookup for technician filter
+          FinancialTransaction.aggregate([
+            {
+              $lookup: {
+                from: 'workorders',
+                localField: 'workOrderId',
+                foreignField: '_id',
+                as: 'workOrder'
+              }
+            },
+            {
+              $lookup: {
+                from: 'technicians',
+                localField: 'technicians.technicianId',
+                foreignField: '_id',
+                as: 'technicianData'
+              }
+            },
+            {
+              $match: {
+                $and: [
+                  // Date filter
+                  ...(filter.verifiedAt ? [{ verifiedAt: filter.verifiedAt }] : []),
+                  // Technician filter
+                  ...(technicianFilter && technicianFilter.trim() !== '' && technicianFilter !== 'all' ?
+                    [{ 'technicians.technicianId': new mongoose.Types.ObjectId(technicianFilter) }] : []
+                  ),
+                  // Search in tisJobId, municipality, customerStatus, or technician names (only if search exists)
+                  ...(search ? [{
+                    $or: [
+                      { 'workOrder.tisJobId': { $regex: search, $options: 'i' } },
+                      { municipality: { $regex: search, $options: 'i' } },
+                      { customerStatus: { $regex: search, $options: 'i' } },
+                      { 'technicianData.name': { $regex: search, $options: 'i' } }
+                    ]
+                  }] : [])
+                ]
+              }
+            },
+            {
+              $group: {
+                _id: null,
+                totalRevenue: { $sum: '$finalPrice' },
+                totalPayouts: { $sum: '$totalTechnicianEarnings' },
+                totalProfit: { $sum: '$companyProfit' },
+                transactionsCount: { $sum: 1 }
+              }
+            }
+          ]) :
+          // Use simple match for basic queries
+          FinancialTransaction.aggregate([
+            { $match: filter },
+            {
+              $group: {
+                _id: null,
+                totalRevenue: { $sum: '$finalPrice' },
+                totalPayouts: { $sum: '$totalTechnicianEarnings' },
+                totalProfit: { $sum: '$companyProfit' },
+                transactionsCount: { $sum: 1 }
+              }
+            }
+          ])
+      ) : Promise.resolve([null]),
+
+      // Technician stats aggregation (only for first page)
+      pageNum === 1 ? (
+        needsAggregation ?
+          // Use aggregation with lookup for technician filter
+          FinancialTransaction.aggregate([
+            {
+              $lookup: {
+                from: 'workorders',
+                localField: 'workOrderId',
+                foreignField: '_id',
+                as: 'workOrder'
+              }
+            },
+            {
+              $lookup: {
+                from: 'technicians',
+                localField: 'technicians.technicianId',
+                foreignField: '_id',
+                as: 'technicianData'
+              }
+            },
+            {
+              $match: {
+                $and: [
+                  // Date filter
+                  ...(filter.verifiedAt ? [{ verifiedAt: filter.verifiedAt }] : []),
+                  // Technician filter
+                  ...(technicianFilter && technicianFilter.trim() !== '' && technicianFilter !== 'all' ?
+                    [{ 'technicians.technicianId': new mongoose.Types.ObjectId(technicianFilter) }] : []
+                  ),
+                  // Search in tisJobId, municipality, customerStatus, or technician names (only if search exists)
+                  ...(search ? [{
+                    $or: [
+                      { 'workOrder.tisJobId': { $regex: search, $options: 'i' } },
+                      { municipality: { $regex: search, $options: 'i' } },
+                      { customerStatus: { $regex: search, $options: 'i' } },
+                      { 'technicianData.name': { $regex: search, $options: 'i' } }
+                    ]
+                  }] : [])
+                ]
+              }
+            },
+            { $unwind: '$technicians' },
+            {
+              $group: {
+                _id: '$technicians.technicianId',
+                totalEarnings: { $sum: '$technicians.earnings' },
+                workOrdersCount: { $sum: 1 }
+              }
+            },
+            {
+              $lookup: {
+                from: 'technicians',
+                localField: '_id',
+                foreignField: '_id',
+                as: 'technicianInfo'
+              }
+            },
+            {
+              $project: {
+                technicianId: '$_id',
+                name: { $arrayElemAt: ['$technicianInfo.name', 0] },
+                totalEarnings: 1,
+                workOrdersCount: 1
+              }
+            }
+          ]) :
+          // Use simple match for basic queries
+          FinancialTransaction.aggregate([
+            { $match: filter },
+            { $unwind: '$technicians' },
+            {
+              $group: {
+                _id: '$technicians.technicianId',
+                totalEarnings: { $sum: '$technicians.earnings' },
+                workOrdersCount: { $sum: 1 }
+              }
+            },
+            {
+              $lookup: {
+                from: 'technicians',
+                localField: '_id',
+                foreignField: '_id',
+                as: 'technicianInfo'
+              }
+            },
+            {
+              $project: {
+                technicianId: '$_id',
+                name: { $arrayElemAt: ['$technicianInfo.name', 0] },
+                totalEarnings: 1,
+                workOrdersCount: 1
+              }
+            }
+          ])
+      ) : Promise.resolve([]),
+
+      // Paginated transactions - use aggregation when search or technician filter is present
+      needsAggregation ?
+        FinancialTransaction.aggregate([
+          // First lookup workorders to get tisJobId for search
+          {
+            $lookup: {
+              from: 'workorders',
+              localField: 'workOrderId',
+              foreignField: '_id',
+              as: 'workOrder'
+            }
+          },
+          // Then lookup technicians for name search
+          {
+            $lookup: {
+              from: 'technicians',
+              localField: 'technicians.technicianId',
+              foreignField: '_id',
+              as: 'technicianData'
+            }
+          },
+          // Apply all filters including search
+          {
+            $match: {
+              $and: [
+                // Date filter
+                ...(filter.verifiedAt ? [{ verifiedAt: filter.verifiedAt }] : []),
+                // Technician filter
+                ...(technicianFilter && technicianFilter.trim() !== '' && technicianFilter !== 'all' ?
+                  [{ 'technicians.technicianId': new mongoose.Types.ObjectId(technicianFilter) }] : []
+                ),
+                // Search in tisJobId, municipality, customerStatus, or technician names (only if search exists)
+                ...(search ? [{
+                  $or: [
+                    { 'workOrder.tisJobId': { $regex: search, $options: 'i' } },
+                    { municipality: { $regex: search, $options: 'i' } },
+                    { customerStatus: { $regex: search, $options: 'i' } },
+                    { 'technicianData.name': { $regex: search, $options: 'i' } }
+                  ]
+                }] : [])
+              ]
+            }
+          },
+          // Format the output to match populate structure
+          {
+            $addFields: {
+              workOrderId: { $arrayElemAt: ['$workOrder', 0] },
+              technicians: {
+                $map: {
+                  input: '$technicians',
+                  as: 'tech',
+                  in: {
+                    $mergeObjects: [
+                      '$$tech',
+                      {
+                        technicianId: {
+                          $let: {
+                            vars: {
+                              techData: {
+                                $arrayElemAt: [
+                                  {
+                                    $filter: {
+                                      input: '$technicianData',
+                                      cond: { $eq: ['$$this._id', '$$tech.technicianId'] }
+                                    }
+                                  },
+                                  0
+                                ]
+                              }
+                            },
+                            in: {
+                              _id: '$$tech.technicianId',
+                              name: '$$techData.name'
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          { $sort: { verifiedAt: -1 } },
+          { $skip: skip },
+          { $limit: limitNum }
+        ]) :
+        FinancialTransaction.find(filter)
+          .populate('technicians.technicianId', 'name')
+          .populate('workOrderId', 'tisJobId date')
+          .sort({ verifiedAt: -1 })
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
+
+      // Total count for pagination - use same aggregation logic as main query
+      needsAggregation ?
+        FinancialTransaction.aggregate([
+          {
+            $lookup: {
+              from: 'workorders',
+              localField: 'workOrderId',
+              foreignField: '_id',
+              as: 'workOrder'
+            }
+          },
+          {
+            $lookup: {
+              from: 'technicians',
+              localField: 'technicians.technicianId',
+              foreignField: '_id',
+              as: 'technicianData'
+            }
+          },
+          {
+            $match: {
+              $and: [
+                // Date filter
+                ...(filter.verifiedAt ? [{ verifiedAt: filter.verifiedAt }] : []),
+                // Technician filter
+                ...(technicianFilter && technicianFilter.trim() !== '' && technicianFilter !== 'all' ?
+                  [{ 'technicians.technicianId': new mongoose.Types.ObjectId(technicianFilter) }] : []
+                ),
+                // Search in tisJobId, municipality, customerStatus, or technician names (only if search exists)
+                ...(search ? [{
+                  $or: [
+                    { 'workOrder.tisJobId': { $regex: search, $options: 'i' } },
+                    { municipality: { $regex: search, $options: 'i' } },
+                    { customerStatus: { $regex: search, $options: 'i' } },
+                    { 'technicianData.name': { $regex: search, $options: 'i' } }
+                  ]
+                }] : [])
+              ]
+            }
+          },
+          { $count: 'total' }
+        ]).then(result => result[0]?.total || 0) :
+        FinancialTransaction.countDocuments(filter)
+    ]);
+
+    const summary = summaryAgg?.[0] || {
+      totalRevenue: 0,
+      totalPayouts: 0,
+      totalProfit: 0,
+      transactionsCount: 0
+    };
+
+    const result = {
+      summary: pageNum === 1 ? summary : null, // Only include summary on first page
+      technicianStats: pageNum === 1 ? technicianStatsAgg : [], // Only include stats on first page
+      transactions,
+      pagination: {
+        currentPage: pageNum,
+        totalPages: Math.ceil(totalCount / limitNum),
+        totalCount,
+        limit: limitNum,
+        hasNextPage: pageNum < Math.ceil(totalCount / limitNum),
+        hasPrevPage: pageNum > 1
+      }
+    };
+
+    // Cache the result (only cache first page)
+    if (pageNum === 1) {
+      financialReportsCache.set(cacheKey, {
+        data: result,
+        timestamp: now
+      });
+    }
+
+    const endTime = Date.now();
+    console.log(`Financial reports calculated in ${endTime - startTime}ms (page ${pageNum}/${Math.ceil(totalCount / limitNum)})`);
+
+    res.json(result);
 
   } catch (error) {
     console.error('Greška pri generisanju finansijskog izveštaja:', error);
@@ -356,3 +766,4 @@ router.post('/exclude-from-finances/:workOrderId', auth, isSuperAdmin, async (re
 });
 
 module.exports = router;
+module.exports.invalidateFinancialReportsCache = invalidateFinancialReportsCache;

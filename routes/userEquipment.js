@@ -57,16 +57,69 @@ function mapEquipmentTypeToEnum(category) {
   return 'ONT/HFC';
 }
 
-// GET - Dohvati svu opremu kod korisnika
+// GET - Dohvati svu opremu kod korisnika (optimized)
 router.get('/', async (req, res) => {
   try {
+    const { statsOnly } = req.query;
     console.log('Fetching all installed user equipment');
-    
+
+    // Za dashboard, vraćaj samo osnovne statistike
+    if (statsOnly === 'true') {
+      console.log('📊 Fetching user equipment stats only...');
+      const startTime = Date.now();
+
+      const stats = await Equipment.aggregate([
+        {
+          $match: {
+            location: { $regex: /^user-/ },
+            status: 'installed'
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            byCategory: {
+              $push: {
+                category: '$category',
+                count: 1
+              }
+            }
+          }
+        }
+      ]);
+
+      const result = {
+        total: stats[0]?.total || 0,
+        byCategory: {}
+      };
+
+      // Group by category
+      if (stats[0]?.byCategory) {
+        stats[0].byCategory.forEach(item => {
+          if (!result.byCategory[item.category]) {
+            result.byCategory[item.category] = 0;
+          }
+          result.byCategory[item.category]++;
+        });
+      }
+
+      const endTime = Date.now();
+      console.log(`📊 User equipment stats fetched in ${endTime - startTime}ms`);
+
+      return res.json({
+        success: true,
+        stats: result
+      });
+    }
+
     // Tražimo opremu gde location počinje sa "user-"
-    const equipment = await Equipment.find({ 
+    const equipment = await Equipment.find({
       location: { $regex: /^user-/ },
       status: 'installed'
-    }).sort({ updatedAt: -1 });
+    })
+    .sort({ updatedAt: -1 })
+    .lean(); // Performance optimization
     
     console.log(`Found ${equipment.length} equipment items installed at users`);
     

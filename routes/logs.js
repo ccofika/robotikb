@@ -15,6 +15,34 @@ const {
   getOptimizedCancellationAnalysis
 } = require('../utils/optimizedQueries');
 
+// Import optimized dashboard functions
+const {
+  invalidateDashboardStats,
+  getCancellationAnalysis,
+  getHourlyActivityDistribution,
+  getInteractiveMapData,
+  getFinancialAnalysis,
+  getTechnicianComparison
+} = require('./logs_dashboard_optimized');
+
+// Dashboard cache system - 5 minute TTL for performance
+let dashboardCache = {
+  cancellation: null,
+  hourly: null,
+  map: null,
+  financial: null,
+  technician: null
+};
+let dashboardCacheTime = {
+  cancellation: 0,
+  hourly: 0,
+  map: 0,
+  financial: 0,
+  technician: 0
+};
+const DASHBOARD_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+
 // Helper funkcija za formatiranje datuma za srpsko vreme
 const formatSerbianDateTime = (date) => {
   const serbianDate = new Date(date);
@@ -65,10 +93,9 @@ router.get('/technicians', async (req, res) => {
     // Pagination
     const skip = (page - 1) * limit;
     
-    // Dohvati logove
+    // Dohvati logove - remove populate for better performance since we have performedByName and workOrderInfo
     const logs = await Log.find(filter)
-      .populate('performedBy', 'name')
-      .populate('workOrderId', 'municipality address type userName tisId')
+      .select('action description performedByName workOrderInfo timestamp performedBy workOrderId materialDetails equipmentDetails imageDetails statusChange commentText')
       .sort({ timestamp: -1 })
       .skip(skip)
       .limit(parseInt(limit))
@@ -78,7 +105,7 @@ router.get('/technicians', async (req, res) => {
     const technicianGroups = {};
     
     logs.forEach(log => {
-      const technicianId = log.performedBy?._id?.toString() || 'unknown';
+      const technicianId = log.performedBy?.toString() || 'unknown';
       const technicianName = log.performedByName || 'Nepoznat tehničar';
       
       if (!technicianGroups[technicianId]) {
@@ -151,10 +178,9 @@ router.get('/users', async (req, res) => {
     // Pagination
     const skip = (page - 1) * limit;
     
-    // Dohvati logove
+    // Dohvati logove - remove populate for better performance since we have performedByName and workOrderInfo
     const logs = await Log.find(filter)
-      .populate('performedBy', 'name')
-      .populate('workOrderId', 'municipality address type userName tisId')
+      .select('action description performedByName workOrderInfo timestamp performedBy workOrderId materialDetails equipmentDetails imageDetails statusChange commentText')
       .sort({ timestamp: -1 })
       .skip(skip)
       .limit(parseInt(limit))
@@ -1655,150 +1681,42 @@ router.post('/dashboard/dismiss-work-order', async (req, res) => {
   }
 });
 
-// GET - Cancellation analysis data for dashboard
-router.get('/dashboard/cancellation-analysis', async (req, res) => {
-  try {
-    const { timeRange = '30d', technician, municipalities } = req.query;
+// GET - Cancellation analysis data for dashboard (OPTIMIZED)
+router.get('/dashboard/cancellation-analysis', getCancellationAnalysis);
 
-    // Calculate date range
-    const now = new Date();
-    let startDate;
-
-    switch (timeRange) {
-      case '7d':
-        startDate = new Date(now - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case '30d':
-        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case '90d':
-        startDate = new Date(now - 90 * 24 * 60 * 60 * 1000);
-        break;
-      case '180d':
-        startDate = new Date(now - 180 * 24 * 60 * 60 * 1000);
-        break;
-      case '365d':
-        startDate = new Date(now - 365 * 24 * 60 * 60 * 1000);
-        break;
-      default:
-        startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
-    }
-
-    // Build filter for cancelled work orders
-    const filter = {
-      status: 'otkazan',
-      statusChangedAt: { $gte: startDate, $lte: now }
-    };
-
-    // Add technician filter
-    if (technician && technician !== 'all') {
-      filter.$or = [
-        { 'technicianId': technician },
-        { 'technician2Id': technician }
-      ];
-    }
-
-    // Add municipality filter
-    if (municipalities && municipalities.length > 0) {
-      const municipalityList = typeof municipalities === 'string'
-        ? municipalities.split(',')
-        : municipalities;
-      filter.municipality = { $in: municipalityList };
-    }
-
-    // Get cancelled work orders with populated technician data
-    const cancelledWorkOrders = await WorkOrder.find(filter)
-      .populate('technicianId', 'name')
-      .populate('technician2Id', 'name')
-      .populate('statusChangedBy', 'name')
-      .lean();
-
-    // Process cancellation data for analysis
-    const cancellationData = cancelledWorkOrders.map(wo => {
-      // Get the most recent cancellation from cancelHistory
-      const latestCancellation = wo.cancelHistory && wo.cancelHistory.length > 0
-        ? wo.cancelHistory[wo.cancelHistory.length - 1]
-        : null;
-
-      // Determine primary technician
-      const primaryTechnician = wo.technicianId?.name || wo.technician2Id?.name || 'Nepoznat tehničar';
-
-      // Extract and categorize cancellation reason
-      const cancellationComment = latestCancellation?.comment || 'Nespecifikovano';
-      const cancellationReason = categorizeCancellationReason(cancellationComment);
-
-      // Calculate response time (from creation to cancellation)
-      const createdAt = wo.createdAt || wo.date;
-      const cancelledAt = wo.statusChangedAt || latestCancellation?.canceledAt || now;
-      const responseTime = Math.round((new Date(cancelledAt) - new Date(createdAt)) / (1000 * 60)); // in minutes
-
-      return {
-        id: wo._id.toString(),
-        workOrderId: wo._id.toString(),
-        tisJobId: wo.tisJobId || null,
-        municipality: wo.municipality,
-        address: wo.address,
-        userName: wo.userName,
-        type: wo.type,
-        technician: primaryTechnician,
-        statusChangedBy: wo.statusChangedBy?.name || primaryTechnician,
-        timestamp: cancelledAt,
-        cancellationReason: cancellationReason,
-        cancellationComment: cancellationComment,
-        responseTime: responseTime > 0 ? responseTime : 30, // Fallback to 30 min if calculation fails
-        status: 'cancelled',
-        date: wo.date,
-        createdAt: createdAt
-      };
-    });
-
-    // Also get cancellation logs for additional context
-    const cancellationLogs = await Log.find({
-      action: 'workorder_cancelled',
-      timestamp: { $gte: startDate, $lte: now }
-    })
-      .populate('performedBy', 'name')
-      .populate('workOrderId', 'municipality address userName tisId tisJobId')
-      .lean();
-
-    // Merge log data with work order data
-    const enhancedCancellationData = cancellationData.map(cancellation => {
-      const relatedLog = cancellationLogs.find(log =>
-        log.workOrderId?._id.toString() === cancellation.workOrderId
-      );
-
-      if (relatedLog) {
-        return {
-          ...cancellation,
-          logDescription: relatedLog.description,
-          logPerformedBy: relatedLog.performedBy?.name || relatedLog.performedByName,
-          logTimestamp: relatedLog.timestamp
-        };
-      }
-
-      return cancellation;
-    });
-
-    res.json({
-      data: enhancedCancellationData,
-      totalCount: enhancedCancellationData.length,
-      timeRange,
-      dateRange: {
-        startDate: startDate.toISOString(),
-        endDate: now.toISOString()
-      }
-    });
-
-  } catch (error) {
-    console.error('Greška pri dohvatanju analize otkazivanja:', error);
-    res.status(500).json({ error: 'Greška pri dohvatanju analize otkazivanja' });
-  }
-});
-
-// GET - Hourly activity distribution data for dashboard
+// GET - Hourly activity distribution data for dashboard (OPTIMIZED)
 router.get('/dashboard/hourly-activity-distribution', async (req, res) => {
   try {
-    const { timeRange = '30d', technician, municipalities } = req.query;
+    const { timeRange = '30d', technician, municipalities, statsOnly } = req.query;
+
+    console.log(`⏰ Hourly activity request - timeRange: ${timeRange}, technician: ${technician}, statsOnly: ${statsOnly}`);
+    const startTime = Date.now();
+
+    // For dashboard stats, return only basic numbers
+    if (statsOnly === 'true') {
+      const now = new Date();
+      const startDate = new Date(now - 30 * 24 * 60 * 60 * 1000); // Default 30d
+
+      const count = await Log.countDocuments({
+        timestamp: { $gte: startDate, $lte: now }
+      });
+
+      console.log(`⏰ Hourly stats returned in ${Date.now() - startTime}ms`);
+      return res.json({ total: count });
+    }
+
+    // Create cache key based on parameters
+    const cacheKey = `${timeRange}-${technician || 'all'}-${municipalities || 'all'}`;
+    const cacheEntry = dashboardCache.hourly;
+    const cacheTime = dashboardCacheTime.hourly;
+
+    // Return cached data if still valid and same parameters
+    if (cacheEntry && cacheEntry.key === cacheKey && (Date.now() - cacheTime) < DASHBOARD_CACHE_TTL) {
+      console.log(`⏰ Returning cached hourly activity (${Date.now() - startTime}ms)`);
+      return res.json(cacheEntry.data);
+    }
+
+    console.log('⏰ Calculating fresh hourly activity distribution...');
 
     // Calculate date range
     const now = new Date();
@@ -3434,5 +3352,24 @@ router.get('/dashboard/predictive-analytics', async (req, res) => {
     });
   }
 });
+
+// =============================================================================
+// OPTIMIZED DASHBOARD ENDPOINTS - These replace the old endpoints above
+// =============================================================================
+
+// OPTIMIZED ENDPOINT: Cancellation analysis
+router.get('/dashboard/cancellation-analysis-optimized', getCancellationAnalysis);
+
+// OPTIMIZED ENDPOINT: Hourly activity distribution
+router.get('/dashboard/hourly-activity-distribution-optimized', getHourlyActivityDistribution);
+
+// OPTIMIZED ENDPOINT: Interactive map data
+router.get('/dashboard/interactive-map-optimized', getInteractiveMapData);
+
+// OPTIMIZED ENDPOINT: Financial analysis
+router.get('/dashboard/financial-analysis-optimized', getFinancialAnalysis);
+
+// OPTIMIZED ENDPOINT: Technician comparison
+router.get('/dashboard/technician-comparison-optimized', getTechnicianComparison);
 
 module.exports = router; 

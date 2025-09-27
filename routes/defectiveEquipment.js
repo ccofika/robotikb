@@ -2,10 +2,82 @@ const express = require('express');
      const router = express.Router();
      const { Equipment, Log, WorkOrder, Technician } = require('../models');
 
-     // GET /api/defective-equipment - Dobijanje neispravne opreme
+     // Cache for defective equipment (5 minute TTL)
+     let defectiveEquipmentCache = null;
+     let defectiveEquipmentCacheTimestamp = 0;
+     const DEFECTIVE_EQUIPMENT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+     // Function to invalidate defective equipment cache
+     const invalidateDefectiveEquipmentCache = () => {
+       console.log('🗑️ Invalidating defective equipment cache due to equipment change');
+       defectiveEquipmentCache = null;
+       defectiveEquipmentCacheTimestamp = 0;
+     };
+
+     // GET /api/defective-equipment - Dobijanje neispravne opreme (optimized)
      router.get('/', async (req, res) => {
        try {
+         const { statsOnly } = req.query;
+         const now = Date.now();
          console.log('📊 Fetching defective equipment...');
+
+         // Check cache first (for full data requests)
+         if (!statsOnly && defectiveEquipmentCache && (now - defectiveEquipmentCacheTimestamp) < DEFECTIVE_EQUIPMENT_CACHE_TTL) {
+           console.log('📦 Returning cached defective equipment data');
+           return res.json(defectiveEquipmentCache);
+         }
+
+         // Za dashboard, vraćaj samo osnovne statistike
+         if (statsOnly === 'true') {
+           console.log('📊 Fetching defective equipment stats only...');
+           const startTime = Date.now();
+
+           const stats = await Equipment.aggregate([
+             {
+               $match: {
+                 $or: [
+                   { status: 'defective' },
+                   { location: 'defective' }
+                 ]
+               }
+             },
+             {
+               $group: {
+                 _id: null,
+                 total: { $sum: 1 },
+                 byCategory: {
+                   $push: {
+                     category: '$category',
+                     count: 1
+                   }
+                 }
+               }
+             }
+           ]);
+
+           const result = {
+             total: stats[0]?.total || 0,
+             byCategory: {}
+           };
+
+           // Group by category
+           if (stats[0]?.byCategory) {
+             stats[0].byCategory.forEach(item => {
+               if (!result.byCategory[item.category]) {
+                 result.byCategory[item.category] = 0;
+               }
+               result.byCategory[item.category]++;
+             });
+           }
+
+           const endTime = Date.now();
+           console.log(`📊 Defective equipment stats fetched in ${endTime - startTime}ms`);
+
+           return res.json({
+             success: true,
+             stats: result
+           });
+         }
 
          // Dobijamo svu opremu sa statusom ili lokacijom "defective"
          const defectiveEquipment = await Equipment.find({
@@ -15,7 +87,8 @@ const express = require('express');
            ]
          })
          .populate('assignedTo', 'name')
-         .sort({ removedAt: -1, updatedAt: -1 });
+         .sort({ removedAt: -1, updatedAt: -1 })
+         .lean(); // Performance optimization
 
          console.log(`📋 Found ${defectiveEquipment.length} defective equipment items`);
 
@@ -105,11 +178,17 @@ const express = require('express');
 
          console.log('📈 Defective equipment stats:', stats);
 
-         res.json({
+         const result = {
            success: true,
            data: enrichedEquipment,
            stats: stats
-         });
+         };
+
+         // Cache the result for future requests
+         defectiveEquipmentCache = result;
+         defectiveEquipmentCacheTimestamp = now;
+
+         res.json(result);
 
        } catch (error) {
          console.error('❌ Error fetching defective equipment:', error);
@@ -244,4 +323,6 @@ const express = require('express');
        }
      });
 
+     // Export cache invalidation function for use in other modules
      module.exports = router;
+     module.exports.invalidateDefectiveEquipmentCache = invalidateDefectiveEquipmentCache;

@@ -67,10 +67,22 @@ const normalizeCategory = (category) => {
   return category.toLowerCase();
 };
 
-// GET - Dohvati sve komade opreme
+// GET - Dohvati sve komade opreme (optimized)
 router.get('/', async (req, res) => {
   try {
-    const equipment = await Equipment.find();
+    const { statsOnly } = req.query;
+
+    // Za dashboard, vraćaj samo broj elemenata
+    if (statsOnly === 'true') {
+      const count = await Equipment.countDocuments();
+      return res.json({ total: count });
+    }
+
+    // Za punu listu, dodaj index i lean za performance
+    const equipment = await Equipment.find()
+      .lean() // Vratiti plain JS objekte umesto Mongoose dokumenata
+      .sort({ createdAt: -1 }); // Dodaj indeks na createdAt
+
     res.json(equipment);
   } catch (error) {
     console.error('Greška pri dohvatanju opreme:', error);
@@ -78,34 +90,199 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET - Dohvati opremu za prikaz (samo magacin i tehničari)
+// GET - Dohvati opremu za prikaz (samo magacin i tehničari) with server-side pagination
 router.get('/display', async (req, res) => {
   try {
-    // Za sada vraćam originalnu funkcionalnost sa performanse optimizacijama
-    const displayEquipment = await Equipment.find({
+    const startTime = Date.now();
+
+    const {
+      statsOnly,
+      page = 1,
+      limit = 50,
+      search = '',
+      category = '',
+      location = ''
+    } = req.query;
+
+    // Za dashboard/stats, vrati samo brojeve
+    if (statsOnly === 'true') {
+      const filterObj = {
+        $or: [
+          { location: 'magacin' },
+          { location: { $regex: /^tehnicar-/ } }
+        ]
+      };
+
+      // Add category filter if specified
+      if (category && category !== 'all') {
+        filterObj.category = category;
+      }
+
+      const [totalCount, inWarehouse] = await Promise.all([
+        Equipment.countDocuments(filterObj),
+        Equipment.countDocuments({
+          ...filterObj,
+          location: 'magacin'
+        })
+      ]);
+
+      const assigned = totalCount - inWarehouse;
+
+      return res.json({
+        total: totalCount,
+        inWarehouse,
+        assigned
+      });
+    }
+
+    // Build filter object
+    let filterObj = {
       $or: [
         { location: 'magacin' },
-        { assignedTo: { $ne: null } }
+        { location: { $regex: /^tehnicar-/ } }
       ]
-    })
-    .sort({ createdAt: -1 })
-    .lean(); // Dodano lean() za bolje performance
+    };
 
-    res.json(displayEquipment);
+    // Add search filter
+    if (search) {
+      filterObj.$and = filterObj.$and || [];
+      filterObj.$and.push({
+        $or: [
+          { serialNumber: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } },
+          { category: { $regex: search, $options: 'i' } }
+        ]
+      });
+    }
+
+    // Add category filter
+    if (category && category !== 'all') {
+      filterObj.category = category;
+    }
+
+    // Add location filter
+    if (location) {
+      filterObj.location = location;
+    }
+
+    // Server-side pagination setup
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = Math.min(parseInt(limit, 10) || 50, 100); // Max 100 per page
+    const skip = (pageNum - 1) * limitNum;
+
+    // Execute queries in parallel
+    const [equipment, totalCount] = await Promise.all([
+      Equipment.find(filterObj)
+        .skip(skip)
+        .limit(limitNum)
+        .sort({ createdAt: -1 })
+        .lean(),
+      Equipment.countDocuments(filterObj)
+    ]);
+
+    const endTime = Date.now();
+    const queryTime = endTime - startTime;
+
+    res.json({
+      data: equipment,
+      pagination: {
+        currentPage: pageNum,
+        totalPages: Math.ceil(totalCount / limitNum),
+        totalCount,
+        limit: limitNum,
+        hasNextPage: pageNum < Math.ceil(totalCount / limitNum),
+        hasPreviousPage: pageNum > 1
+      },
+      performance: {
+        queryTime,
+        resultsPerPage: equipment.length
+      }
+    });
+
   } catch (error) {
     console.error('Greška pri dohvatanju opreme za prikaz:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju opreme za prikaz' });
   }
 });
 
-// GET - Dohvati sve kategorije opreme
+// GET - Dohvati sve kategorije opreme sa brojem elemenata
 router.get('/categories', async (req, res) => {
   try {
+    const { withCounts } = req.query;
+
+    if (withCounts === 'true') {
+      // Aggregation pipeline za dobijanje kategorija sa brojem elemenata
+      const categoriesWithCounts = await Equipment.aggregate([
+        {
+          $match: {
+            $or: [
+              { location: 'magacin' },
+              { location: { $regex: /^tehnicar-/ } }
+            ]
+          }
+        },
+        {
+          $group: {
+            _id: '$category',
+            count: { $sum: 1 }
+          }
+        },
+        {
+          $sort: { _id: 1 }
+        }
+      ]);
+
+      // Dodaj ukupan broj za "all" kategoriju
+      const totalCount = await Equipment.countDocuments({
+        $or: [
+          { location: 'magacin' },
+          { location: { $regex: /^tehnicar-/ } }
+        ]
+      });
+
+      const result = {
+        all: totalCount,
+        ...categoriesWithCounts.reduce((acc, item) => {
+          acc[item._id] = item.count;
+          return acc;
+        }, {})
+      };
+
+      return res.json(result);
+    }
+
+    // Default behavior - samo lista kategorija
     const categories = await Equipment.distinct('category');
     res.json(categories);
   } catch (error) {
     console.error('Greška pri dohvatanju kategorija opreme:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju kategorija opreme' });
+  }
+});
+
+// GET - Dohvati sve moguće lokacije (magacin + svi tehničari)
+router.get('/locations', async (req, res) => {
+  try {
+    // Dobij sve tehničare
+    const technicians = await require('../models').Technician.find().select('_id name').lean();
+
+    // Kreiraj lokacije array sa magacinom i svim tehničarima
+    const locations = [
+      { value: 'magacin', label: 'Magacin' }
+    ];
+
+    // Dodaj sve tehničare
+    technicians.forEach(tech => {
+      locations.push({
+        value: `tehnicar-${tech._id}`,
+        label: `Tehničar: ${tech.name}`
+      });
+    });
+
+    res.json(locations);
+  } catch (error) {
+    console.error('Greška pri dohvatanju lokacija:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju lokacija' });
   }
 });
 

@@ -3,14 +3,20 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const { Material } = require('../models');
 
-// GET - Dohvati sve materijale sa podrškom za query parametre
+// GET - Dohvati sve materijale sa podrškom za query parametre (optimized)
 router.get('/', async (req, res) => {
   try {
-    const { stats, limit } = req.query;
+    const { stats, limit, statsOnly } = req.query;
+
+    // Za dashboard, vrati samo broj elemenata
+    if (statsOnly === 'true') {
+      const count = await Material.countDocuments();
+      return res.json({ total: count });
+    }
 
     // Ako je traženo samo stats=true, vrati samo potrebne podatke za statistike
     if (stats === 'true') {
-      const materials = await Material.find().select('type quantity'); // Samo type i quantity fields
+      const materials = await Material.find().select('type quantity').lean();
       res.json(materials);
       return;
     }
@@ -18,13 +24,13 @@ router.get('/', async (req, res) => {
     // Ako je tražen limit, ograniči rezultate
     if (limit) {
       const limitNum = parseInt(limit, 10);
-      const materials = await Material.find().limit(limitNum);
+      const materials = await Material.find().limit(limitNum).lean();
       res.json(materials);
       return;
     }
 
     // Default - dohvati sve materijale
-    const materials = await Material.find();
+    const materials = await Material.find().lean();
     res.json(materials);
   } catch (error) {
     console.error('Greška pri dohvatanju materijala:', error);

@@ -7,6 +7,21 @@ const xlsx = require('xlsx');
 const mongoose = require('mongoose');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 
+// Cache for evidence preview (5 minute TTL)
+let evidencePreviewCache = new Map();
+const EVIDENCE_PREVIEW_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Function to generate cache key
+const generateEvidenceCacheKey = (startDate, endDate) => {
+  return `evidence_preview_${startDate}_${endDate}`;
+};
+
+// Function to invalidate evidence preview cache
+const invalidateEvidencePreviewCache = () => {
+  console.log('🗑️ Invalidating evidence preview cache due to work order evidence change');
+  evidencePreviewCache.clear();
+};
+
 const workordersFilePath = path.join(__dirname, '../data/workorders.json');
 const techniciansFilePath = path.join(__dirname, '../data/technicians.json');
 const materialsFilePath = path.join(__dirname, '../data/materials.json');
@@ -867,50 +882,92 @@ const getEquipmentCurrentStatus = (userEquipment, userId, serialNumber) => {
   return equipmentHistory[0];
 };
 
-// GET - Dohvati statistiku za izabrani period iz WorkOrderEvidence
+// GET - Dohvati statistiku za izabrani period iz WorkOrderEvidence (optimized)
 router.get('/evidence-preview', async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    
+    const now = Date.now();
+
     if (!startDate || !endDate) {
       return res.status(400).json({ error: 'Start date i end date su obavezni' });
+    }
+
+    console.log('📊 Fetching evidence preview stats...');
+    const perfStart = Date.now();
+
+    // Check cache first
+    const cacheKey = generateEvidenceCacheKey(startDate, endDate);
+    const cachedData = evidencePreviewCache.get(cacheKey);
+    if (cachedData && (now - cachedData.timestamp) < EVIDENCE_PREVIEW_CACHE_TTL) {
+      console.log(`📦 Returning cached evidence preview data (${Date.now() - perfStart}ms)`);
+      return res.json(cachedData.data);
     }
 
     const start = new Date(startDate);
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
 
-    // Filtriranje WorkOrderEvidence po datumu
-    const evidenceRecords = await WorkOrderEvidence.find({
-      executionDate: {
-        $gte: start,
-        $lte: end
+    // Optimized aggregation pipeline instead of client-side processing
+    const stats = await WorkOrderEvidence.aggregate([
+      {
+        $match: {
+          executionDate: {
+            $gte: start,
+            $lte: end
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          workOrdersCount: { $sum: 1 },
+          technicians: {
+            $addToSet: {
+              $concatArrays: [
+                { $cond: [{ $ne: ["$technician1", null] }, ["$technician1"], []] },
+                { $cond: [{ $ne: ["$technician2", null] }, ["$technician2"], []] }
+              ]
+            }
+          },
+          totalInstalledEquipment: {
+            $sum: { $size: { $ifNull: ["$installedEquipment", []] } }
+          },
+          totalRemovedEquipment: {
+            $sum: { $size: { $ifNull: ["$removedEquipment", []] } }
+          }
+        }
+      },
+      {
+        $project: {
+          workOrders: "$workOrdersCount",
+          technicians: { $size: { $reduce: {
+            input: "$technicians",
+            initialValue: [],
+            in: { $setUnion: ["$$value", "$$this"] }
+          }}},
+          materials: { $literal: 0 }, // No direct materials in WorkOrderEvidence
+          equipment: { $add: ["$totalInstalledEquipment", "$totalRemovedEquipment"] }
+        }
       }
+    ]);
+
+    const result = stats[0] || {
+      workOrders: 0,
+      technicians: 0,
+      materials: 0,
+      equipment: 0
+    };
+
+    // Cache the result
+    evidencePreviewCache.set(cacheKey, {
+      data: result,
+      timestamp: now
     });
 
-    // Brojanje jedinstvenih tehničara
-    const technicians = new Set();
-    evidenceRecords.forEach(record => {
-      if (record.technician1) technicians.add(record.technician1);
-      if (record.technician2) technicians.add(record.technician2);
-    });
-    
-    // Skupljanje instalirane opreme
-    const totalInstalledEquipment = evidenceRecords.reduce((acc, record) => {
-      return acc + (record.installedEquipment ? record.installedEquipment.length : 0);
-    }, 0);
+    const perfEnd = Date.now();
+    console.log(`📊 Evidence preview stats calculated in ${perfEnd - perfStart}ms`);
 
-    // Skupljanje uklonjene opreme
-    const totalRemovedEquipment = evidenceRecords.reduce((acc, record) => {
-      return acc + (record.removedEquipment ? record.removedEquipment.length : 0);
-    }, 0);
-
-    res.json({
-      workOrders: evidenceRecords.length,
-      technicians: technicians.size,
-      materials: 0, // Nema direktno materijale u WorkOrderEvidence
-      equipment: totalInstalledEquipment + totalRemovedEquipment
-    });
+    res.json(result);
     
   } catch (error) {
     console.error('Greška pri generisanju WorkOrderEvidence statistike:', error);
@@ -918,26 +975,34 @@ router.get('/evidence-preview', async (req, res) => {
   }
 });
 
-// POST - Kreiranje Excel evidencije iz WorkOrderEvidence podataka
+// POST - Kreiranje Excel evidencije iz WorkOrderEvidence podataka (optimized)
 router.post('/evidencija-new', async (req, res) => {
   try {
     const { startDate, endDate } = req.body;
-    
+
     if (!startDate || !endDate) {
       return res.status(400).json({ error: 'Start date i end date su obavezni' });
     }
+
+    console.log('📊 Starting evidencija export generation...');
+    const perfStart = Date.now();
 
     const start = new Date(startDate);
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
 
-    // Dohvatanje WorkOrderEvidence podataka
+    // Optimized data fetching with lean()
     const evidenceRecords = await WorkOrderEvidence.find({
       executionDate: {
         $gte: start,
         $lte: end
       }
-    }).sort({ executionDate: 1 });
+    })
+    .sort({ executionDate: 1 })
+    .lean(); // Performance optimization
+
+    const dataFetchTime = Date.now();
+    console.log(`📊 Evidence records fetched in ${dataFetchTime - perfStart}ms (${evidenceRecords.length} records)`);
 
     if (evidenceRecords.length === 0) {
       return res.status(400).json({ error: 'Nema radnih naloga u izabranom periodu' });
@@ -1109,16 +1174,22 @@ router.post('/evidencija-new', async (req, res) => {
     xlsx.utils.book_append_sheet(workbook, ws, "SPECIFIKACIJA RADOVA");
 
     // Generisanje Excel fajla
+    const excelStart = Date.now();
     const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-    
+    const excelEnd = Date.now();
+
+    const totalTime = Date.now() - perfStart;
+    console.log(`📊 Excel file generated in ${excelEnd - excelStart}ms`);
+    console.log(`📊 Total evidencija export completed in ${totalTime}ms`);
+
     // Postavljamo headere za download
     const startDateStr = new Date(startDate).toLocaleDateString('sr-RS');
     const filename = `${startDateStr}.evidencija.xlsx`;
-    
+
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buffer);
-    
+
   } catch (error) {
     console.error('Greška pri generisanju WorkOrderEvidence evidencije:', error);
     res.status(500).json({ 
@@ -1127,4 +1198,6 @@ router.post('/evidencija-new', async (req, res) => {
   }
 });
 
+// Export cache invalidation function for use in other modules
 module.exports = router;
+module.exports.invalidateEvidencePreviewCache = invalidateEvidencePreviewCache;

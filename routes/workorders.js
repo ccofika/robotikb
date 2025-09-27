@@ -2401,87 +2401,146 @@ router.get('/statistics/completion-time', async (req, res) => {
   }
 });
 
-// GET - Dohvati statistiku radnih naloga
+// GET - Dohvati statistiku radnih naloga (optimizovano sa MongoDB agregacijom)
 router.get('/statistics/summary', async (req, res) => {
   try {
-    // Dohvatanje svih radnih naloga i tehničara
-    const workOrders = await WorkOrder.find();
-    const technicians = await Technician.find().select('name phone email');
-    
-    // Ukupan broj radnih naloga
-    const total = workOrders.length;
-    
-    // Broj po statusima
-    const completed = workOrders.filter(order => order.status === 'zavrsen').length;
-    const pending = workOrders.filter(order => order.status === 'nezavrsen').length;
-    const postponed = workOrders.filter(order => order.status === 'odlozen').length;
-    const canceled = workOrders.filter(order => order.status === 'otkazan').length;
-    
-    // Broj verifikovanih
-    const verified = workOrders.filter(order => order.verified).length;
-    
-    // Po tipovima
-    const byType = {};
-    workOrders.forEach(order => {
-      if (!byType[order.type]) {
-        byType[order.type] = 0;
-      }
-      byType[order.type]++;
-    });
-    
-    // Po opštinama
-    const byMunicipality = {};
-    workOrders.forEach(order => {
-      if (!byMunicipality[order.municipality]) {
-        byMunicipality[order.municipality] = 0;
-      }
-      byMunicipality[order.municipality]++;
-    });
-    
-    // Po tehnologiji
-    const byTechnology = {};
-    workOrders.forEach(order => {
-      if (order.technology) {
-        if (!byTechnology[order.technology]) {
-          byTechnology[order.technology] = 0;
-        }
-        byTechnology[order.technology]++;
-      }
-    });
-    
-    // Po tehničarima
-    const byTechnician = {};
-    workOrders.forEach(order => {
-      if (order.technicianId) {
-        const techId = order.technicianId.toString();
-        if (!byTechnician[techId]) {
-          byTechnician[techId] = {
-            total: 0,
-            completed: 0,
-            pending: 0,
-            postponed: 0,
-            canceled: 0,
-            verified: 0
-          };
-        }
-        byTechnician[techId].total++;
-        
-        if (order.status === 'zavrsen') {
-          byTechnician[techId].completed++;
-          if (order.verified) {
-            byTechnician[techId].verified++;
+    // Paralelno izvršavanje agregacija za maksimalnu performansu
+    const [
+      totalStats,
+      statusStats,
+      typeStats,
+      municipalityStats,
+      technologyStats,
+      technicianStats,
+      unassignedCount,
+      technicians
+    ] = await Promise.all([
+      // Ukupna statistika
+      WorkOrder.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            verified: { $sum: { $cond: ['$verified', 1, 0] } }
           }
-        } else if (order.status === 'nezavrsen') {
-          byTechnician[techId].pending++;
-        } else if (order.status === 'odlozen') {
-          byTechnician[techId].postponed++;
-        } else if (order.status === 'otkazan') {
-          byTechnician[techId].canceled++;
         }
+      ]),
+
+      // Statistika po statusu
+      WorkOrder.aggregate([
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+
+      // Statistika po tipu
+      WorkOrder.aggregate([
+        {
+          $group: {
+            _id: '$type',
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+
+      // Statistika po opštini
+      WorkOrder.aggregate([
+        {
+          $group: {
+            _id: '$municipality',
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+
+      // Statistika po tehnologiji
+      WorkOrder.aggregate([
+        {
+          $match: { technology: { $exists: true, $ne: null } }
+        },
+        {
+          $group: {
+            _id: '$technology',
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+
+      // Statistika po tehničarima
+      WorkOrder.aggregate([
+        {
+          $match: { technicianId: { $exists: true, $ne: null } }
+        },
+        {
+          $group: {
+            _id: '$technicianId',
+            total: { $sum: 1 },
+            completed: { $sum: { $cond: [{ $eq: ['$status', 'zavrsen'] }, 1, 0] } },
+            pending: { $sum: { $cond: [{ $eq: ['$status', 'nezavrsen'] }, 1, 0] } },
+            postponed: { $sum: { $cond: [{ $eq: ['$status', 'odlozen'] }, 1, 0] } },
+            canceled: { $sum: { $cond: [{ $eq: ['$status', 'otkazan'] }, 1, 0] } },
+            verified: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'zavrsen'] }, '$verified'] }, 1, 0] } }
+          }
+        }
+      ]),
+
+      // Broj nedodeljenih
+      WorkOrder.countDocuments({ technicianId: { $exists: false } }),
+
+      // Podaci o tehničarima
+      Technician.find().select('name phone email').lean()
+    ]);
+
+    // Formatiranje rezultata
+    const total = totalStats[0]?.total || 0;
+    const verified = totalStats[0]?.verified || 0;
+
+    // Formatiranje statusnih statistika
+    const statusMap = { completed: 0, pending: 0, postponed: 0, canceled: 0 };
+    statusStats.forEach(stat => {
+      switch (stat._id) {
+        case 'zavrsen': statusMap.completed = stat.count; break;
+        case 'nezavrsen': statusMap.pending = stat.count; break;
+        case 'odlozen': statusMap.postponed = stat.count; break;
+        case 'otkazan': statusMap.canceled = stat.count; break;
       }
     });
-    
-    // Dodajemo imena tehničara u statistiku
+
+    // Formatiranje statistika po tipovima
+    const byType = {};
+    typeStats.forEach(stat => {
+      byType[stat._id] = stat.count;
+    });
+
+    // Formatiranje statistika po opštinama
+    const byMunicipality = {};
+    municipalityStats.forEach(stat => {
+      byMunicipality[stat._id] = stat.count;
+    });
+
+    // Formatiranje statistika po tehnologijama
+    const byTechnology = {};
+    technologyStats.forEach(stat => {
+      byTechnology[stat._id] = stat.count;
+    });
+
+    // Formatiranje statistika po tehničarima
+    const byTechnician = {};
+    technicianStats.forEach(stat => {
+      byTechnician[stat._id.toString()] = {
+        total: stat.total,
+        completed: stat.completed,
+        pending: stat.pending,
+        postponed: stat.postponed,
+        canceled: stat.canceled,
+        verified: stat.verified
+      };
+    });
+
+    // Formatiranje podataka o tehničarima
     const technicianDetails = {};
     technicians.forEach(tech => {
       technicianDetails[tech._id.toString()] = {
@@ -2490,18 +2549,15 @@ router.get('/statistics/summary', async (req, res) => {
         email: tech.email || null
       };
     });
-    
-    // Nedodeljeni radni nalozi
-    const unassigned = workOrders.filter(order => !order.technicianId).length;
-    
+
     res.json({
       total,
-      completed,
-      pending,
-      postponed,
-      canceled,
+      completed: statusMap.completed,
+      pending: statusMap.pending,
+      postponed: statusMap.postponed,
+      canceled: statusMap.canceled,
       verified,
-      unassigned,
+      unassigned: unassignedCount,
       byType,
       byMunicipality,
       byTechnology,

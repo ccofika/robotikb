@@ -3,35 +3,122 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Vehicle = require('../models/Vehicle');
 
-// GET - Get all vehicles
+// Cache for vehicle statistics
+let vehicleStatsCache = null;
+let vehicleStatsCacheTime = 0;
+const VEHICLE_STATS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Function to invalidate vehicle statistics cache
+const invalidateVehicleStatsCache = () => {
+  console.log('🗑️ Invalidating vehicle statistics cache due to vehicle change');
+  vehicleStatsCache = null;
+  vehicleStatsCacheTime = 0;
+};
+
+// GET - Get all vehicles (optimized)
 router.get('/', async (req, res) => {
   try {
-    const vehicles = await Vehicle.find()
-      .sort({ createdAt: -1 })
-      .populate('services');
-    
-    res.json(vehicles);
+    const {
+      statsOnly,
+      page = 1,
+      limit = 50,
+      search = '',
+      statusFilter = ''
+    } = req.query;
+
+    // Za dashboard, vraćaj samo broj elemenata
+    if (statsOnly === 'true') {
+      const count = await Vehicle.countDocuments({ status: { $ne: 'sold' } });
+      return res.json({ total: count });
+    }
+
+    // Build filter object
+    let filterObj = { status: { $ne: 'sold' } };
+
+    if (search) {
+      filterObj.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { licensePlate: { $regex: search, $options: 'i' } },
+        { brand: { $regex: search, $options: 'i' } },
+        { model: { $regex: search, $options: 'i' } },
+        { assignedTo: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    if (statusFilter && statusFilter !== 'all') {
+      filterObj.status = statusFilter;
+    }
+
+    // Server-side pagination setup
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = Math.min(parseInt(limit, 10) || 50, 100); // Max 100 per page
+    const skip = (pageNum - 1) * limitNum;
+
+    const [vehicles, totalCount] = await Promise.all([
+      Vehicle.find(filterObj)
+        .skip(skip)
+        .limit(limitNum)
+        .sort({ createdAt: -1 })
+        .lean(), // Vratiti plain JS objekte umesto Mongoose dokumenata
+      Vehicle.countDocuments(filterObj)
+    ]);
+
+    // Add computed properties efficiently
+    const vehiclesWithStatus = vehicles.map(vehicle => {
+      const vehicleObj = new Vehicle(vehicle);
+      return {
+        ...vehicle,
+        registrationStatus: vehicleObj.registrationStatus,
+        daysUntilRegistrationExpiry: vehicleObj.daysUntilRegistrationExpiry,
+        latestService: vehicleObj.latestService,
+        totalServiceCost: vehicleObj.totalServiceCost
+      };
+    });
+
+    return res.json({
+      data: vehiclesWithStatus,
+      pagination: {
+        currentPage: pageNum,
+        totalPages: Math.ceil(totalCount / limitNum),
+        totalCount,
+        limit: limitNum,
+        hasNextPage: pageNum < Math.ceil(totalCount / limitNum),
+        hasPrevPage: pageNum > 1
+      }
+    });
   } catch (error) {
     console.error('Greška pri dohvatanju vozila:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju vozila' });
   }
 });
 
-// GET - Get vehicles with registration status
+// GET - Get vehicles with registration status (optimized)
 router.get('/with-status', async (req, res) => {
   try {
+    const { statsOnly } = req.query;
+
+    // Za dashboard, vrati samo broj elemenata
+    if (statsOnly === 'true') {
+      const count = await Vehicle.countDocuments({ status: { $ne: 'sold' } });
+      return res.json({ total: count });
+    }
+
     const vehicles = await Vehicle.find({ status: { $ne: 'sold' } })
-      .sort({ registrationExpiry: 1 });
-    
+      .sort({ registrationExpiry: 1 })
+      .lean(); // Performance optimization
+
     // Add computed status to each vehicle
-    const vehiclesWithStatus = vehicles.map(vehicle => ({
-      ...vehicle.toObject(),
-      registrationStatus: vehicle.registrationStatus,
-      daysUntilRegistrationExpiry: vehicle.daysUntilRegistrationExpiry,
-      latestService: vehicle.latestService,
-      totalServiceCost: vehicle.totalServiceCost
-    }));
-    
+    const vehiclesWithStatus = vehicles.map(vehicle => {
+      const vehicleObj = new Vehicle(vehicle);
+      return {
+        ...vehicle,
+        registrationStatus: vehicleObj.registrationStatus,
+        daysUntilRegistrationExpiry: vehicleObj.daysUntilRegistrationExpiry,
+        latestService: vehicleObj.latestService,
+        totalServiceCost: vehicleObj.totalServiceCost
+      };
+    });
+
     res.json(vehiclesWithStatus);
   } catch (error) {
     console.error('Greška pri dohvatanju vozila sa statusom:', error);
@@ -146,7 +233,10 @@ router.post('/', async (req, res) => {
     });
     
     const savedVehicle = await newVehicle.save();
-    
+
+    // Invalidate statistics cache after creating new vehicle
+    invalidateVehicleStatsCache();
+
     // Return with computed properties
     const vehicleWithStatus = {
       ...savedVehicle.toObject(),
@@ -155,7 +245,7 @@ router.post('/', async (req, res) => {
       latestService: savedVehicle.latestService,
       totalServiceCost: savedVehicle.totalServiceCost
     };
-    
+
     res.status(201).json(vehicleWithStatus);
   } catch (error) {
     console.error('Greška pri kreiranju vozila:', error);
@@ -203,10 +293,13 @@ router.post('/:id/services', async (req, res) => {
     }
     
     const updatedVehicle = await vehicle.save();
-    
+
+    // Invalidate statistics cache after adding service
+    invalidateVehicleStatsCache();
+
     // Return the newly added service
     const addedService = updatedVehicle.services[updatedVehicle.services.length - 1];
-    
+
     res.status(201).json(addedService);
   } catch (error) {
     console.error('Greška pri dodavanju servisa:', error);
@@ -262,7 +355,10 @@ router.put('/:id', async (req, res) => {
     if (updateData.assignedTo !== undefined) vehicle.assignedTo = updateData.assignedTo ? updateData.assignedTo.trim() : undefined;
     
     const updatedVehicle = await vehicle.save();
-    
+
+    // Invalidate statistics cache after updating vehicle
+    invalidateVehicleStatsCache();
+
     // Return with computed properties
     const vehicleWithStatus = {
       ...updatedVehicle.toObject(),
@@ -271,7 +367,7 @@ router.put('/:id', async (req, res) => {
       latestService: updatedVehicle.latestService,
       totalServiceCost: updatedVehicle.totalServiceCost
     };
-    
+
     res.json(vehicleWithStatus);
   } catch (error) {
     console.error('Greška pri ažuriranju vozila:', error);
@@ -312,7 +408,10 @@ router.put('/:id/services/:serviceId', async (req, res) => {
     if (updateData.serviceType) service.serviceType = updateData.serviceType;
     
     const updatedVehicle = await vehicle.save();
-    
+
+    // Invalidate statistics cache after updating service
+    invalidateVehicleStatsCache();
+
     const updatedService = updatedVehicle.services.id(serviceId);
     res.json(updatedService);
   } catch (error) {
@@ -334,11 +433,14 @@ router.delete('/:id', async (req, res) => {
     }
     
     const deletedVehicle = await Vehicle.findByIdAndDelete(id);
-    
+
     if (!deletedVehicle) {
       return res.status(404).json({ error: 'Vozilo nije pronađeno' });
     }
-    
+
+    // Invalidate statistics cache after deleting vehicle
+    invalidateVehicleStatsCache();
+
     res.json({ message: 'Vozilo uspešno obrisano' });
   } catch (error) {
     console.error('Greška pri brisanju vozila:', error);
@@ -369,7 +471,10 @@ router.delete('/:id/services/:serviceId', async (req, res) => {
     
     vehicle.services.pull(serviceId);
     await vehicle.save();
-    
+
+    // Invalidate statistics cache after deleting service
+    invalidateVehicleStatsCache();
+
     res.json({ message: 'Servis uspešno obrisan' });
   } catch (error) {
     console.error('Greška pri brisanju servisa:', error);
@@ -377,37 +482,93 @@ router.delete('/:id/services/:serviceId', async (req, res) => {
   }
 });
 
-// GET - Get vehicle statistics
+// GET - Get vehicle statistics (optimized with caching)
 router.get('/stats/overview', async (req, res) => {
   try {
-    const totalVehicles = await Vehicle.countDocuments({ status: { $ne: 'sold' } });
-    const activeVehicles = await Vehicle.countDocuments({ status: 'active' });
-    const inMaintenanceVehicles = await Vehicle.countDocuments({ status: 'maintenance' });
-    
-    // Get expiring registrations (next 30 days)
-    const expiringRegistrations = await Vehicle.findExpiringRegistrations(30);
-    
-    // Calculate total service costs
-    const vehicles = await Vehicle.find({ status: { $ne: 'sold' } });
-    const totalServiceCosts = vehicles.reduce((total, vehicle) => total + vehicle.totalServiceCost, 0);
-    
-    // Recent services (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    const recentServicesCount = vehicles.reduce((count, vehicle) => {
-      const recentServices = vehicle.services.filter(service => new Date(service.date) >= thirtyDaysAgo);
-      return count + recentServices.length;
-    }, 0);
-    
-    res.json({
-      totalVehicles,
-      activeVehicles,
-      inMaintenanceVehicles,
-      expiringRegistrations: expiringRegistrations.length,
-      totalServiceCosts,
-      recentServicesCount
-    });
+    const now = Date.now();
+
+    // Return cached data if still valid
+    if (vehicleStatsCache && (now - vehicleStatsCacheTime) < VEHICLE_STATS_CACHE_TTL) {
+      console.log('Returning cached vehicle statistics');
+      return res.json(vehicleStatsCache);
+    }
+
+    console.log('Calculating fresh vehicle statistics...');
+    const startTime = Date.now();
+
+    // Use aggregation pipeline for better performance
+    const [statsAgg, expiringRegistrations] = await Promise.all([
+      Vehicle.aggregate([
+        {
+          $match: { status: { $ne: 'sold' } }
+        },
+        {
+          $group: {
+            _id: null,
+            totalVehicles: { $sum: 1 },
+            activeVehicles: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'active'] }, 1, 0]
+              }
+            },
+            inMaintenanceVehicles: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'maintenance'] }, 1, 0]
+              }
+            },
+            totalServiceCosts: {
+              $sum: {
+                $reduce: {
+                  input: '$services',
+                  initialValue: 0,
+                  in: { $add: ['$$value', '$$this.price'] }
+                }
+              }
+            },
+            recentServicesCount: {
+              $sum: {
+                $size: {
+                  $filter: {
+                    input: '$services',
+                    as: 'service',
+                    cond: {
+                      $gte: [
+                        '$$service.date',
+                        new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]),
+      Vehicle.findExpiringRegistrations(30)
+    ]);
+
+    // Get basic statistics
+    const basicStats = statsAgg[0] || {
+      totalVehicles: 0,
+      activeVehicles: 0,
+      inMaintenanceVehicles: 0,
+      totalServiceCosts: 0,
+      recentServicesCount: 0
+    };
+
+    const result = {
+      ...basicStats,
+      expiringRegistrations: expiringRegistrations.length
+    };
+
+    // Cache the result
+    vehicleStatsCache = result;
+    vehicleStatsCacheTime = now;
+
+    const endTime = Date.now();
+    console.log(`Vehicle statistics calculated in ${endTime - startTime}ms (cached for ${VEHICLE_STATS_CACHE_TTL/1000}s)`);
+
+    res.json(result);
   } catch (error) {
     console.error('Greška pri dohvatanju statistika vozila:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju statistika vozila' });

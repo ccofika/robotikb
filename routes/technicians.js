@@ -34,10 +34,18 @@ const getUserFromToken = async (req) => {
   }
 };
 
-// GET - Dohvati sve tehničare
+// GET - Dohvati sve tehničare (optimized)
 router.get('/', async (req, res) => {
   try {
-    const technicians = await Technician.find().select('-password');
+    const { statsOnly } = req.query;
+
+    // Za dashboard, vrati samo broj elemenata
+    if (statsOnly === 'true') {
+      const count = await Technician.countDocuments();
+      return res.json({ total: count });
+    }
+
+    const technicians = await Technician.find().select('-password').lean();
 
     // Dodaj detalje osnovne opreme za svakog tehničara
     const techniciansWithBasicEquipment = await Promise.all(
@@ -45,7 +53,7 @@ router.get('/', async (req, res) => {
         const basicEquipmentWithDetails = [];
 
         for (const basicEquipmentItem of technician.basicEquipment || []) {
-          const basicEquipmentDetails = await BasicEquipment.findById(basicEquipmentItem.basicEquipmentId);
+          const basicEquipmentDetails = await BasicEquipment.findById(basicEquipmentItem.basicEquipmentId).lean();
           if (basicEquipmentDetails) {
             basicEquipmentWithDetails.push({
               id: basicEquipmentItem.basicEquipmentId.toString(),
@@ -57,7 +65,7 @@ router.get('/', async (req, res) => {
         }
 
         return {
-          ...technician.toObject(),
+          ...technician,
           basicEquipment: basicEquipmentWithDetails
         };
       })
