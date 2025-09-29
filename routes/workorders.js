@@ -14,6 +14,7 @@ const FinancialSettings = require('../models/FinancialSettings');
 const FailedFinancialTransaction = require('../models/FailedFinancialTransaction');
 const MunicipalityDiscountConfirmation = require('../models/MunicipalityDiscountConfirmation');
 const { uploadImage, deleteImage } = require('../config/cloudinary');
+const convert = require('heic-convert');
 const { 
   logCommentAdded, 
   logWorkOrderStatusChanged, 
@@ -1689,9 +1690,37 @@ router.post('/:id/images', imageUpload.single('image'), async (req, res) => {
     }
     
     console.log('Pokušavam upload slike na Cloudinary za radni nalog:', id);
-    
+
+    let imageBuffer = req.file.buffer;
+    let originalFileName = req.file.originalname;
+
+    // Konvertuj HEIC/HEIF u JPEG ako je potrebno (samo ako fajl nije već konvertovan)
+    const fileExtension = path.extname(originalFileName).toLowerCase();
+    const isHeicFile = fileExtension === '.heic' || fileExtension === '.heif';
+    const isAlreadyJpeg = fileExtension === '.jpg' || fileExtension === '.jpeg' || req.file.mimetype === 'image/jpeg';
+
+    if (isHeicFile && !isAlreadyJpeg) {
+      console.log('Konvertujem HEIC/HEIF sliku u JPEG...');
+      try {
+        imageBuffer = await convert({
+          buffer: imageBuffer, // the HEIC file buffer
+          format: 'JPEG',      // output format
+          quality: 0.8         // output quality (0.1 to 1.0)
+        });
+
+        // Promeni extension u .jpg za konvertovanu sliku
+        const nameWithoutExtension = path.parse(originalFileName).name;
+        originalFileName = nameWithoutExtension + '.jpg';
+
+        console.log('HEIC/HEIF konverzija uspešna, novi naziv:', originalFileName);
+      } catch (conversionError) {
+        console.error('Greška pri konverziji HEIC/HEIF slike:', conversionError);
+        return res.status(500).json({ error: 'Greška pri konverziji HEIC/HEIF slike' });
+      }
+    }
+
     // Upload slike na Cloudinary sa kompresijom
-    const cloudinaryResult = await uploadImage(req.file.buffer, id);
+    const cloudinaryResult = await uploadImage(imageBuffer, id);
     
     if (!workOrder.images) {
       workOrder.images = [];
@@ -1701,20 +1730,20 @@ router.post('/:id/images', imageUpload.single('image'), async (req, res) => {
     const imageUrl = cloudinaryResult.secure_url;
     const imageObject = {
       url: imageUrl,
-      originalName: req.file.originalname,
+      originalName: originalFileName, // Koristi procesovano ime fajla
       uploadedAt: new Date(),
       uploadedBy: technicianId
     };
     workOrder.images.push(imageObject);
-    
+
     const updatedWorkOrder = await workOrder.save();
-    
+
     // Log image addition
     if (technicianId) {
       try {
         const technician = await Technician.findById(technicianId);
         if (technician) {
-          await logImageAdded(technicianId, technician.name, workOrder, req.file.originalname, imageUrl);
+          await logImageAdded(technicianId, technician.name, workOrder, originalFileName, imageUrl); // Koristi procesovano ime fajla
         }
       } catch (logError) {
         console.error('Greška pri logovanju dodavanja slike:', logError);

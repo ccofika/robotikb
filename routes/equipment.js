@@ -317,6 +317,46 @@ router.get('/serial/:serialNumber', async (req, res) => {
   }
 });
 
+// GET - Preuzimanje šablona za opremu (mora biti pre /:id rute)
+router.get('/template', (req, res) => {
+  const templatePath = path.join(__dirname, '../templates/equipment-template.xlsx');
+
+  // Ako šablon ne postoji, kreiramo ga
+  if (!fs.existsSync(templatePath)) {
+    const workbook = xlsx.utils.book_new();
+    const data = [
+      {
+        "Kategorija": "CAM",
+        "MODEL": "DGM3212 GM3212C",
+        "SN": "GM32120000001"
+      },
+      {
+        "Kategorija": "modem",
+        "MODEL": "DGM3212",
+        "SN": "DGM32120000001"
+      },
+      {
+        "Kategorija": "STB",
+        "MODEL": "9820T2",
+        "SN": "STB98200000001"
+      }
+    ];
+
+    const worksheet = xlsx.utils.json_to_sheet(data);
+    xlsx.utils.book_append_sheet(workbook, worksheet, "Oprema");
+
+    // Kreiramo direktorijum ako ne postoji
+    const dir = path.dirname(templatePath);
+    if (!fs.existsSync(dir)){
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    xlsx.writeFile(workbook, templatePath);
+  }
+
+  res.download(templatePath, 'oprema-sablon.xlsx');
+});
+
 // GET - Dohvati jedan komad opreme po ID-u
 router.get('/:id', async (req, res) => {
   try {
@@ -363,13 +403,35 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       status: 'available'
     }));
 
-    // Provera da li oprema sa istim serijskim brojevima već postoji
+    // Provera duplikata i kreiranje liste za dodavanje
     const filteredNewEquipment = [];
-    
+    const duplicates = [];
+    const errors = [];
+
     for (const newItem of newEquipmentItems) {
-      const existingItem = await Equipment.findOne({ serialNumber: newItem.serialNumber });
-      if (!existingItem && newItem.serialNumber) {
-        filteredNewEquipment.push(newItem);
+      try {
+        if (!newItem.serialNumber || !newItem.category || !newItem.description) {
+          errors.push(`Nedostaju obavezni podaci: ${JSON.stringify(newItem)}`);
+          continue;
+        }
+
+        const existingItem = await Equipment.findOne({ serialNumber: newItem.serialNumber });
+        if (existingItem) {
+          duplicates.push({
+            category: existingItem.category,
+            model: existingItem.description,
+            serialNumber: existingItem.serialNumber,
+            status: existingItem.status,
+            location: existingItem.location,
+            assignedTo: existingItem.assignedTo,
+            assignedToUser: existingItem.assignedToUser,
+            reason: `Oprema sa serijskim brojem ${newItem.serialNumber} već postoji u sistemu`
+          });
+        } else {
+          filteredNewEquipment.push(newItem);
+        }
+      } catch (error) {
+        errors.push(`Greška pri obradi: ${error.message}`);
       }
     }
 
@@ -380,10 +442,12 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
     // Brisanje privremenog fajla
     fs.unlinkSync(req.file.path);
-    
+
     res.status(201).json({
       message: `Uspešno dodato ${filteredNewEquipment.length} komada opreme`,
-      ignoredItems: newEquipmentItems.length - filteredNewEquipment.length
+      addedCount: filteredNewEquipment.length,
+      duplicates,
+      errors
     });
   } catch (error) {
     console.error('Greška pri učitavanju Excel fajla:', error);
