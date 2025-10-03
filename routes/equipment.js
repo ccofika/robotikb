@@ -286,6 +286,46 @@ router.get('/locations', async (req, res) => {
   }
 });
 
+// GET - Dohvati opremu grupisanu po OPIS-u (description)
+router.get('/grouped', async (req, res) => {
+  try {
+    const { location, groupBy = 'description' } = req.query;
+
+    if (!location) {
+      return res.status(400).json({ error: 'Lokacija je obavezna' });
+    }
+
+    // Build aggregation pipeline
+    const pipeline = [
+      {
+        $match: { location }
+      },
+      {
+        $group: {
+          _id: `$${groupBy}`,
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          description: '$_id',
+          count: 1
+        }
+      },
+      {
+        $sort: { description: 1 }
+      }
+    ];
+
+    const groupedEquipment = await Equipment.aggregate(pipeline);
+    res.json(groupedEquipment);
+  } catch (error) {
+    console.error('Greška pri dohvatanju grupisane opreme:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju grupisane opreme' });
+  }
+});
+
 // GET - Dohvati opremu po kategoriji
 router.get('/category/:category', async (req, res) => {
   try {

@@ -212,28 +212,105 @@ async function createFinancialTransaction(workOrderId) {
       return;
     }
 
+    // VALIDACIJA 7: Učitaj tehničare sa tipovima plaćanja
+    const technicianIds = technicians.map(t => t.technicianId);
+    const technicianDocs = await Technician.find({ _id: { $in: technicianIds } }).lean();
+
+    // Mapa za brz pristup
+    const technicianMap = {};
+    technicianDocs.forEach(doc => {
+      technicianMap[doc._id.toString()] = doc;
+    });
+
+    // Helper funkcija za računanje koliko je tehničar već zaradio ovog meseca
+    // NAPOMENA: Ova funkcija može imati race condition problem ako se više transakcija
+    // procesira istovremeno za istog tehničara. U produkciji bi trebalo koristiti
+    // MongoDB transactions ili optimistic locking za sprečavanje ovog problema.
+    const getTechnicianMonthlyEarnings = async (technicianId) => {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      const transactions = await FinancialTransaction.find({
+        'technicians.technicianId': technicianId,
+        verifiedAt: { $gte: startOfMonth, $lte: endOfMonth }
+      }).lean();
+
+      let totalEarned = 0;
+      transactions.forEach(tx => {
+        const techEntry = tx.technicians.find(t => t.technicianId.toString() === technicianId.toString());
+        if (techEntry && techEntry.paymentType === 'plata' && techEntry.salaryDetails) {
+          totalEarned += techEntry.salaryDetails.earnedTowardsSalary || 0;
+        }
+      });
+
+      return totalEarned;
+    };
+
     // VALIDACIJA 7: Cene za tehničare moraju postojati
     let totalTechnicianExpenses = 0;
     for (const tech of technicians) {
-      const technicianPricing = settings.technicianPrices.find(
-        tp => tp.technicianId.toString() === tech.technicianId.toString()
-      );
-
-      if (!technicianPricing || !technicianPricing.pricesByCustomerStatus[evidence.customerStatus]) {
-        console.log('Missing technician pricing for:', tech.name, 'customer status:', evidence.customerStatus);
+      const techDoc = technicianMap[tech.technicianId.toString()];
+      if (!techDoc) {
+        console.log('Technician document not found:', tech.technicianId);
         await createFailedFinancialTransaction(
           workOrderId,
-          'MISSING_TECHNICIAN_PRICING',
-          `Cena za tehničara "${tech.name}" nije postavljena za tip usluge: ${evidence.customerStatus}`,
-          [{ field: 'technicianPrices', description: `Potrebno je postaviti cenu za tehničara "${tech.name}" za tip usluge "${evidence.customerStatus}" u Finansije sekciji` }]
+          'TECHNICIAN_NOT_FOUND',
+          `Tehničar "${tech.name}" nije pronađen u bazi`,
+          [{ field: 'technician', description: `Tehničar "${tech.name}" ne postoji u sistemu` }]
         );
         return;
       }
 
-      const technicianPrice = technicianPricing.pricesByCustomerStatus[evidence.customerStatus];
-      const earnings = technicianPrice; // Svaki tehničar dobija punu svoju cenu
-      tech.earnings = earnings;
-      totalTechnicianExpenses += earnings;
+      tech.paymentType = techDoc.paymentType || 'po_statusu';
+
+      if (tech.paymentType === 'po_statusu') {
+        // Stari način - po statusu naloga
+        const technicianPricing = settings.technicianPrices.find(
+          tp => tp.technicianId.toString() === tech.technicianId.toString()
+        );
+
+        if (!technicianPricing || !technicianPricing.pricesByCustomerStatus[evidence.customerStatus]) {
+          console.log('Missing technician pricing for:', tech.name, 'customer status:', evidence.customerStatus);
+          await createFailedFinancialTransaction(
+            workOrderId,
+            'MISSING_TECHNICIAN_PRICING',
+            `Cena za tehničara "${tech.name}" nije postavljena za tip usluge: ${evidence.customerStatus}`,
+            [{ field: 'technicianPrices', description: `Potrebno je postaviti cenu za tehničara "${tech.name}" za tip usluge "${evidence.customerStatus}" u Finansije sekciji` }]
+          );
+          return;
+        }
+
+        const technicianPrice = technicianPricing.pricesByCustomerStatus[evidence.customerStatus];
+        tech.earnings = technicianPrice;
+        totalTechnicianExpenses += technicianPrice;
+
+        // Nema dodatnih detalja za po_statusu
+        tech.salaryDetails = undefined;
+
+      } else if (tech.paymentType === 'plata') {
+        // Novi način - mesečna plata
+        if (!techDoc.monthlySalary || techDoc.monthlySalary === 0) {
+          console.log('Monthly salary not set for:', tech.name);
+          await createFailedFinancialTransaction(
+            workOrderId,
+            'MISSING_MONTHLY_SALARY',
+            `Mesečna plata za tehničara "${tech.name}" nije postavljena`,
+            [{ field: 'monthlySalary', description: `Potrebno je postaviti mesečnu platu za tehničara "${tech.name}" u Finansije sekciji` }]
+          );
+          return;
+        }
+
+        // Ovde će biti logika za platu - za sada samo inicijalizujemo
+        tech.salaryDetails = {
+          monthlySalary: techDoc.monthlySalary,
+          earnedTowardsSalary: 0,
+          previouslyEarned: 0,
+          exceededSalary: false,
+          excessAmount: 0
+        };
+        tech.earnings = 0; // Biće računato kasnije u novoj logici
+      }
     }
 
     // VALIDACIJA 8: Popust po opštini - proveri da li je potvrđen
@@ -274,10 +351,87 @@ async function createFinancialTransaction(workOrderId) {
       }
     }
 
-    // KALKULACIJA - Ispravka: Prihod = basePrice - discount, Rashod = technician expenses
-    const finalRevenue = basePrice * (1 - discount / 100); // PRIHOD
+    // KALKULACIJA PRIHODA
+    const finalRevenue = basePrice * (1 - discount / 100); // PRIHOD nakon popusta
+
+    // KALKULACIJA RASHODA - nova logika sa platom
+    let remainingRevenue = finalRevenue; // Ovo je prihod koji je dostupan za raspodelu
+
+    // Prvo sortiramo tehničare: prvo oni "po_statusu", pa oni sa "plata"
+    const sortedTechnicians = [...technicians].sort((a, b) => {
+      if (a.paymentType === 'po_statusu' && b.paymentType === 'plata') return -1;
+      if (a.paymentType === 'plata' && b.paymentType === 'po_statusu') return 1;
+      return 0;
+    });
+
+    // Prvo obradimo sve tehničare "po_statusu"
+    for (const tech of sortedTechnicians) {
+      if (tech.paymentType === 'po_statusu') {
+        // Tehničar po statusu dobija svoju cenu, a ta cena se oduzima od remainingRevenue
+        remainingRevenue -= tech.earnings;
+      }
+    }
+
+    // EDGE CASE: Ako je remainingRevenue negativan, znači da troškovi tehničara po statusu
+    // prekoračuju prihod. To je validan scenario - kompanija pravi gubitak.
+    // U tom slučaju, tehničari sa platom ne dobijaju ništa.
+
+    // Sada obradimo tehničare sa "plata" - oni dobijaju ostatak
+    for (const tech of sortedTechnicians) {
+      if (tech.paymentType === 'plata') {
+        // Učitaj koliko je tehničar već zaradio ovog meseca
+        const previouslyEarned = await getTechnicianMonthlyEarnings(tech.technicianId);
+        tech.salaryDetails.previouslyEarned = previouslyEarned;
+
+        const monthlySalary = tech.salaryDetails.monthlySalary;
+        const remainingToSalary = monthlySalary - previouslyEarned; // Koliko još treba da zaradi do plate
+
+        // EDGE CASE: remainingToSalary može biti negativan ako je tehničar već zaradio više od plate
+        // (npr. ako je plata smanjena tokom meseca). U tom slučaju, smatramo da je dostigao platu.
+        if (remainingToSalary > 0 && remainingRevenue > 0) {
+          // Tehničar još nije dostigao platu i ima prihoda za raspodelu
+          if (remainingRevenue >= remainingToSalary) {
+            // Ima dovoljno prihoda da dostigne platu
+            tech.salaryDetails.earnedTowardsSalary = remainingToSalary;
+            tech.earnings = remainingToSalary;
+            totalTechnicianExpenses += remainingToSalary;
+            remainingRevenue -= remainingToSalary;
+            tech.salaryDetails.exceededSalary = false;
+            tech.salaryDetails.excessAmount = 0;
+          } else {
+            // Nema dovoljno prihoda da dostigne platu, uzima sve što je ostalo
+            tech.salaryDetails.earnedTowardsSalary = remainingRevenue;
+            tech.earnings = remainingRevenue;
+            totalTechnicianExpenses += remainingRevenue;
+            remainingRevenue = 0;
+            tech.salaryDetails.exceededSalary = false;
+            tech.salaryDetails.excessAmount = 0;
+          }
+        } else if (remainingToSalary > 0 && remainingRevenue <= 0) {
+          // Tehničar nije dostigao platu ali nema prihoda za raspodelu
+          tech.salaryDetails.earnedTowardsSalary = 0;
+          tech.earnings = 0;
+          tech.salaryDetails.exceededSalary = false;
+          tech.salaryDetails.excessAmount = 0;
+        } else {
+          // Tehničar je već dostigao platu (remainingToSalary <= 0), sve što bi dobio ide u profit
+          tech.salaryDetails.earnedTowardsSalary = 0;
+          tech.earnings = 0;
+          tech.salaryDetails.exceededSalary = true;
+          tech.salaryDetails.excessAmount = 0;
+          // remainingRevenue ostaje isti - ne oduzimamo ništa jer ide u profit
+        }
+      }
+    }
+
+    // Zamenjujemo nazad u originalni niz
+    technicians.length = 0;
+    technicians.push(...sortedTechnicians);
+
     const totalExpenses = totalTechnicianExpenses; // RASHOD
     const companyProfit = finalRevenue - totalExpenses; // PROFIT
+
+    // EDGE CASE: companyProfit može biti negativan ako su troškovi veći od prihoda
 
     console.log('Financial calculation:');
     console.log('- Base price:', basePrice);
@@ -285,6 +439,12 @@ async function createFinancialTransaction(workOrderId) {
     console.log('- Final revenue:', finalRevenue);
     console.log('- Technician expenses:', totalExpenses);
     console.log('- Company profit:', companyProfit);
+    console.log('- Technicians breakdown:', technicians.map(t => ({
+      name: t.name,
+      paymentType: t.paymentType,
+      earnings: t.earnings,
+      salaryDetails: t.salaryDetails
+    })));
 
     // Kreiraj transakciju
     const transaction = new FinancialTransaction({

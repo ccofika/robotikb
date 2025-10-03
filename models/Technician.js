@@ -53,6 +53,18 @@ const TechnicianSchema = new Schema({
     type: String,
     required: false,
     default: ''
+  },
+  // Tip plaćanja: 'po_statusu' ili 'plata'
+  paymentType: {
+    type: String,
+    enum: ['po_statusu', 'plata'],
+    default: 'po_statusu'
+  },
+  // Mesečna plata (samo za paymentType: 'plata')
+  monthlySalary: {
+    type: Number,
+    default: 0,
+    min: 0
   }
 }, { timestamps: true });
 

@@ -83,6 +83,50 @@ router.post('/settings', auth, isSuperAdmin, async (req, res) => {
   }
 });
 
+// POST /api/finances/technician-payment-settings - Čuvanje tipa plaćanja i plate za tehničara
+router.post('/technician-payment-settings', auth, isSuperAdmin, async (req, res) => {
+  try {
+    const { technicianId, paymentType, monthlySalary } = req.body;
+
+    if (!technicianId) {
+      return res.status(400).json({ error: 'Tehničar ID je obavezan' });
+    }
+
+    const technician = await Technician.findById(technicianId);
+    if (!technician) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    // Ažuriraj tehničara
+    technician.paymentType = paymentType || 'po_statusu';
+
+    if (paymentType === 'plata') {
+      const salary = parseFloat(monthlySalary) || 0;
+      if (salary <= 0) {
+        return res.status(400).json({ error: 'Mesečna plata mora biti veća od 0' });
+      }
+      technician.monthlySalary = salary;
+    } else {
+      technician.monthlySalary = 0; // Resetuj platu ako je po_statusu
+    }
+
+    await technician.save();
+
+    res.json({
+      message: 'Podešavanja plaćanja za tehničara su uspešno sačuvana',
+      technician: {
+        _id: technician._id,
+        name: technician.name,
+        paymentType: technician.paymentType,
+        monthlySalary: technician.monthlySalary
+      }
+    });
+  } catch (error) {
+    console.error('Greška pri čuvanju podešavanja plaćanja:', error);
+    res.status(500).json({ error: 'Greška pri čuvanju podešavanja plaćanja' });
+  }
+});
+
 // GET /api/finances/municipalities - Lista svih opština iz WorkOrder tabele (optimized)
 router.get('/municipalities', auth, isSuperAdmin, async (req, res) => {
   try {
@@ -154,7 +198,7 @@ router.get('/technicians', auth, isSuperAdmin, async (req, res) => {
     }
 
     const allTechnicians = await Technician.find({})
-      .select('_id name role isAdmin')
+      .select('_id name role isAdmin paymentType monthlySalary')
       .sort({ name: 1 })
       .lean(); // Dodano lean za performance
 
@@ -165,10 +209,12 @@ router.get('/technicians', auth, isSuperAdmin, async (req, res) => {
       !tech.isAdmin
     );
 
-    // Vrati samo potrebna polja za frontend
+    // Vrati potrebna polja za frontend
     const result = technicians.map(tech => ({
       _id: tech._id,
-      name: tech.name
+      name: tech.name,
+      paymentType: tech.paymentType || 'po_statusu',
+      monthlySalary: tech.monthlySalary || 0
     }));
 
     res.json(result);
@@ -211,7 +257,7 @@ router.get('/reports', auth, isSuperAdmin, async (req, res) => {
     let filter = {};
     if (dateFrom && dateTo) {
       filter.verifiedAt = {
-        $gte: new Date(dateFrom),
+        $gte: new Date(dateFrom + 'T00:00:00.000Z'),
         $lte: new Date(dateTo + 'T23:59:59.999Z')
       };
     }
@@ -395,6 +441,8 @@ router.get('/reports', auth, isSuperAdmin, async (req, res) => {
               $project: {
                 technicianId: '$_id',
                 name: { $arrayElemAt: ['$technicianInfo.name', 0] },
+                paymentType: { $arrayElemAt: ['$technicianInfo.paymentType', 0] },
+                monthlySalary: { $arrayElemAt: ['$technicianInfo.monthlySalary', 0] },
                 totalEarnings: 1,
                 workOrdersCount: 1
               }
@@ -423,6 +471,8 @@ router.get('/reports', auth, isSuperAdmin, async (req, res) => {
               $project: {
                 technicianId: '$_id',
                 name: { $arrayElemAt: ['$technicianInfo.name', 0] },
+                paymentType: { $arrayElemAt: ['$technicianInfo.paymentType', 0] },
+                monthlySalary: { $arrayElemAt: ['$technicianInfo.monthlySalary', 0] },
                 totalEarnings: 1,
                 workOrdersCount: 1
               }

@@ -30,6 +30,20 @@ const FinancialTransactionSchema = new Schema({
       type: Number,
       required: true,
       min: 0
+    },
+    // Tip plaćanja tehničara
+    paymentType: {
+      type: String,
+      enum: ['po_statusu', 'plata'],
+      default: 'po_statusu'
+    },
+    // Podaci za tehničare sa platom
+    salaryDetails: {
+      monthlySalary: { type: Number, default: 0 },
+      earnedTowardsSalary: { type: Number, default: 0 }, // Koliko je zaradio ka plati
+      previouslyEarned: { type: Number, default: 0 }, // Koliko je prethodno zaradio ovog meseca
+      exceededSalary: { type: Boolean, default: false }, // Da li je već prešao platu
+      excessAmount: { type: Number, default: 0 } // Višak koji ide u profit
     }
   }],
 
