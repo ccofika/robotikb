@@ -6,6 +6,10 @@ const BasicEquipmentSchema = new Schema({
     type: String,
     required: true
   },
+  serialNumber: {
+    type: String,
+    default: ''
+  },
   quantity: {
     type: Number,
     default: 0,

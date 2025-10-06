@@ -17,8 +17,16 @@ const ServiceSchema = new Schema({
     trim: true,
     maxlength: 500
   },
+  mileage: {
+    type: Number,
+    min: 0
+  },
   nextServiceDue: {
     type: Date
+  },
+  nextServiceMileage: {
+    type: Number,
+    min: 0
   },
   serviceType: {
     type: String,

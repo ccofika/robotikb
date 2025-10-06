@@ -39,7 +39,7 @@ router.get('/:id', async (req, res) => {
 // POST - Dodaj novu osnovnu opremu
 router.post('/', async (req, res) => {
   try {
-    const { type, quantity } = req.body;
+    const { type, serialNumber, quantity } = req.body;
 
     if (!type || quantity === undefined) {
       return res.status(400).json({ error: 'Vrsta i količina osnovne opreme su obavezna polja' });
@@ -56,6 +56,7 @@ router.post('/', async (req, res) => {
 
     const newBasicEquipment = new BasicEquipment({
       type,
+      serialNumber: serialNumber || '',
       quantity: parseInt(quantity, 10)
     });
 
@@ -71,13 +72,13 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { type, quantity } = req.body;
+    const { type, serialNumber, quantity } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
 
-    if ((!type && quantity === undefined) || parseInt(quantity, 10) < 0) {
+    if ((!type && quantity === undefined && serialNumber === undefined) || (quantity !== undefined && parseInt(quantity, 10) < 0)) {
       return res.status(400).json({ error: 'Neispravni podaci za ažuriranje' });
     }
 
@@ -99,6 +100,10 @@ router.put('/:id', async (req, res) => {
       }
 
       basicEquipment.type = type;
+    }
+
+    if (serialNumber !== undefined) {
+      basicEquipment.serialNumber = serialNumber;
     }
 
     if (quantity !== undefined) {

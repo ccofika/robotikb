@@ -281,12 +281,14 @@ router.post('/:id/services', async (req, res) => {
       date: new Date(serviceData.date),
       price: parseFloat(serviceData.price),
       comment: serviceData.comment ? serviceData.comment.trim() : '',
+      mileage: serviceData.mileage ? parseInt(serviceData.mileage) : undefined,
       nextServiceDue: serviceData.nextServiceDue ? new Date(serviceData.nextServiceDue) : undefined,
+      nextServiceMileage: serviceData.nextServiceMileage ? parseInt(serviceData.nextServiceMileage) : undefined,
       serviceType: serviceData.serviceType || 'regular'
     };
-    
+
     vehicle.services.push(newService);
-    
+
     // Update vehicle mileage if provided
     if (serviceData.mileage && serviceData.mileage > vehicle.mileage) {
       vehicle.mileage = serviceData.mileage;
@@ -404,7 +406,9 @@ router.put('/:id/services/:serviceId', async (req, res) => {
     if (updateData.date) service.date = new Date(updateData.date);
     if (updateData.price !== undefined) service.price = parseFloat(updateData.price);
     if (updateData.comment !== undefined) service.comment = updateData.comment.trim();
+    if (updateData.mileage !== undefined) service.mileage = updateData.mileage ? parseInt(updateData.mileage) : undefined;
     if (updateData.nextServiceDue !== undefined) service.nextServiceDue = updateData.nextServiceDue ? new Date(updateData.nextServiceDue) : undefined;
+    if (updateData.nextServiceMileage !== undefined) service.nextServiceMileage = updateData.nextServiceMileage ? parseInt(updateData.nextServiceMileage) : undefined;
     if (updateData.serviceType) service.serviceType = updateData.serviceType;
     
     const updatedVehicle = await vehicle.save();

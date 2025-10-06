@@ -42,6 +42,38 @@ let dashboardCacheTime = {
 };
 const DASHBOARD_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Simple in-memory cache for log list queries (1 minute TTL)
+const logsListCache = {
+  data: new Map(),
+  set(key, value, ttl = 60000) { // Default 1 minute TTL
+    const expiresAt = Date.now() + ttl;
+    this.data.set(key, { value, expiresAt });
+  },
+  get(key) {
+    const item = this.data.get(key);
+    if (!item) return null;
+
+    if (Date.now() > item.expiresAt) {
+      this.data.delete(key);
+      return null;
+    }
+
+    return item.value;
+  },
+  clear() {
+    this.data.clear();
+  }
+};
+
+// Clear logs cache every 5 minutes to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, item] of logsListCache.data.entries()) {
+    if (now > item.expiresAt) {
+      logsListCache.data.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
 
 // Helper funkcija za formatiranje datuma za srpsko vreme
 const formatSerbianDateTime = (date) => {
@@ -57,14 +89,65 @@ const formatSerbianDateTime = (date) => {
   });
 };
 
-// GET - Dohvati sve logove grupisane po tehničarima
+// GET - Server-side paginated logs grouped by technicians with optimizations
 router.get('/technicians', async (req, res) => {
   try {
-    const { search, action, dateFrom, dateTo, page = 1, limit = 50 } = req.query;
-    
-    // Izgradi filter
+    const {
+      search = '',
+      action = 'all',
+      dateFrom = '',
+      dateTo = '',
+      page = 1,
+      limit = 50,
+      sortBy = 'timestamp',
+      sortOrder = 'desc',
+      statsOnly
+    } = req.query;
+
+    const startTime = Date.now();
+    const pageNum = parseInt(page);
+    const limitNum = Math.min(parseInt(limit), 200); // Max 200 per page
+    const skip = (pageNum - 1) * limitNum;
+
+    // Create cache key for this specific query
+    const cacheKey = `logs_technicians_${JSON.stringify({
+      page: pageNum,
+      limit: limitNum,
+      search,
+      action,
+      dateFrom,
+      dateTo,
+      sortBy,
+      sortOrder
+    })}`;
+
+    // Check cache first (skip if statsOnly)
+    if (!statsOnly) {
+      const cached = logsListCache.get(cacheKey);
+      if (cached) {
+        console.log(`📦 Cache hit for technician logs query: ${Date.now() - startTime}ms`);
+        return res.json(cached);
+      }
+    }
+
+    // Stats only - fastest response for dashboard
+    if (statsOnly === 'true') {
+      const [totalLogs, uniqueTechnicians, logsWithMaterials] = await Promise.all([
+        Log.countDocuments(),
+        Log.distinct('performedBy').then(ids => ids.length),
+        Log.countDocuments({ materialDetails: { $exists: true, $ne: null } })
+      ]);
+
+      return res.json({
+        totalLogs,
+        uniqueTechnicians,
+        logsWithMaterials
+      });
+    }
+
+    // Build filter
     let filter = {};
-    
+
     if (search) {
       filter.$or = [
         { performedByName: { $regex: search, $options: 'i' } },
@@ -75,11 +158,11 @@ router.get('/technicians', async (req, res) => {
         { 'workOrderInfo.tisId': { $regex: search, $options: 'i' } }
       ];
     }
-    
+
     if (action && action !== 'all') {
       filter.action = action;
     }
-    
+
     if (dateFrom || dateTo) {
       filter.timestamp = {};
       if (dateFrom) {
@@ -89,25 +172,29 @@ router.get('/technicians', async (req, res) => {
         filter.timestamp.$lte = new Date(dateTo);
       }
     }
-    
-    // Pagination
-    const skip = (page - 1) * limit;
-    
-    // Dohvati logove - remove populate for better performance since we have performedByName and workOrderInfo
-    const logs = await Log.find(filter)
-      .select('action description performedByName workOrderInfo timestamp performedBy workOrderId materialDetails equipmentDetails imageDetails statusChange commentText')
-      .sort({ timestamp: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
-    
-    // Grupiši po tehničarima
+
+    // Build sort condition
+    const sortCondition = {};
+    sortCondition[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    // OPTIMIZED: Parallel queries for count and data
+    const [totalCount, logs] = await Promise.all([
+      Log.countDocuments(filter),
+      Log.find(filter)
+        .select('action description performedByName workOrderInfo timestamp performedBy workOrderId materialDetails equipmentDetails imageDetails statusChange commentText address userInfo materials equipment comment images')
+        .sort(sortCondition)
+        .skip(skip)
+        .limit(limitNum)
+        .lean() // Use lean() for faster queries
+    ]);
+
+    // Group by technicians
     const technicianGroups = {};
-    
+
     logs.forEach(log => {
       const technicianId = log.performedBy?.toString() || 'unknown';
       const technicianName = log.performedByName || 'Nepoznat tehničar';
-      
+
       if (!technicianGroups[technicianId]) {
         technicianGroups[technicianId] = {
           technicianId,
@@ -115,41 +202,109 @@ router.get('/technicians', async (req, res) => {
           logs: []
         };
       }
-      
-      // Dodaj formatiran datum
+
+      // Add formatted timestamp
       log.formattedTimestamp = formatSerbianDateTime(log.timestamp);
       technicianGroups[technicianId].logs.push(log);
     });
-    
-    // Konvertuj u niz
+
+    // Convert to array
     const result = Object.values(technicianGroups);
-    
-    // Dohvati ukupan broj logova za pagination
-    const totalCount = await Log.countDocuments(filter);
-    
-    res.json({
+
+    const totalPages = Math.ceil(totalCount / limitNum);
+    const duration = Date.now() - startTime;
+
+    console.log(`⚙️ Technician logs paginated query: ${duration}ms | Page ${pageNum}/${totalPages} | ${logs.length}/${totalCount} logs`);
+
+    const responseData = {
       data: result,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: totalCount,
-        pages: Math.ceil(totalCount / limit)
+        currentPage: pageNum,
+        totalPages,
+        totalCount,
+        limit: limitNum,
+        hasNextPage: pageNum < totalPages,
+        hasPreviousPage: pageNum > 1
+      },
+      performance: {
+        queryTime: duration,
+        resultsPerPage: logs.length
       }
-    });
+    };
+
+    // Cache the response for 1 minute
+    logsListCache.set(cacheKey, responseData);
+
+    res.json(responseData);
   } catch (error) {
     console.error('Greška pri dohvatanju logova tehničara:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju logova tehničara' });
   }
 });
 
-// GET - Dohvati sve logove grupisane po korisnicima
+// GET - Server-side paginated logs grouped by users with optimizations
 router.get('/users', async (req, res) => {
   try {
-    const { search, action, dateFrom, dateTo, page = 1, limit = 50 } = req.query;
-    
-    // Izgradi filter
-    let filter = {};
-    
+    const {
+      search = '',
+      action = 'all',
+      dateFrom = '',
+      dateTo = '',
+      page = 1,
+      limit = 50,
+      sortBy = 'timestamp',
+      sortOrder = 'desc',
+      statsOnly
+    } = req.query;
+
+    const startTime = Date.now();
+    const pageNum = parseInt(page);
+    const limitNum = Math.min(parseInt(limit), 200); // Max 200 per page
+    const skip = (pageNum - 1) * limitNum;
+
+    // Create cache key for this specific query
+    const cacheKey = `logs_users_${JSON.stringify({
+      page: pageNum,
+      limit: limitNum,
+      search,
+      action,
+      dateFrom,
+      dateTo,
+      sortBy,
+      sortOrder
+    })}`;
+
+    // Check cache first (skip if statsOnly)
+    if (!statsOnly) {
+      const cached = logsListCache.get(cacheKey);
+      if (cached) {
+        console.log(`📦 Cache hit for user logs query: ${Date.now() - startTime}ms`);
+        return res.json(cached);
+      }
+    }
+
+    // Stats only - fastest response for dashboard
+    if (statsOnly === 'true') {
+      const [totalLogs, uniqueUsers, logsWithWorkOrders, logsWithImages] = await Promise.all([
+        Log.countDocuments({ 'workOrderInfo.userName': { $exists: true } }),
+        Log.distinct('workOrderInfo.userName').then(names => names.filter(n => n).length),
+        Log.countDocuments({ workOrderId: { $exists: true, $ne: null } }),
+        Log.countDocuments({ imageDetails: { $exists: true, $ne: null } })
+      ]);
+
+      return res.json({
+        totalLogs,
+        uniqueUsers,
+        logsWithWorkOrders,
+        logsWithImages
+      });
+    }
+
+    // Build filter - only logs that have workOrderInfo
+    let filter = {
+      'workOrderInfo.userName': { $exists: true }
+    };
+
     if (search) {
       filter.$or = [
         { 'workOrderInfo.userName': { $regex: search, $options: 'i' } },
@@ -160,11 +315,11 @@ router.get('/users', async (req, res) => {
         { description: { $regex: search, $options: 'i' } }
       ];
     }
-    
+
     if (action && action !== 'all') {
       filter.action = action;
     }
-    
+
     if (dateFrom || dateTo) {
       filter.timestamp = {};
       if (dateFrom) {
@@ -174,25 +329,29 @@ router.get('/users', async (req, res) => {
         filter.timestamp.$lte = new Date(dateTo);
       }
     }
-    
-    // Pagination
-    const skip = (page - 1) * limit;
-    
-    // Dohvati logove - remove populate for better performance since we have performedByName and workOrderInfo
-    const logs = await Log.find(filter)
-      .select('action description performedByName workOrderInfo timestamp performedBy workOrderId materialDetails equipmentDetails imageDetails statusChange commentText')
-      .sort({ timestamp: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean();
-    
-    // Grupiši po korisnicima
+
+    // Build sort condition
+    const sortCondition = {};
+    sortCondition[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    // OPTIMIZED: Parallel queries for count and data
+    const [totalCount, logs] = await Promise.all([
+      Log.countDocuments(filter),
+      Log.find(filter)
+        .select('action description performedByName workOrderInfo timestamp performedBy workOrderId materialDetails equipmentDetails imageDetails statusChange commentText address userInfo materials equipment comment images')
+        .sort(sortCondition)
+        .skip(skip)
+        .limit(limitNum)
+        .lean() // Use lean() for faster queries
+    ]);
+
+    // Group by users
     const userGroups = {};
-    
+
     logs.forEach(log => {
       const userName = log.workOrderInfo?.userName || 'Nepoznat korisnik';
       const userKey = `${userName}_${log.workOrderInfo?.tisId || 'no-tis'}`;
-      
+
       if (!userGroups[userKey]) {
         userGroups[userKey] = {
           userName,
@@ -200,27 +359,40 @@ router.get('/users', async (req, res) => {
           logs: []
         };
       }
-      
-      // Dodaj formatiran datum
+
+      // Add formatted timestamp
       log.formattedTimestamp = formatSerbianDateTime(log.timestamp);
       userGroups[userKey].logs.push(log);
     });
-    
-    // Konvertuj u niz
+
+    // Convert to array
     const result = Object.values(userGroups);
-    
-    // Dohvati ukupan broj logova za pagination
-    const totalCount = await Log.countDocuments(filter);
-    
-    res.json({
+
+    const totalPages = Math.ceil(totalCount / limitNum);
+    const duration = Date.now() - startTime;
+
+    console.log(`⚙️ User logs paginated query: ${duration}ms | Page ${pageNum}/${totalPages} | ${logs.length}/${totalCount} logs`);
+
+    const responseData = {
       data: result,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: totalCount,
-        pages: Math.ceil(totalCount / limit)
+        currentPage: pageNum,
+        totalPages,
+        totalCount,
+        limit: limitNum,
+        hasNextPage: pageNum < totalPages,
+        hasPreviousPage: pageNum > 1
+      },
+      performance: {
+        queryTime: duration,
+        resultsPerPage: logs.length
       }
-    });
+    };
+
+    // Cache the response for 1 minute
+    logsListCache.set(cacheKey, responseData);
+
+    res.json(responseData);
   } catch (error) {
     console.error('Greška pri dohvatanju logova korisnika:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju logova korisnika' });
