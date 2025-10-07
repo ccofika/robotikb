@@ -3125,6 +3125,65 @@ router.get('/debug/overdue-status', async (req, res) => {
   }
 });
 
+// POST - AI analiza radnog naloga (samo analiza, bez automatske verifikacije)
+router.post('/:id/ai-verify', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    console.log('=== AI VERIFICATION REQUEST ===');
+    console.log('Work Order ID:', id);
+
+    // Proveri da li radni nalog postoji i ima status 'zavrsen'
+    const workOrder = await WorkOrder.findById(id);
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    if (workOrder.status !== 'zavrsen') {
+      return res.status(400).json({
+        error: 'Radni nalog mora biti u statusu "zavrsen" da bi se analizirao'
+      });
+    }
+
+    if (workOrder.verified) {
+      return res.status(400).json({
+        error: 'Radni nalog je već verifikovan'
+      });
+    }
+
+    // Pozovi AI servis za analizu
+    const { verifyWorkOrderWithAI } = require('../services/aiVerificationService');
+    const aiResult = await verifyWorkOrderWithAI(id);
+
+    console.log('=== AI ANALYSIS RESULT ===');
+    console.log('Verified:', aiResult.verified);
+    console.log('Customer Status:', aiResult.customerStatus);
+    console.log('Reason:', aiResult.reason);
+
+    // SAMO VRATI REZULTAT - NE MENJAJ NIŠTA U BAZI
+    return res.json({
+      success: true,
+      verified: aiResult.verified,
+      customerStatus: aiResult.customerStatus,
+      reason: aiResult.reason,
+      checkedItems: aiResult.checkedItems,
+      confidence: aiResult.confidence,
+      workOrderId: id
+    });
+
+  } catch (error) {
+    console.error('Greška pri AI analizi radnog naloga:', error);
+    res.status(500).json({
+      error: 'Greška pri AI analizi radnog naloga',
+      details: error.message
+    });
+  }
+});
+
 // Eksportuj funkciju za korišćenje u drugim rutama
 module.exports = router;
 module.exports.createFinancialTransaction = createFinancialTransaction;
