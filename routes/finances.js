@@ -446,6 +446,11 @@ router.get('/reports', auth, isSuperAdmin, async (req, res) => {
                 totalEarnings: 1,
                 workOrdersCount: 1
               }
+            },
+            {
+              $match: {
+                name: { $ne: null, $exists: true }
+              }
             }
           ]) :
           // Use simple match for basic queries
@@ -475,6 +480,11 @@ router.get('/reports', auth, isSuperAdmin, async (req, res) => {
                 monthlySalary: { $arrayElemAt: ['$technicianInfo.monthlySalary', 0] },
                 totalEarnings: 1,
                 workOrdersCount: 1
+              }
+            },
+            {
+              $match: {
+                name: { $ne: null, $exists: true }
               }
             }
           ])

@@ -447,6 +447,22 @@ async function createFinancialTransaction(workOrderId) {
     })));
 
     // Kreiraj transakciju
+    // Odrediti pravi datum za finansijsku transakciju
+    // Koristimo datum kada je radni nalog stvarno završen, a ne kada je verifikovan
+    let transactionDate = new Date(); // fallback na trenutni datum
+
+    if (workOrder.statusChangedAt && workOrder.status === 'zavrsen') {
+      // Ako postoji datum kada je status promenjen na "zavrsen", koristi taj datum
+      transactionDate = workOrder.statusChangedAt;
+      console.log('Using statusChangedAt as transaction date:', transactionDate);
+    } else if (workOrder.date) {
+      // Ako nema statusChangedAt, koristi datum radnog naloga kao fallback
+      transactionDate = workOrder.date;
+      console.log('Using work order date as transaction date:', transactionDate);
+    } else {
+      console.log('Using current date as transaction date fallback:', transactionDate);
+    }
+
     const transaction = new FinancialTransaction({
       workOrderId: workOrderId,
       customerStatus: evidence.customerStatus,
@@ -458,7 +474,7 @@ async function createFinancialTransaction(workOrderId) {
       technicians: technicians,
       totalTechnicianEarnings: totalExpenses, // Ovo je RASHOD
       companyProfit: companyProfit,
-      verifiedAt: new Date()
+      verifiedAt: transactionDate // Koristimo pravi datum završetka, ne datum verifikacije
     });
 
     await transaction.save();
