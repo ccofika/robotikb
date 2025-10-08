@@ -1474,20 +1474,145 @@ router.post('/', auth, logActivity('workorders', 'workorder_add', {
 // PUT - Ažuriraj radni nalog
 router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
   getEntityId: (req) => req.params.id,
-  getEntityName: (req, responseData) => responseData?.tisJobId || 'WorkOrder'
+  getEntityName: (req, responseData) => responseData?.tisJobId || 'WorkOrder',
+  getDetails: async (req, responseData) => {
+    // Generate human-readable change descriptions
+    const changes = [];
+    const before = responseData?.beforeData || {};
+    const after = responseData?.afterData || {};
+
+    console.log('🔍 [workorder_edit getDetails] Comparing:', {
+      beforeKeys: Object.keys(before),
+      afterKeys: Object.keys(after),
+      beforeDate: before.date,
+      afterDate: after.date
+    });
+
+    // Helper function to format field names
+    const fieldLabels = {
+      // Basic info
+      status: 'Status',
+      verified: 'Verifikacija',
+      technicianId: 'Tehničar',
+      technician2Id: 'Drugi tehničar',
+      type: 'Tip radnog naloga',
+      municipality: 'Opština',
+      address: 'Adresa',
+      userName: 'Ime korisnika',
+      userPhone: 'Telefon korisnika',
+      date: 'Datum izvođenja',
+      time: 'Vreme izvođenja',
+      appointmentDateTime: 'Datum i vreme termina',
+
+      // Technical info
+      technology: 'Tehnologija',
+      tisJobId: 'TIS Job ID',
+      tisId: 'TIS ID',
+
+      // Work details
+      comment: 'Komentar tehničara',
+      adminComment: 'Komentar admina',
+      details: 'Detalji naloga',
+      additionalJobs: 'Dodatni poslovi',
+
+      // Status tracking
+      postponedUntil: 'Odloženo do',
+      statusChangedAt: 'Vreme promene statusa',
+      verifiedAt: 'Vreme verifikacije',
+      overdueMarkedAt: 'Označeno kao prekoračeno',
+      prvoMenjanjeStatusa: 'Prvo menjanje statusa',
+
+      // Customer feedback
+      customerStatus: 'Status korisnika',
+      customerComment: 'Komentar korisnika'
+    };
+
+    // Status labels
+    const statusLabels = {
+      pending: 'Na čekanju',
+      assigned: 'Dodeljen',
+      zavrsen: 'Završen',
+      otkazan: 'Otkazan',
+      odlozen: 'Odložen',
+      nezavrsen: 'Nezavršen'
+    };
+
+    // Get all unique keys from both before and after
+    const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+
+    // Check each field for changes
+    allKeys.forEach(key => {
+      if (key === '_id' || key === '__v' || key === 'createdAt' || key === 'updatedAt' || key === 'images' || key === 'equipmentUsed' || key === 'postponeHistory' || key === 'cancelHistory') return;
+
+      const oldValue = before[key];
+      const newValue = after[key];
+
+      // Normalize null/undefined/empty string to null for comparison
+      const normalizedOld = (oldValue === undefined || oldValue === '' || oldValue === null) ? null : oldValue;
+      const normalizedNew = (newValue === undefined || newValue === '' || newValue === null) ? null : newValue;
+
+      // Skip if values are the same
+      if (JSON.stringify(normalizedOld) === JSON.stringify(normalizedNew)) return;
+
+      const label = fieldLabels[key] || key;
+
+      // Format specific fields
+      if (key === 'status') {
+        const oldLabel = statusLabels[oldValue] || oldValue;
+        const newLabel = statusLabels[newValue] || newValue;
+        changes.push(`Promenjen ${label}: ${oldLabel} → ${newLabel}`);
+      } else if (key === 'verified') {
+        if (newValue === true && oldValue !== true) {
+          changes.push(`Verifikovan radni nalog sa statusom: ${statusLabels[after.status] || after.status}`);
+        } else if (newValue === false && oldValue === true) {
+          changes.push(`Uklonjena verifikacija radnog naloga`);
+        }
+      } else if (key === 'technicianId' || key === 'technician2Id') {
+        const techName = responseData?.technicianNames?.[key] || newValue || 'Niko';
+        const oldTechName = responseData?.technicianNames?.['old_' + key] || oldValue || 'Niko';
+        if (oldValue && !newValue) {
+          changes.push(`Uklonjen ${label}: ${oldTechName}`);
+        } else if (!oldValue && newValue) {
+          changes.push(`Dodeljen ${label}: ${techName}`);
+        } else if (oldValue !== newValue) {
+          changes.push(`Promenjen ${label}: ${oldTechName} → ${techName}`);
+        }
+      } else if (key === 'date' || key === 'appointmentDateTime' || key === 'postponedUntil' || key === 'statusChangedAt' || key === 'verifiedAt' || key === 'overdueMarkedAt') {
+        // Format datuma za prikaz
+        const oldDate = oldValue ? new Date(oldValue).toLocaleDateString('sr-RS') : 'Nije postavljen';
+        const newDate = newValue ? new Date(newValue).toLocaleDateString('sr-RS') : 'Nije postavljen';
+        if (oldDate !== newDate) {
+          changes.push(`Promenjen ${label}: ${oldDate} → ${newDate}`);
+        }
+      } else if (oldValue === null || oldValue === undefined || oldValue === '') {
+        changes.push(`Dodato ${label}: ${newValue}`);
+      } else if (newValue === null || newValue === undefined || newValue === '') {
+        changes.push(`Uklonjeno ${label}: ${oldValue}`);
+      } else {
+        changes.push(`Promenjen ${label}: ${oldValue} → ${newValue}`);
+      }
+    });
+
+    return {
+      action: 'updated',
+      changes: changes,
+      changeCount: changes.length,
+      summary: changes.join(' • ')
+    };
+  }
 }), async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
-    
+
     console.log('Received update data:', updateData);
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
 
-    // Provera da li radni nalog postoji
-    const workOrder = await WorkOrder.findById(id);
+    // Provera da li radni nalog postoji - Sačuvaj STARO stanje
+    const workOrder = await WorkOrder.findById(id).populate('technicianId', 'name').populate('technician2Id', 'name').lean();
     if (!workOrder) {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
@@ -1647,7 +1772,92 @@ router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
       console.error('Greška pri logovanju ažuriranja radnog naloga:', logError);
     }
 
-    res.json(updatedWorkOrder);
+    // Prepare response data for activity logger - SVA POLJA
+    const responseData = {
+      ...updatedWorkOrder.toObject(),
+      beforeData: {
+        // Basic info
+        status: workOrder.status,
+        verified: workOrder.verified,
+        technicianId: workOrder.technicianId?._id || workOrder.technicianId,
+        technician2Id: workOrder.technician2Id?._id || workOrder.technician2Id,
+        type: workOrder.type,
+        municipality: workOrder.municipality,
+        address: workOrder.address,
+        userName: workOrder.userName,
+        userPhone: workOrder.userPhone,
+        date: workOrder.date ? workOrder.date.toISOString() : null,
+        time: workOrder.time,
+        appointmentDateTime: workOrder.appointmentDateTime ? workOrder.appointmentDateTime.toISOString() : null,
+
+        // Technical info
+        technology: workOrder.technology,
+        tisJobId: workOrder.tisJobId,
+        tisId: workOrder.tisId,
+
+        // Work details
+        comment: workOrder.comment,
+        adminComment: workOrder.adminComment,
+        details: workOrder.details,
+        additionalJobs: workOrder.additionalJobs,
+
+        // Status tracking
+        postponedUntil: workOrder.postponedUntil ? workOrder.postponedUntil.toISOString() : null,
+        statusChangedAt: workOrder.statusChangedAt ? workOrder.statusChangedAt.toISOString() : null,
+        verifiedAt: workOrder.verifiedAt ? workOrder.verifiedAt.toISOString() : null,
+        overdueMarkedAt: workOrder.overdueMarkedAt ? workOrder.overdueMarkedAt.toISOString() : null,
+        prvoMenjanjeStatusa: workOrder.prvoMenjanjeStatusa,
+
+        // Additional fields
+        customerStatus: workOrder.customerStatus,
+        customerComment: workOrder.customerComment
+      },
+      afterData: {
+        // Basic info
+        status: updatedWorkOrder.status,
+        verified: updatedWorkOrder.verified,
+        technicianId: updatedWorkOrder.technicianId?._id || updatedWorkOrder.technicianId,
+        technician2Id: updatedWorkOrder.technician2Id?._id || updatedWorkOrder.technician2Id,
+        type: updatedWorkOrder.type,
+        municipality: updatedWorkOrder.municipality,
+        address: updatedWorkOrder.address,
+        userName: updatedWorkOrder.userName,
+        userPhone: updatedWorkOrder.userPhone,
+        date: updatedWorkOrder.date ? updatedWorkOrder.date.toISOString() : null,
+        time: updatedWorkOrder.time,
+        appointmentDateTime: updatedWorkOrder.appointmentDateTime ? updatedWorkOrder.appointmentDateTime.toISOString() : null,
+
+        // Technical info
+        technology: updatedWorkOrder.technology,
+        tisJobId: updatedWorkOrder.tisJobId,
+        tisId: updatedWorkOrder.tisId,
+
+        // Work details
+        comment: updatedWorkOrder.comment,
+        adminComment: updatedWorkOrder.adminComment,
+        details: updatedWorkOrder.details,
+        additionalJobs: updatedWorkOrder.additionalJobs,
+
+        // Status tracking
+        postponedUntil: updatedWorkOrder.postponedUntil ? updatedWorkOrder.postponedUntil.toISOString() : null,
+        statusChangedAt: updatedWorkOrder.statusChangedAt ? updatedWorkOrder.statusChangedAt.toISOString() : null,
+        verifiedAt: updatedWorkOrder.verifiedAt ? updatedWorkOrder.verifiedAt.toISOString() : null,
+        overdueMarkedAt: updatedWorkOrder.overdueMarkedAt ? updatedWorkOrder.overdueMarkedAt.toISOString() : null,
+        prvoMenjanjeStatusa: updatedWorkOrder.prvoMenjanjeStatusa,
+
+        // Additional fields
+        customerStatus: updatedWorkOrder.customerStatus,
+        customerComment: updatedWorkOrder.customerComment
+      },
+      technicianNames: {
+        technicianId: updatedWorkOrder.technicianId?.name || updatedWorkOrder.technicianId,
+        technician2Id: updatedWorkOrder.technician2Id?.name || updatedWorkOrder.technician2Id,
+        old_technicianId: workOrder.technicianId?.name || workOrder.technicianId,
+        old_technician2Id: workOrder.technician2Id?.name || workOrder.technician2Id
+      }
+    };
+
+    res.json(responseData);
   } catch (error) {
     console.error('Detalji greške:', {
       message: error.message,
@@ -1662,7 +1872,49 @@ router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
 });
 
 // PUT - Ažuriranje radnog naloga (tehničar)
-router.put('/:id/technician-update', async (req, res) => {
+router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_edit', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.tisJobId || 'WorkOrder',
+  getDetails: async (req, responseData) => {
+    const changes = [];
+    const { comment, status } = req.body;
+    const oldComment = responseData?.oldComment;
+    const oldStatus = responseData?.oldStatus;
+
+    // Status labels
+    const statusLabels = {
+      pending: 'Na čekanju',
+      assigned: 'Dodeljen',
+      zavrsen: 'Završen',
+      otkazan: 'Otkazan',
+      odlozen: 'Odložen',
+      nezavrsen: 'Nezavršen'
+    };
+
+    // Check for status change
+    if (status && oldStatus && status !== oldStatus) {
+      const oldLabel = statusLabels[oldStatus] || oldStatus;
+      const newLabel = statusLabels[status] || status;
+      changes.push(`Promenjen Status: ${oldLabel} → ${newLabel}`);
+    }
+
+    // Check for comment change
+    if (comment !== undefined && oldComment !== undefined && comment !== oldComment) {
+      if (!oldComment || oldComment.trim() === '') {
+        changes.push(`Dodat Komentar tehničara`);
+      } else {
+        changes.push(`Izmenjen Komentar tehničara`);
+      }
+    }
+
+    return {
+      action: 'updated',
+      changes: changes.length > 0 ? changes : ['Ažuriranje od strane tehničara'],
+      changeCount: changes.length || 1,
+      summary: changes.join(' • ') || 'Ažuriranje od strane tehničara'
+    };
+  }
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const { comment, status, postponeDate, postponeTime, postponeComment, cancelComment, technicianId } = req.body;
@@ -1842,12 +2094,12 @@ router.put('/:id/technician-update', async (req, res) => {
     }
     
     const updatedWorkOrder = await workOrder.save();
-    
+
     // Ažuriranje WorkOrderEvidence zapisa
     try {
       const evidenceUpdateData = {
-        status: updatedWorkOrder.status === 'zavrsen' ? 'ZAVRŠENO' : 
-                updatedWorkOrder.status === 'otkazan' ? 'OTKAZANO' : 
+        status: updatedWorkOrder.status === 'zavrsen' ? 'ZAVRŠENO' :
+                updatedWorkOrder.status === 'otkazan' ? 'OTKAZANO' :
                 updatedWorkOrder.status === 'odlozen' ? 'ODLOŽENO' : 'U TOKU',
         notes: updatedWorkOrder.comment || '',
         verified: updatedWorkOrder.verified
@@ -1864,8 +2116,15 @@ router.put('/:id/technician-update', async (req, res) => {
       console.error('Greška pri ažuriranju WorkOrderEvidence:', evidenceError);
       // Ne prekidamo proces zbog greške u evidenciji
     }
-    
-    res.json(updatedWorkOrder);
+
+    // Prepare response for activity logger
+    const responseData = {
+      ...updatedWorkOrder.toObject(),
+      oldStatus: oldStatus,
+      oldComment: oldComment
+    };
+
+    res.json(responseData);
   } catch (error) {
     console.error('Greška pri ažuriranju radnog naloga od strane tehničara:', error);
     res.status(500).json({ error: 'Greška pri ažuriranju radnog naloga' });
@@ -2040,24 +2299,39 @@ router.delete('/:id/images', async (req, res) => {
 });
 
 // PUT - Verifikacija radnog naloga od strane admina
-router.put('/:id/verify', async (req, res) => {
+router.put('/:id/verify', auth, logActivity('workorders', 'workorder_edit', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.workOrder?.tisJobId || 'WorkOrder',
+  getDetails: async (req, responseData) => {
+    const customerStatus = responseData?.customerStatus || 'Nije naveden';
+    return {
+      action: 'updated',
+      changes: [
+        'Verifikovan radni nalog',
+        `Status korisnika: ${customerStatus}`
+      ],
+      changeCount: 2,
+      summary: `Verifikovan sa statusom: ${customerStatus}`
+    };
+  }
+}), async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
-    
+
     const workOrder = await WorkOrder.findById(id);
-    
+
     if (!workOrder) {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
-    
+
     if (workOrder.status !== 'zavrsen') {
       return res.status(400).json({ error: 'Samo završeni radni nalozi mogu biti verifikovani' });
     }
-    
+
     // Umesto save() koji pokreće validaciju, koristimo findByIdAndUpdate
     // koji će ažurirati samo navedena polja
     const updatedWorkOrder = await WorkOrder.findByIdAndUpdate(
@@ -2078,9 +2352,21 @@ router.put('/:id/verify', async (req, res) => {
       console.log('Work order not ready for financial calculation - Status:', updatedWorkOrder?.status, 'Verified:', updatedWorkOrder?.verified);
     }
 
+    // Get customer status from WorkOrderEvidence for logging
+    let customerStatus = 'Nije naveden';
+    try {
+      const evidence = await WorkOrderEvidence.findOne({ workOrderId: id }).select('customerStatus').lean();
+      if (evidence && evidence.customerStatus) {
+        customerStatus = evidence.customerStatus;
+      }
+    } catch (err) {
+      console.error('Error fetching customer status:', err);
+    }
+
     res.json({
       message: 'Radni nalog je uspešno verifikovan',
-      workOrder: updatedWorkOrder
+      workOrder: updatedWorkOrder,
+      customerStatus: customerStatus
     });
   } catch (error) {
     console.error('Greška pri verifikaciji radnog naloga:', error);
@@ -2089,8 +2375,24 @@ router.put('/:id/verify', async (req, res) => {
 });
 
 // PUT - Vraćanje radnog naloga kao neispravno popunjenog
-router.put('/:id/return-incorrect', logActivity('workorders', 'workorder_return_incorrect', {
-  getEntityId: (req) => req.params.id
+router.put('/:id/return-incorrect', auth, logActivity('workorders', 'workorder_edit', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => {
+    return responseData?.tisJobId || responseData?.workOrder?.tisJobId || 'WorkOrder';
+  },
+  getDetails: async (req, responseData) => {
+    const adminComment = responseData?.adminComment || req.body?.adminComment || 'Nije naveden';
+    console.log('🔍 [getDetails] adminComment:', adminComment);
+    return {
+      action: 'updated',
+      changes: [
+        'Radni nalog vraćen kao neispravno popunjen',
+        `Razlog: ${adminComment}`
+      ],
+      changeCount: 2,
+      summary: 'Vraćen kao neispravno popunjen'
+    };
+  }
 }), async (req, res) => {
   try {
     const { id } = req.params;
@@ -2126,9 +2428,16 @@ router.put('/:id/return-incorrect', logActivity('workorders', 'workorder_return_
       { new: true }
     ).populate('technicianId technician2Id', 'name');
 
+    console.log('🔍 [return-incorrect] Sending response with:', {
+      tisJobId: updatedWorkOrder.tisJobId,
+      adminComment: adminComment.trim()
+    });
+
     res.json({
       message: 'Radni nalog je vraćen tehničaru',
-      workOrder: updatedWorkOrder
+      workOrder: updatedWorkOrder,
+      tisJobId: updatedWorkOrder.tisJobId,
+      adminComment: adminComment.trim()
     });
   } catch (error) {
     console.error('Greška pri vraćanju radnog naloga:', error);
@@ -2933,11 +3242,36 @@ router.post('/:id/removed-equipment', async (req, res) => {
 });
 
 // PUT - Ažuriranje statusa korisnika u WorkOrderEvidence
-router.put('/:id/customer-status', async (req, res) => {
+router.put('/:id/customer-status', auth, logActivity('workorders', 'workorder_edit', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: async (req, responseData) => {
+    // Get WorkOrder to find tisJobId
+    const workOrder = await WorkOrder.findById(req.params.id).select('tisJobId').lean();
+    return workOrder?.tisJobId || 'WorkOrder';
+  },
+  getDetails: async (req, responseData) => {
+    const { customerStatus } = req.body;
+    const oldStatus = responseData?.oldCustomerStatus;
+
+    const changes = [];
+    if (oldStatus && oldStatus !== customerStatus) {
+      changes.push(`Promenjen Status korisnika: ${oldStatus} → ${customerStatus}`);
+    } else if (!oldStatus) {
+      changes.push(`Dodat Status korisnika: ${customerStatus}`);
+    }
+
+    return {
+      action: 'updated',
+      changes: changes.length > 0 ? changes : ['Ažuriran status korisnika'],
+      changeCount: changes.length || 1,
+      summary: changes.join(' • ') || 'Ažuriran status korisnika'
+    };
+  }
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const { customerStatus } = req.body;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
@@ -2947,16 +3281,17 @@ router.put('/:id/customer-status', async (req, res) => {
     }
 
     let evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
-    
+    const oldCustomerStatus = evidence?.customerStatus;
+
     if (!evidence) {
       // Ako ne postoji WorkOrderEvidence, kreiraj ga na osnovu WorkOrder-a
       console.log('WorkOrderEvidence ne postoji za:', id, 'kreiram novi...');
-      
+
       const workOrder = await WorkOrder.findById(id);
       if (!workOrder) {
         return res.status(404).json({ error: 'Radni nalog nije pronađen' });
       }
-      
+
       // Kreiraj novi WorkOrderEvidence zapis
       try {
         evidence = await createWorkOrderEvidence(workOrder);
@@ -2972,7 +3307,8 @@ router.put('/:id/customer-status', async (req, res) => {
 
     res.json({
       message: 'Status korisnika uspešno ažuriran',
-      evidence: evidence
+      evidence: evidence,
+      oldCustomerStatus: oldCustomerStatus
     });
   } catch (error) {
     console.error('Greška pri ažuriranju statusa korisnika:', error);
