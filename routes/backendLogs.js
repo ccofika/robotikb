@@ -66,6 +66,17 @@ router.get('/activities', auth, isSupervisorOrSuperAdmin, async (req, res) => {
       .limit(parseInt(limit))
       .lean();
 
+    // Debug: Check if bulk activities have assignedItems
+    const bulkActivity = activities.find(a => a.details?.action === 'bulk_unassigned' || a.details?.action === 'bulk_assigned');
+    if (bulkActivity) {
+      console.log('🔍 [Backend API] Found bulk activity:', {
+        action: bulkActivity.details?.action,
+        summaryKeys: Object.keys(bulkActivity.details?.summary || {}),
+        assignedItemsLength: bulkActivity.details?.assignedItems?.length,
+        firstItem: bulkActivity.details?.assignedItems?.[0]
+      });
+    }
+
     res.json({
       activities,
       pagination: {

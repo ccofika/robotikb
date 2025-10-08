@@ -639,6 +639,13 @@ router.post('/:id/equipment', auth, logActivity('technicians', 'equipment_assign
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => `${responseData?.assignedCount || 0} opreme → Tehničar: ${responseData?.technicianName || 'Unknown'}`,
   getDetails: async (req, responseData) => {
+    console.log('📋 [equipment_assign_to_tech] getDetails called with:', {
+      assignedCount: responseData?.assignedCount,
+      technicianName: responseData?.technicianName,
+      assignedEquipmentLength: responseData?.assignedEquipment?.length,
+      assignedEquipment: responseData?.assignedEquipment
+    });
+
     return {
       action: 'bulk_assigned',
       summary: {
@@ -740,7 +747,7 @@ router.post('/:id/equipment', auth, logActivity('technicians', 'equipment_assign
       // Ne prekidamo proces ako email ne uspe
     }
 
-    res.json({
+    const responseData = {
       message: `Successfully assigned ${updateResults.modifiedCount} equipment items - awaiting technician confirmation`,
       assignedCount: updateResults.modifiedCount,
       technicianName: technician.name,
@@ -751,7 +758,15 @@ router.post('/:id/equipment', auth, logActivity('technicians', 'equipment_assign
         status: eq.status,
         location: eq.location
       }))
+    };
+
+    console.log('📤 [equipment_assign] Sending response:', {
+      assignedCount: responseData.assignedCount,
+      technicianName: responseData.technicianName,
+      assignedEquipmentLength: responseData.assignedEquipment.length
     });
+
+    res.json(responseData);
   } catch (error) {
     console.error('Error assigning equipment:', error);
     res.status(500).json({ error: 'Error assigning equipment' });
@@ -763,6 +778,13 @@ router.post('/:id/equipment/return', auth, logActivity('technicians', 'equipment
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => `${responseData?.unassignedCount || 0} opreme → Od tehničara: ${responseData?.technicianName || 'Unknown'}`,
   getDetails: async (req, responseData) => {
+    console.log('📋 [equipment_unassign_from_tech] getDetails called with:', {
+      unassignedCount: responseData?.unassignedCount,
+      technicianName: responseData?.technicianName,
+      unassignedEquipmentLength: responseData?.unassignedEquipment?.length,
+      unassignedEquipment: responseData?.unassignedEquipment
+    });
+
     return {
       action: 'bulk_unassigned',
       summary: {
@@ -865,7 +887,7 @@ router.post('/:id/equipment/return', auth, logActivity('technicians', 'equipment
       // Ne prekidamo proces ako email ne uspe
     }
     
-    res.json({
+    const responseData = {
       message: `Successfully returned ${updateResults.modifiedCount} equipment items`,
       unassignedCount: updateResults.modifiedCount,
       technicianName: technician.name,
@@ -876,7 +898,15 @@ router.post('/:id/equipment/return', auth, logActivity('technicians', 'equipment
         status: 'available', // Updated status
         location: 'magacin'  // Updated location
       }))
+    };
+
+    console.log('📤 [equipment_unassign] Sending response:', {
+      unassignedCount: responseData.unassignedCount,
+      technicianName: responseData.technicianName,
+      unassignedEquipmentLength: responseData.unassignedEquipment.length
     });
+
+    res.json(responseData);
   } catch (error) {
     console.error('Error returning equipment:', error);
     res.status(500).json({ error: 'Error returning equipment' });

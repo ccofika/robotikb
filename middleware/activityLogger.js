@@ -129,6 +129,12 @@ const logActivity = (category, action, options = {}) => {
         // Detalji promene - ako su prosleđeni kroz options
         if (options.getDetails && typeof options.getDetails === 'function') {
           logData.details = await options.getDetails(req, responseData);
+          console.log('📊 [ActivityLogger] Details from getDetails:', {
+            action: logData.details?.action,
+            summaryKeys: Object.keys(logData.details?.summary || {}),
+            assignedItemsLength: logData.details?.assignedItems?.length,
+            fullDetails: JSON.stringify(logData.details, null, 2)
+          });
         } else {
           // Default detalji - pametnije hvatanje podataka
           if (req.method === 'POST' && req.body) {

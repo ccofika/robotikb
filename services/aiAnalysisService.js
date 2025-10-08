@@ -267,6 +267,20 @@ async function callGPT5NanoForAnalysis(promptData) {
     ];
 
     console.log('Calling GPT-5 Nano for analysis...');
+    console.log('');
+    console.log('═══════════════════════════════════════');
+    console.log('📤 DATA SENT TO AI MODEL');
+    console.log('═══════════════════════════════════════');
+    console.log('System Prompt Length:', systemPrompt.length, 'characters');
+    console.log('User Prompt Length:', userPrompt.length, 'characters');
+    console.log('');
+    console.log('--- SYSTEM PROMPT (first 500 chars) ---');
+    console.log(systemPrompt.substring(0, 500) + '...');
+    console.log('');
+    console.log('--- USER PROMPT (full) ---');
+    console.log(userPrompt);
+    console.log('═══════════════════════════════════════');
+    console.log('');
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-5-nano-2025-08-07',
@@ -411,14 +425,25 @@ Analiziraj admin aktivnosti i performance podatke iz aplikacije i daj:
 
 ODGOVOR MORA BITI JSON SA STRING VREDNOSTIMA:
 {
-  "trends": "Detaljan opis trendova koje si primetio kao STRING tekst (minimum 200 karaktera). MORA biti string, NE objekat!",
-  "patterns": "Ponavljajući obrasci i šta se dešava redovno kao STRING tekst (minimum 150 karaktera). MORA biti string, NE objekat!",
-  "automationSuggestions": "Konkretne ideje za automatizaciju sa detaljima implementacije kao STRING tekst (minimum 250 karaktera). MORA biti string, NE objekat!",
-  "improvementIdeas": "Ideje za unapređenje aplikacije sa konkretnim predlozima kao STRING tekst (minimum 250 karaktera). MORA biti string, NE objekat!",
-  "summary": "Kratak summary glavnih nalaza i preporuka kao STRING tekst (100-150 karaktera). MORA biti string, NE prazan string!"
+  "trends": "Detaljan opis trendova - MORA biti STRUKTURIRAN tekst sa bullet points i paragrafima",
+  "patterns": "Ponavljajući obrasci - MORA biti STRUKTURIRAN tekst sa bullet points",
+  "automationSuggestions": "Konkretne ideje za automatizaciju - MORA biti STRUKTURIRAN tekst sa brojevima ili bullet points",
+  "improvementIdeas": "Ideje za unapređenje - MORA biti STRUKTURIRAN tekst sa brojevima ili bullet points",
+  "summary": "Kratak summary glavnih nalaza (100-150 karaktera)"
 }
 
+VAŽNO ZA FORMATIRANJE:
+- Koristi novi red (\n) za odvajanje paragrafa
+- Koristi brojeve (1., 2., 3.) ili bullet points (•, -, *) za liste
+- Odvoji različite sekcije sa praznim redom
+- Koristi bold (**tekst**) ili heading-e gde je potrebno
+- NE piši sve u jednom dugom paragrafu!
+
+PRIMER DOBROG FORMATIRANJA:
+"automationSuggestions": "Predlažem sledeće automatizacije:\n\n1. **Automatizacija dodele opreme**\n   - Dodela na osnovu lokacije i dostupnosti\n   - Automatske notifikacije tehničarima\n   - Eskalacija ako nema odgovora\n\n2. **Kreiranje radnih naloga**\n   - Automatsko kreiranje iz repetitivnih zahteva\n   - Automatski prelazak u status 'u radu'\n\n3. **Sinhronizacija inventara**\n   - Dnevni scheduled job\n   - Automatski alarmi za niske zalihe"
+
 VAŽNO: SVI KLJUČEVI MORAJU IMATI STRING VREDNOSTI, NE OBJEKTE ILI NIZOVE!
+VAŽNO: Tekst mora biti ČITLJIV, STRUKTURIRAN i FORMATIRAN sa novim redovima i bullet points!
 
 VAŽNO:
 - Budi specifičan i daj KONKRETNE predloge

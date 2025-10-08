@@ -79,9 +79,10 @@ const AdminActivityLogSchema = new Schema({
     before: Schema.Types.Mixed,     // Stanje pre promene
     after: Schema.Types.Mixed,      // Stanje posle promene
     diff: Schema.Types.Mixed,       // Samo promenjeni podaci
-    action: String,                 // bulk_created, created, updated, deleted
+    action: String,                 // bulk_created, created, updated, deleted, bulk_assigned, bulk_unassigned
     summary: Schema.Types.Mixed,    // Za bulk operacije
-    addedItems: Schema.Types.Mixed, // Za bulk operacije
+    addedItems: Schema.Types.Mixed, // Za bulk operacije (bulk_created)
+    assignedItems: Schema.Types.Mixed, // Za bulk assign/unassign operacije (bulk_assigned, bulk_unassigned)
     duplicates: Schema.Types.Mixed, // Za bulk operacije
     errors: Schema.Types.Mixed      // Za bulk operacije
   },
