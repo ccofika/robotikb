@@ -8,6 +8,7 @@ const multer = require('multer');
 const { connectDB, isDBConnected, getConnectionStats } = require('./config/db');
 const { startWorkOrderScheduler } = require('./services/workOrderScheduler');
 const { startAIAnalysisScheduler } = require('./services/aiAnalysisScheduler');
+const { startAITechnicianAnalysisScheduler } = require('./services/aiTechnicianAnalysisScheduler');
 const { ensureDBConnection, logSlowQueries, logPerformanceStats } = require('./middleware/dbHealthCheck');
 const { performanceLogger, cleanupOldPerformanceLogs } = require('./middleware/performanceLogger');
 const { errorLogger } = require('./middleware/errorLogger');
@@ -202,6 +203,7 @@ const vehiclesRoutes = require('./routes/vehicles');
 const notificationsRoutes = require('./routes/notifications');
 const financesRoutes = require('./routes/finances');
 const aiAnalysisRoutes = require('./routes/aiAnalysis');
+const aiTechnicianAnalysisRoutes = require('./routes/aiTechnicianAnalysis');
 
 // Definisanje ruta
 app.use('/api/auth', authRoutes);
@@ -220,6 +222,7 @@ app.use('/api/vehicles', vehiclesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/finances', financesRoutes);
 app.use('/api/ai-analysis', aiAnalysisRoutes);
+app.use('/api/ai-technician-analysis', aiTechnicianAnalysisRoutes);
 
 // Error logging middleware - dodato za Backend Logs
 app.use(errorLogger);
@@ -240,6 +243,9 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // Pokretanje AI Analysis schedulera (svaki dan u 12:00)
   startAIAnalysisScheduler();
+
+  // Pokretanje AI Technician Analysis schedulera (svaki dan u 13:00)
+  startAITechnicianAnalysisScheduler();
 
   // Log performance stats every 10 minutes
   setInterval(() => {
