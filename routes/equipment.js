@@ -1,5 +1,5 @@
 const express = require('express');
-const router = express.Router(); 
+const router = express.Router();
 const multer = require('multer');
 const xlsx = require('xlsx');
 const path = require('path');
@@ -8,6 +8,8 @@ const mongoose = require('mongoose');
 const { Equipment, Log, Technician } = require('../models');
 const emailService = require('../services/emailService');
 const { createInventorySummary } = require('../utils/emailTemplates');
+const { logActivity } = require('../middleware/activityLogger');
+const { auth } = require('../middleware/auth');
 
 // Konfiguracija za multer (upload fajlova)
 const storage = multer.diskStorage({
@@ -420,7 +422,23 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST - Dodaj novu opremu putem Excel fajla
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
+  getEntityName: (req, responseData) => `${responseData?.addedCount || 0} komada opreme`,
+  getDetails: async (req, responseData) => {
+    return {
+      action: 'bulk_created',
+      summary: {
+        totalProcessed: responseData?.addedCount + responseData?.duplicates?.length + responseData?.errors?.length || 0,
+        addedCount: responseData?.addedCount || 0,
+        duplicatesCount: responseData?.duplicates?.length || 0,
+        errorsCount: responseData?.errors?.length || 0
+      },
+      addedItems: responseData?.addedItems || [],
+      duplicates: responseData?.duplicates || [],
+      errors: responseData?.errors || []
+    };
+  }
+}), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Niste priložili fajl' });
@@ -476,8 +494,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     // Dodavanje nove opreme u bazu
+    let insertedEquipment = [];
     if (filteredNewEquipment.length > 0) {
-      await Equipment.insertMany(filteredNewEquipment);
+      insertedEquipment = await Equipment.insertMany(filteredNewEquipment);
     }
 
     // Brisanje privremenog fajla
@@ -486,6 +505,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     res.status(201).json({
       message: `Uspešno dodato ${filteredNewEquipment.length} komada opreme`,
       addedCount: filteredNewEquipment.length,
+      addedItems: insertedEquipment.map(item => ({
+        category: item.category,
+        description: item.description,
+        serialNumber: item.serialNumber,
+        location: item.location,
+        status: item.status
+      })),
       duplicates,
       errors
     });
@@ -496,21 +522,23 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 });
 
 // POST - Dodaj pojedinačnu opremu
-router.post('/', async (req, res) => {
+router.post('/', auth, logActivity('equipment', 'equipment_add', {
+  getEntityName: (req, responseData) => `${responseData?.category} - ${responseData?.serialNumber}`
+}), async (req, res) => {
   try {
     const equipmentData = req.body;
-    
+
     // Validacija podataka
     if (!equipmentData.category || !equipmentData.description || !equipmentData.serialNumber) {
       return res.status(400).json({ error: 'Nedostaju obavezni podaci' });
     }
-    
+
     // Provera da li već postoji oprema sa istim serijskim brojem
     const existingEquipment = await Equipment.findOne({ serialNumber: equipmentData.serialNumber });
     if (existingEquipment) {
       return res.status(400).json({ error: 'Oprema sa istim serijskim brojem već postoji' });
     }
-    
+
     const newEquipment = new Equipment({
       category: equipmentData.category,
       description: equipmentData.description,
@@ -518,7 +546,7 @@ router.post('/', async (req, res) => {
       location: equipmentData.location || 'magacin',
       status: equipmentData.status || 'available'
     });
-    
+
     const savedEquipment = await newEquipment.save();
     res.status(201).json(savedEquipment);
   } catch (error) {
@@ -528,7 +556,10 @@ router.post('/', async (req, res) => {
 });
 
 // PUT - Ažuriranje opreme
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, logActivity('equipment', 'equipment_edit', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => `${responseData?.category} - ${responseData?.serialNumber}`
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
@@ -674,21 +705,35 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE - Brisanje opreme
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, logActivity('equipment', 'equipment_delete', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => `${responseData?.deletedData?.category} - ${responseData?.deletedData?.serialNumber}` || 'Equipment'
+}), async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
-    
+
     const deletedEquipment = await Equipment.findByIdAndDelete(id);
-    
+
     if (!deletedEquipment) {
       return res.status(404).json({ error: 'Oprema nije pronađena' });
     }
-    
-    res.json({ message: 'Oprema uspešno obrisana' });
+
+    // Vrati podatke o obrisanoj opremi za logovanje
+    res.json({
+      message: 'Oprema uspešno obrisana',
+      deletedData: {
+        category: deletedEquipment.category,
+        description: deletedEquipment.description,
+        serialNumber: deletedEquipment.serialNumber,
+        location: deletedEquipment.location,
+        status: deletedEquipment.status,
+        _id: deletedEquipment._id
+      }
+    });
   } catch (error) {
     console.error('Greška pri brisanju opreme:', error);
     res.status(500).json({ error: 'Greška pri brisanju opreme' });
@@ -696,7 +741,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // POST - Dodeli opremu tehničaru
-router.post('/assign-to-technician/:technicianId', async (req, res) => {
+router.post('/assign-to-technician/:technicianId', auth, logActivity('equipment', 'equipment_assign_to_tech'), async (req, res) => {
   try {
     const { technicianId } = req.params;
     const { equipmentIds } = req.body;

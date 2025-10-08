@@ -38,8 +38,8 @@ const auth = async (req, res, next) => {
       }
     }
     
-    // Ako je admin ili superadmin, propusti dalje
-    if (decoded.role === 'admin' || decoded.role === 'superadmin') {
+    // Ako je admin, superadmin ili supervisor, propusti dalje
+    if (decoded.role === 'admin' || decoded.role === 'superadmin' || decoded.role === 'supervisor') {
       req.user = {
         _id: decoded._id,
         id: decoded._id.toString(), // Dodaj id za konsistentnost
@@ -72,7 +72,7 @@ const auth = async (req, res, next) => {
 };
 
 const isAdmin = (req, res, next) => {
-  if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin')) {
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'supervisor')) {
     return next();
   }
 
@@ -80,7 +80,7 @@ const isAdmin = (req, res, next) => {
 };
 
 const isTechnicianOrAdmin = (req, res, next) => {
-  if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'technician')) {
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'supervisor' || req.user.role === 'technician')) {
     return next();
   }
 
@@ -90,7 +90,7 @@ const isTechnicianOrAdmin = (req, res, next) => {
 const isTechnicianOwner = (req, res, next) => {
   const requestedTechId = req.params.id || req.params.technicianId;
 
-  if (req.user.role === 'admin' || req.user.role === 'superadmin') {
+  if (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'supervisor') {
     return next();
   }
 
@@ -109,10 +109,19 @@ const isSuperAdmin = (req, res, next) => {
   return res.status(403).json({ error: 'Pristup dozvoljen samo SuperAdmin korisnicima.' });
 };
 
+const isSupervisorOrSuperAdmin = (req, res, next) => {
+  if (req.user && (req.user.role === 'supervisor' || req.user.role === 'superadmin')) {
+    return next();
+  }
+
+  return res.status(403).json({ error: 'Pristup dozvoljen samo Supervisor ili SuperAdmin korisnicima.' });
+};
+
 module.exports = {
   auth,
   isAdmin,
   isTechnicianOrAdmin,
   isTechnicianOwner,
-  isSuperAdmin
+  isSuperAdmin,
+  isSupervisorOrSuperAdmin
 };

@@ -8,7 +8,8 @@ const MunicipalityDiscountConfirmation = require('../models/MunicipalityDiscount
 const WorkOrder = require('../models/WorkOrder');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const Technician = require('../models/Technician');
-const { auth, isSuperAdmin } = require('../middleware/auth');
+const { auth, isSupervisorOrSuperAdmin } = require('../middleware/auth');
+const { logActivity } = require('../middleware/activityLogger');
 
 // Cache for financial reports
 let financialReportsCache = new Map();
@@ -26,7 +27,7 @@ const generateCacheKey = (dateFrom, dateTo) => {
 };
 
 // GET /api/finances/settings - Dobijanje finansijskih postavki
-router.get('/settings', auth, isSuperAdmin, async (req, res) => {
+router.get('/settings', auth, isSupervisorOrSuperAdmin, async (req, res) => {
   try {
     let settings = await FinancialSettings.findOne();
 
@@ -48,7 +49,7 @@ router.get('/settings', auth, isSuperAdmin, async (req, res) => {
 });
 
 // POST /api/finances/settings - Čuvanje finansijskih postavki
-router.post('/settings', auth, isSuperAdmin, async (req, res) => {
+router.post('/settings', auth, isSupervisorOrSuperAdmin, logActivity('settings', 'finance_settings_update'), async (req, res) => {
   try {
     const { pricesByCustomerStatus, discountsByMunicipality, technicianPrices } = req.body;
 
@@ -84,7 +85,7 @@ router.post('/settings', auth, isSuperAdmin, async (req, res) => {
 });
 
 // POST /api/finances/technician-payment-settings - Čuvanje tipa plaćanja i plate za tehničara
-router.post('/technician-payment-settings', auth, isSuperAdmin, async (req, res) => {
+router.post('/technician-payment-settings', auth, isSupervisorOrSuperAdmin, logActivity('settings', 'technician_payment_settings_update'), async (req, res) => {
   try {
     const { technicianId, paymentType, monthlySalary } = req.body;
 
@@ -128,7 +129,7 @@ router.post('/technician-payment-settings', auth, isSuperAdmin, async (req, res)
 });
 
 // GET /api/finances/municipalities - Lista svih opština iz WorkOrder tabele (optimized)
-router.get('/municipalities', auth, isSuperAdmin, async (req, res) => {
+router.get('/municipalities', auth, isSupervisorOrSuperAdmin, async (req, res) => {
   try {
     const { statsOnly } = req.query;
 
@@ -147,7 +148,7 @@ router.get('/municipalities', auth, isSuperAdmin, async (req, res) => {
 });
 
 // GET /api/finances/customer-status-options - Lista customerStatus opcija
-router.get('/customer-status-options', auth, isSuperAdmin, async (req, res) => {
+router.get('/customer-status-options', auth, isSupervisorOrSuperAdmin, async (req, res) => {
   try {
     const options = [
       'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme)',
@@ -184,14 +185,14 @@ router.get('/customer-status-options', auth, isSuperAdmin, async (req, res) => {
 });
 
 // GET /api/finances/technicians - Lista svih tehničara (optimized)
-router.get('/technicians', auth, isSuperAdmin, async (req, res) => {
+router.get('/technicians', auth, isSupervisorOrSuperAdmin, async (req, res) => {
   try {
     const { statsOnly } = req.query;
 
     // Za dashboard, vrati samo broj elemenata
     if (statsOnly === 'true') {
       const count = await Technician.countDocuments({
-        role: { $nin: ['admin', 'superadmin'] },
+        role: { $nin: ['admin', 'superadmin', 'supervisor'] },
         isAdmin: { $ne: true }
       });
       return res.json({ total: count });
@@ -202,10 +203,11 @@ router.get('/technicians', auth, isSuperAdmin, async (req, res) => {
       .sort({ name: 1 })
       .lean(); // Dodano lean za performance
 
-    // Traži tehničare koji nisu admin ili superadmin
+    // Traži tehničare koji nisu admin, superadmin ili supervisor
     const technicians = allTechnicians.filter(tech =>
       tech.role !== 'admin' &&
       tech.role !== 'superadmin' &&
+      tech.role !== 'supervisor' &&
       !tech.isAdmin
     );
 
@@ -225,7 +227,7 @@ router.get('/technicians', auth, isSuperAdmin, async (req, res) => {
 });
 
 // GET /api/finances/reports - Finansijski izveštaj (optimized with caching, aggregation & server-side pagination)
-router.get('/reports', auth, isSuperAdmin, async (req, res) => {
+router.get('/reports', auth, isSupervisorOrSuperAdmin, async (req, res) => {
   try {
     const {
       dateFrom,
@@ -671,7 +673,7 @@ router.get('/reports', auth, isSuperAdmin, async (req, res) => {
 });
 
 // GET /api/finances/failed-transactions - Lista neuspešnih finansijskih obračuna
-router.get('/failed-transactions', auth, isSuperAdmin, async (req, res) => {
+router.get('/failed-transactions', auth, isSupervisorOrSuperAdmin, async (req, res) => {
   try {
     const failedTransactions = await FailedFinancialTransaction.find({ resolved: false })
       .populate('workOrderId', 'tisJobId address municipality status verified date')
@@ -685,7 +687,7 @@ router.get('/failed-transactions', auth, isSuperAdmin, async (req, res) => {
 });
 
 // POST /api/finances/retry-failed-transaction - Ponovi obračun za neuspešnu transakciju
-router.post('/retry-failed-transaction/:workOrderId', auth, isSuperAdmin, async (req, res) => {
+router.post('/retry-failed-transaction/:workOrderId', auth, isSupervisorOrSuperAdmin, async (req, res) => {
   try {
     const { workOrderId } = req.params;
 
@@ -727,7 +729,7 @@ router.post('/retry-failed-transaction/:workOrderId', auth, isSuperAdmin, async 
 });
 
 // DELETE /api/finances/failed-transaction/:workOrderId - Označiti kao razrešeno
-router.delete('/failed-transaction/:workOrderId', auth, isSuperAdmin, async (req, res) => {
+router.delete('/failed-transaction/:workOrderId', auth, isSupervisorOrSuperAdmin, async (req, res) => {
   try {
     const { workOrderId } = req.params;
 
@@ -751,7 +753,7 @@ router.delete('/failed-transaction/:workOrderId', auth, isSuperAdmin, async (req
 });
 
 // POST /api/finances/confirm-discount - Potvrdi popust za opštinu
-router.post('/confirm-discount', auth, isSuperAdmin, async (req, res) => {
+router.post('/confirm-discount', auth, isSupervisorOrSuperAdmin, async (req, res) => {
   try {
     const { municipality, discountPercent, workOrderIds } = req.body;
 
@@ -797,7 +799,7 @@ router.post('/confirm-discount', auth, isSuperAdmin, async (req, res) => {
 });
 
 // POST /api/finances/exclude-from-finances/:workOrderId - Isključiti iz finansijskih kalkulacija
-router.post('/exclude-from-finances/:workOrderId', auth, isSuperAdmin, async (req, res) => {
+router.post('/exclude-from-finances/:workOrderId', auth, isSupervisorOrSuperAdmin, async (req, res) => {
   try {
     const { workOrderId } = req.params;
 

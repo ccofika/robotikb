@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Vehicle = require('../models/Vehicle');
+const { logActivity } = require('../middleware/activityLogger');
 
 // Cache for vehicle statistics
 let vehicleStatsCache = null;
@@ -196,7 +197,9 @@ router.get('/:id/services', async (req, res) => {
 });
 
 // POST - Create new vehicle
-router.post('/', async (req, res) => {
+router.post('/', logActivity('vehicles', 'vehicle_add', {
+  getEntityName: (req, responseData) => responseData?.vehicleName || responseData?.licensePlate
+}), async (req, res) => {
   try {
     const vehicleData = req.body;
     
@@ -313,7 +316,10 @@ router.post('/:id/services', async (req, res) => {
 });
 
 // PUT - Update vehicle
-router.put('/:id', async (req, res) => {
+router.put('/:id', logActivity('vehicles', 'vehicle_edit', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.vehicleName || responseData?.licensePlate
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
@@ -428,7 +434,9 @@ router.put('/:id/services/:serviceId', async (req, res) => {
 });
 
 // DELETE - Delete vehicle
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', logActivity('vehicles', 'vehicle_delete', {
+  getEntityId: (req) => req.params.id
+}), async (req, res) => {
   try {
     const { id } = req.params;
     

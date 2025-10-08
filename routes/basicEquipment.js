@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const { BasicEquipment } = require('../models');
+const { logActivity } = require('../middleware/activityLogger');
 
 // GET - Dohvati svu osnovnu opremu
 router.get('/', async (req, res) => {
@@ -37,7 +38,9 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST - Dodaj novu osnovnu opremu
-router.post('/', async (req, res) => {
+router.post('/', logActivity('equipment', 'basic_equipment_add', {
+  getEntityName: (req, responseData) => responseData?.type
+}), async (req, res) => {
   try {
     const { type, serialNumber, quantity } = req.body;
 
@@ -69,7 +72,10 @@ router.post('/', async (req, res) => {
 });
 
 // PUT - Ažuriranje osnovne opreme
-router.put('/:id', async (req, res) => {
+router.put('/:id', logActivity('equipment', 'basic_equipment_edit', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.type
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const { type, serialNumber, quantity } = req.body;
@@ -119,7 +125,9 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE - Brisanje osnovne opreme
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', logActivity('equipment', 'basic_equipment_delete', {
+  getEntityId: (req) => req.params.id
+}), async (req, res) => {
   try {
     const { id } = req.params;
 

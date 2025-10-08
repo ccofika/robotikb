@@ -8,6 +8,9 @@ const { Technician, Equipment, Material, BasicEquipment } = require('../models')
 const { uploadImage } = require('../config/cloudinary');
 const emailService = require('../services/emailService');
 const { createInventorySummary } = require('../utils/emailTemplates');
+const { logActivity } = require('../middleware/activityLogger');
+
+const { auth } = require('../middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -234,7 +237,9 @@ router.get('/:id/materials', async (req, res) => {
 });
 
 // POST - Kreiraj novog tehničara
-router.post('/', async (req, res) => {
+router.post('/', auth, logActivity('technicians', 'technician_add', {
+  getEntityName: (req, responseData) => responseData?.name
+}), async (req, res) => {
   try {
     const { name, password } = req.body;
     
@@ -274,7 +279,10 @@ router.post('/', async (req, res) => {
 });
 
 // PUT - Ažuriranje tehničara
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, logActivity('technicians', 'technician_edit', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.name
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, password, gmail, profileImage } = req.body;
@@ -344,7 +352,10 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE - Brisanje tehničara
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, logActivity('technicians', 'technician_delete', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.deletedData?.name
+}), async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -368,10 +379,17 @@ router.delete('/:id', async (req, res) => {
       { assignedTo: id },
       { $set: { assignedTo: null, location: 'magacin', status: 'available' } }
     );
-    
+
     await Technician.findByIdAndDelete(id);
-    
-    res.json({ message: 'Tehničar uspešno obrisan' });
+
+    res.json({
+      message: 'Tehničar uspešno obrisan',
+      deletedData: {
+        name: technician.name,
+        _id: technician._id,
+        createdAt: technician.createdAt
+      }
+    });
   } catch (error) {
     console.error('Greška pri brisanju tehničara:', error);
     res.status(500).json({ error: 'Greška pri brisanju tehničara' });
@@ -379,39 +397,48 @@ router.delete('/:id', async (req, res) => {
 });
 
 // POST - Dodaj materijal tehničaru
-router.post('/:id/materials', async (req, res) => {
+router.post('/:id/materials', auth, logActivity('technicians', 'material_assign_to_tech', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => {
+    // Extract technician name and material type from response
+    const techName = responseData?.name || 'Unknown';
+    const materialType = responseData?.assignedMaterial?.type || 'Material';
+    const qty = responseData?.assignedMaterial?.quantity || 0;
+    return `${materialType} (${qty} kom) → Tehničar: ${techName}`;
+  }
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const { materialId, quantity } = req.body;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(materialId)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
-    
+
     if (!quantity || quantity <= 0) {
       return res.status(400).json({ error: 'Količina mora biti pozitivan broj' });
     }
-    
+
     const technician = await Technician.findById(id);
     if (!technician) {
       return res.status(404).json({ error: 'Tehničar nije pronađen' });
     }
-    
+
     const material = await Material.findById(materialId);
     if (!material) {
       return res.status(404).json({ error: 'Materijal nije pronađen' });
     }
-    
+
     // Proveri da li ima dovoljno materijala na stanju
     if (material.quantity < quantity) {
       return res.status(400).json({ error: 'Nema dovoljno materijala na stanju' });
     }
-    
+
     // Proveri da li tehničar već ima ovaj materijal
     const existingMaterialIndex = technician.materials.findIndex(
       item => item.materialId.toString() === materialId
     );
-    
+
     if (existingMaterialIndex !== -1) {
       // Ažuriraj postojeću količinu
       technician.materials[existingMaterialIndex].quantity += parseInt(quantity, 10);
@@ -422,17 +449,17 @@ router.post('/:id/materials', async (req, res) => {
         quantity: parseInt(quantity, 10)
       });
     }
-    
+
     // Smanji količinu materijala u magacinu
     material.quantity -= parseInt(quantity, 10);
     await material.save();
-    
+
     // Sačuvaj tehničara
     const updatedTechnician = await technician.save();
-    
+
     // Dohvati ažurirane podatke o materijalima
     const materialsWithDetails = [];
-    
+
     for (const materialItem of updatedTechnician.materials) {
       const materialDetails = await Material.findById(materialItem.materialId);
       if (materialDetails) {
@@ -444,10 +471,16 @@ router.post('/:id/materials', async (req, res) => {
         });
       }
     }
-    
+
     res.json({
       ...updatedTechnician.toObject(),
-      materials: materialsWithDetails
+      materials: materialsWithDetails,
+      // Add assigned material info for logging
+      name: technician.name,
+      assignedMaterial: {
+        type: material.type,
+        quantity: parseInt(quantity, 10)
+      }
     });
   } catch (error) {
     console.error('Greška pri dodavanju materijala tehničaru:', error);
@@ -456,7 +489,7 @@ router.post('/:id/materials', async (req, res) => {
 });
 
 // PUT - Ažuriraj količinu materijala kod tehničara
-router.put('/:id/materials/:materialId', async (req, res) => {
+router.put('/:id/materials/:materialId', auth, async (req, res) => {
   try {
     const { id, materialId } = req.params;
     const { quantity } = req.body;
@@ -543,7 +576,7 @@ router.put('/:id/materials/:materialId', async (req, res) => {
 });
 
 // DELETE - Ukloni materijal od tehničara
-router.delete('/:id/materials/:materialId', async (req, res) => {
+router.delete('/:id/materials/:materialId', auth, async (req, res) => {
   try {
     const { id, materialId } = req.params;
     
@@ -601,33 +634,47 @@ router.delete('/:id/materials/:materialId', async (req, res) => {
   }
 });
 
-// POST - Assign equipment to technician
-router.post('/:id/equipment', async (req, res) => {
+// POST - Assign equipment to technician (BULK)
+router.post('/:id/equipment', auth, logActivity('technicians', 'equipment_assign_to_tech', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => `${responseData?.assignedCount || 0} opreme → Tehničar: ${responseData?.technicianName || 'Unknown'}`,
+  getDetails: async (req, responseData) => {
+    return {
+      action: 'bulk_assigned',
+      summary: {
+        totalProcessed: responseData?.assignedCount || 0,
+        assignedCount: responseData?.assignedCount || 0,
+        technicianName: responseData?.technicianName || 'Unknown'
+      },
+      assignedItems: responseData?.assignedEquipment || []
+    };
+  }
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const { serialNumbers } = req.body;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Invalid technician ID format' });
     }
-    
+
     if (!Array.isArray(serialNumbers) || serialNumbers.length === 0) {
       return res.status(400).json({ error: 'No equipment selected for assignment' });
     }
-    
+
     const technician = await Technician.findById(id);
     if (!technician) {
       return res.status(404).json({ error: 'Technician not found' });
     }
-    
+
     // Update all equipment items - nova logika za potvrđivanje
     const updateResults = await Equipment.updateMany(
-      { 
+      {
         serialNumber: { $in: serialNumbers },
         location: 'magacin'  // Only allow assigning from warehouse
       },
-      { 
-        $set: { 
+      {
+        $set: {
           assignedTo: id,
           location: `tehnicar-${id}`,
           status: 'pending_confirmation',
@@ -636,20 +683,20 @@ router.post('/:id/equipment', async (req, res) => {
         }
       }
     );
-    
+
     if (updateResults.modifiedCount === 0) {
       return res.status(400).json({ error: 'No equipment was available for assignment' });
     }
+
+    // Get the assigned equipment details for logging and email
+    const assignedEquipment = await Equipment.find({
+      serialNumber: { $in: serialNumbers },
+      assignedTo: id
+    });
     
     // Send email notification to technician
     try {
       if (technician.gmail) {
-        // Get the assigned equipment details for email
-        const assignedEquipment = await Equipment.find({ 
-          serialNumber: { $in: serialNumbers },
-          assignedTo: id
-        });
-        
         // Get technician's current inventory (all equipment assigned to them, excluding installed equipment)
         const currentInventory = await Equipment.find({
           assignedTo: id,
@@ -693,9 +740,17 @@ router.post('/:id/equipment', async (req, res) => {
       // Ne prekidamo proces ako email ne uspe
     }
 
-    res.json({ 
+    res.json({
       message: `Successfully assigned ${updateResults.modifiedCount} equipment items - awaiting technician confirmation`,
-      modifiedCount: updateResults.modifiedCount
+      assignedCount: updateResults.modifiedCount,
+      technicianName: technician.name,
+      assignedEquipment: assignedEquipment.map(eq => ({
+        category: eq.category,
+        description: eq.description,
+        serialNumber: eq.serialNumber,
+        status: eq.status,
+        location: eq.location
+      }))
     });
   } catch (error) {
     console.error('Error assigning equipment:', error);
@@ -703,50 +758,64 @@ router.post('/:id/equipment', async (req, res) => {
   }
 });
 
-// POST - Return equipment from technician
-router.post('/:id/equipment/return', async (req, res) => {
+// POST - Return equipment from technician (BULK)
+router.post('/:id/equipment/return', auth, logActivity('technicians', 'equipment_unassign_from_tech', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => `${responseData?.unassignedCount || 0} opreme → Od tehničara: ${responseData?.technicianName || 'Unknown'}`,
+  getDetails: async (req, responseData) => {
+    return {
+      action: 'bulk_unassigned',
+      summary: {
+        totalProcessed: responseData?.unassignedCount || 0,
+        unassignedCount: responseData?.unassignedCount || 0,
+        technicianName: responseData?.technicianName || 'Unknown'
+      },
+      assignedItems: responseData?.unassignedEquipment || []
+    };
+  }
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const { serialNumbers } = req.body;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Invalid technician ID format' });
     }
-    
+
     if (!Array.isArray(serialNumbers) || serialNumbers.length === 0) {
       return res.status(400).json({ error: 'No equipment selected for return' });
     }
-    
+
     const technician = await Technician.findById(id);
     if (!technician) {
       return res.status(404).json({ error: 'Technician not found' });
     }
-    
-    // Get equipment details before updating for email
+
+    // Get equipment details before updating for email and logging
     const equipmentToReturn = await Equipment.find({
       serialNumber: { $in: serialNumbers },
       assignedTo: id
     });
-    
+
     if (equipmentToReturn.length === 0) {
       return res.status(400).json({ error: 'No equipment was available for return' });
     }
-    
+
     // Update all equipment items
     const updateResults = await Equipment.updateMany(
-      { 
+      {
         serialNumber: { $in: serialNumbers },
         assignedTo: id  // Only allow returning equipment assigned to this technician
       },
-      { 
-        $set: { 
+      {
+        $set: {
           assignedTo: null,
           location: 'magacin',
           status: 'available'
         }
       }
     );
-    
+
     if (updateResults.modifiedCount === 0) {
       return res.status(400).json({ error: 'No equipment was available for return' });
     }
@@ -796,9 +865,17 @@ router.post('/:id/equipment/return', async (req, res) => {
       // Ne prekidamo proces ako email ne uspe
     }
     
-    res.json({ 
+    res.json({
       message: `Successfully returned ${updateResults.modifiedCount} equipment items`,
-      modifiedCount: updateResults.modifiedCount
+      unassignedCount: updateResults.modifiedCount,
+      technicianName: technician.name,
+      unassignedEquipment: equipmentToReturn.map(eq => ({
+        category: eq.category,
+        description: eq.description,
+        serialNumber: eq.serialNumber,
+        status: 'available', // Updated status
+        location: 'magacin'  // Updated location
+      }))
     });
   } catch (error) {
     console.error('Error returning equipment:', error);
@@ -807,7 +884,7 @@ router.post('/:id/equipment/return', async (req, res) => {
 });
 
 // POST - Return material from technician
-router.post('/:id/materials/return', async (req, res) => {
+router.post('/:id/materials/return', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const { materialId, quantity } = req.body;
@@ -912,7 +989,7 @@ router.get('/:id/equipment/pending', async (req, res) => {
 });
 
 // POST - Potvrdi opremu
-router.post('/:id/equipment/confirm', async (req, res) => {
+router.post('/:id/equipment/confirm', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const { equipmentId } = req.body;
@@ -951,7 +1028,7 @@ router.post('/:id/equipment/confirm', async (req, res) => {
 });
 
 // POST - Odbaci opremu
-router.post('/:id/equipment/reject', async (req, res) => {
+router.post('/:id/equipment/reject', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const { equipmentId, reason } = req.body;
@@ -1013,7 +1090,7 @@ const profileImageUpload = multer({
 });
 
 // POST - Upload profilne slike
-router.post('/upload-profile-image', profileImageUpload.single('image'), async (req, res) => {
+router.post('/upload-profile-image', auth, profileImageUpload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Slika nije uploadovana' });
@@ -1106,7 +1183,15 @@ router.get('/:id/basic-equipment', async (req, res) => {
 });
 
 // POST - Dodaj osnovnu opremu tehničaru
-router.post('/:id/basic-equipment', async (req, res) => {
+router.post('/:id/basic-equipment', auth, logActivity('technicians', 'basic_equipment_assign_to_tech', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => {
+    const techName = responseData?.name || 'Unknown';
+    const equipmentType = responseData?.assignedBasicEquipment?.type || 'Basic Equipment';
+    const qty = responseData?.assignedBasicEquipment?.quantity || 0;
+    return `${equipmentType} (${qty} kom) → Tehničar: ${techName}`;
+  }
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const { basicEquipmentId, quantity } = req.body;
@@ -1171,7 +1256,13 @@ router.post('/:id/basic-equipment', async (req, res) => {
 
     res.json({
       ...technician.toObject(),
-      basicEquipment: basicEquipmentWithDetails
+      basicEquipment: basicEquipmentWithDetails,
+      // Add for logging
+      name: technician.name,
+      assignedBasicEquipment: {
+        type: basicEquipment.type,
+        quantity: parseInt(quantity, 10)
+      }
     });
   } catch (error) {
     console.error('Greška pri dodavanju osnovne opreme tehničaru:', error);
@@ -1180,7 +1271,7 @@ router.post('/:id/basic-equipment', async (req, res) => {
 });
 
 // POST - Return basic equipment from technician
-router.post('/:id/basic-equipment/return', async (req, res) => {
+router.post('/:id/basic-equipment/return', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const { basicEquipmentId, quantity } = req.body;

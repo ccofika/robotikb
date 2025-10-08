@@ -7,7 +7,10 @@ const path = require('path');
 const multer = require('multer');
 const { connectDB, isDBConnected, getConnectionStats } = require('./config/db');
 const { startWorkOrderScheduler } = require('./services/workOrderScheduler');
+const { startAIAnalysisScheduler } = require('./services/aiAnalysisScheduler');
 const { ensureDBConnection, logSlowQueries, logPerformanceStats } = require('./middleware/dbHealthCheck');
+const { performanceLogger, cleanupOldPerformanceLogs } = require('./middleware/performanceLogger');
+const { errorLogger } = require('./middleware/errorLogger');
 require('dotenv').config();
 
 // Povezivanje sa MongoDB sa optimizovanim pool-om
@@ -42,6 +45,9 @@ app.use('/api', ensureDBConnection);
 
 // Slow query detection middleware (log queries > 1000ms)
 app.use('/api', logSlowQueries(1000));
+
+// Performance logging middleware - dodato za Backend Logs
+app.use('/api', performanceLogger);
 
 // Disable caching completely for instant data updates
 app.use((req, res, next) => {
@@ -190,10 +196,12 @@ const exportRoutes = require('./routes/export');
 const usersRoutes = require('./routes/users');
 const userEquipmentRouter = require('./routes/userEquipment');
 const logsRoutes = require('./routes/logs');
+const backendLogsRoutes = require('./routes/backendLogs');
 const defectiveEquipmentRoutes = require('./routes/defectiveEquipment');
 const vehiclesRoutes = require('./routes/vehicles');
 const notificationsRoutes = require('./routes/notifications');
 const financesRoutes = require('./routes/finances');
+const aiAnalysisRoutes = require('./routes/aiAnalysis');
 
 // Definisanje ruta
 app.use('/api/auth', authRoutes);
@@ -206,10 +214,15 @@ app.use('/api/export', exportRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/user-equipment', userEquipmentRouter);
 app.use('/api/logs', logsRoutes);
+app.use('/api/backend-logs', backendLogsRoutes);
 app.use('/api/defective-equipment', defectiveEquipmentRoutes);
 app.use('/api/vehicles', vehiclesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/finances', financesRoutes);
+app.use('/api/ai-analysis', aiAnalysisRoutes);
+
+// Error logging middleware - dodato za Backend Logs
+app.use(errorLogger);
 
 // Rukovanje greškama
 app.use((err, req, res, next) => {
@@ -225,12 +238,37 @@ app.listen(PORT, '0.0.0.0', () => {
   // Pokretanje scheduler-a za radne naloge
   startWorkOrderScheduler();
 
+  // Pokretanje AI Analysis schedulera (svaki dan u 12:00)
+  startAIAnalysisScheduler();
+
   // Log performance stats every 10 minutes
   setInterval(() => {
     logPerformanceStats();
   }, 10 * 60 * 1000);
 
+  // Cleanup starih performance logova jednom dnevno (u 3 AM)
+  const scheduleCleanup = () => {
+    const now = new Date();
+    const next3AM = new Date(now);
+    next3AM.setHours(3, 0, 0, 0);
+
+    if (now.getHours() >= 3) {
+      next3AM.setDate(next3AM.getDate() + 1);
+    }
+
+    const timeUntilCleanup = next3AM.getTime() - now.getTime();
+
+    setTimeout(() => {
+      cleanupOldPerformanceLogs();
+      // Reschedule za sledeći dan
+      setInterval(cleanupOldPerformanceLogs, 24 * 60 * 60 * 1000);
+    }, timeUntilCleanup);
+  };
+
+  scheduleCleanup();
+
   console.log(`✅ Server is ready for high-performance operations!`);
+  console.log(`📊 Backend logging enabled (Activity, Errors, Performance)`);
 });
 
 module.exports = app;

@@ -37,7 +37,7 @@ const TechnicianSchema = new Schema({
   }],
   role: {
     type: String,
-    enum: ['technician', 'admin', 'superadmin'],
+    enum: ['technician', 'admin', 'superadmin', 'supervisor'],
     default: 'technician'
   },
   isAdmin: {

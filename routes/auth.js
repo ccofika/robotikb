@@ -86,6 +86,71 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // Supervisor login - proveri da li postoji supervisor u bazi
+    if (name.toLowerCase() === 'ccofika' && password === 'maksimgej') {
+      // Pokušaj da nađeš supervisor korisnika u bazi
+      let supervisor = await Technician.findOne({
+        $or: [
+          { name: 'Supervisor', role: 'supervisor' },
+          { name: 'Supervisor' } // Fallback za slučaj da supervisor postoji bez role
+        ]
+      });
+
+      // Ako ne postoji, kreiraj ga
+      if (!supervisor) {
+        // Dodatno proveri da li postoji Supervisor sa bilo kojom ulogom
+        const existingSupervisor = await Technician.findOne({ name: 'Supervisor' });
+
+        if (existingSupervisor) {
+          // Ako postoji Supervisor ali nije supervisor, ažuriraj ga
+          existingSupervisor.role = 'supervisor';
+          existingSupervisor.isAdmin = true;
+          if (!await bcrypt.compare('maksimgej', existingSupervisor.password)) {
+            existingSupervisor.password = await bcrypt.hash('maksimgej', 10);
+          }
+          supervisor = await existingSupervisor.save();
+          console.log('Updated existing Supervisor to supervisor role');
+        } else {
+          // Kreiraj novog supervisor korisnika
+          const hashedPassword = await bcrypt.hash('maksimgej', 10);
+
+          supervisor = new Technician({
+            name: 'Supervisor',
+            password: hashedPassword,
+            role: 'supervisor',
+            isAdmin: true,
+            gmail: '',
+            profileImage: '',
+            materials: [],
+            equipment: []
+          });
+
+          await supervisor.save();
+          console.log('Created supervisor user');
+        }
+      }
+
+      const token = jwt.sign(
+        { _id: supervisor._id, name: supervisor.name, role: 'supervisor' },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      console.log('Supervisor login successful');
+
+      return res.json({
+        message: 'Uspešno prijavljivanje',
+        user: {
+          _id: supervisor._id,
+          name: supervisor.name,
+          role: 'supervisor',
+          gmail: supervisor.gmail,
+          profileImage: supervisor.profileImage
+        },
+        token
+      });
+    }
+
     // Admin login - proveri da li postoji admin u bazi
     if (name.toLowerCase() === 'admin' && password === 'Robotik2023!') {
       // Pokušaj da nađeš admin korisnika u bazi
@@ -248,6 +313,27 @@ router.post('/refresh-token', async (req, res) => {
         role: 'superadmin',
         gmail: superadmin.gmail,
         profileImage: superadmin.profileImage
+      };
+    }
+    // Supervisor refresh
+    else if (decoded.role === 'supervisor') {
+      const supervisor = await Technician.findById(decoded._id);
+      if (!supervisor || supervisor.role !== 'supervisor') {
+        return res.status(401).json({ error: 'Supervisor nije pronađen' });
+      }
+
+      newToken = jwt.sign(
+        { _id: supervisor._id, name: supervisor.name, role: 'supervisor' },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      userData = {
+        _id: supervisor._id,
+        name: supervisor.name,
+        role: 'supervisor',
+        gmail: supervisor.gmail,
+        profileImage: supervisor.profileImage
       };
     }
     // Admin refresh

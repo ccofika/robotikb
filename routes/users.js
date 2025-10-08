@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { User, WorkOrder, Equipment } = require('../models');
 const mongoose = require('mongoose');
+const { logActivity } = require('../middleware/activityLogger');
 
 // Simple in-memory cache for user list queries (1 minute TTL)
 const cache = {
@@ -425,7 +426,9 @@ router.get('/:id/workorders', async (req, res) => {
 });
 
 // POST - Kreiraj novog korisnika
-router.post('/', async (req, res) => {
+router.post('/', logActivity('users', 'user_add', {
+  getEntityName: (req, responseData) => responseData?.name || responseData?.tisId
+}), async (req, res) => {
   try {
     const { tisId, name, address, phone } = req.body;
 
@@ -460,7 +463,10 @@ router.post('/', async (req, res) => {
 });
 
 // PUT - Ažuriraj korisnika
-router.put('/:id', async (req, res) => {
+router.put('/:id', logActivity('users', 'user_edit', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.name || responseData?.tisId
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const { tisId, name, address, phone } = req.body;
@@ -501,7 +507,9 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE - Obriši korisnika
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', logActivity('users', 'user_delete', {
+  getEntityId: (req) => req.params.id
+}), async (req, res) => {
   try {
     const { id } = req.params;
 

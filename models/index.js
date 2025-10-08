@@ -10,6 +10,9 @@ const DismissedWorkOrder = require('./DismissedWorkOrder');
 const Notification = require('./Notification');
 const FinancialTransaction = require('./FinancialTransaction');
 const FinancialSettings = require('./FinancialSettings');
+const AdminActivityLog = require('./AdminActivityLog');
+const ErrorLog = require('./ErrorLog');
+const PerformanceLog = require('./PerformanceLog');
 
 module.exports = {
   User,
@@ -23,5 +26,8 @@ module.exports = {
   DismissedWorkOrder,
   Notification,
   FinancialTransaction,
-  FinancialSettings
+  FinancialSettings,
+  AdminActivityLog,
+  ErrorLog,
+  PerformanceLog
 }; 

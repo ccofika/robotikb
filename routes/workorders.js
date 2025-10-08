@@ -15,10 +15,12 @@ const FailedFinancialTransaction = require('../models/FailedFinancialTransaction
 const MunicipalityDiscountConfirmation = require('../models/MunicipalityDiscountConfirmation');
 const { uploadImage, deleteImage } = require('../config/cloudinary');
 const convert = require('heic-convert');
-const { 
-  logCommentAdded, 
-  logWorkOrderStatusChanged, 
-  logImageAdded, 
+const { logActivity } = require('../middleware/activityLogger');
+const { auth } = require('../middleware/auth');
+const {
+  logCommentAdded,
+  logWorkOrderStatusChanged,
+  logImageAdded,
   logImageRemoved,
   logMaterialAdded,
   logMaterialRemoved,
@@ -985,7 +987,27 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST - Dodaj nove radne naloge putem Excel fajla
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
+  getEntityName: (req, responseData) => `${responseData?.newWorkOrders?.length || 0} radnih naloga`,
+  getDetails: async (req, responseData) => {
+    return {
+      action: 'bulk_created',
+      summary: {
+        totalProcessed: (responseData?.newWorkOrders?.length || 0) + (responseData?.duplicates?.length || 0) + (responseData?.errors?.length || 0),
+        addedCount: responseData?.newWorkOrders?.length || 0,
+        duplicatesCount: responseData?.duplicates?.length || 0,
+        errorsCount: responseData?.errors?.length || 0,
+        newUsersCount: responseData?.newUsers?.length || 0,
+        existingUsersCount: responseData?.existingUsers?.length || 0
+      },
+      addedItems: responseData?.newWorkOrders || [],
+      duplicates: responseData?.duplicates || [],
+      errors: responseData?.errors || [],
+      newUsers: responseData?.newUsers || [],
+      existingUsers: responseData?.existingUsers || []
+    };
+  }
+}), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Niste priložili fajl' });
@@ -1266,7 +1288,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 });
 
 // POST - Dodaj pojedinačni radni nalog
-router.post('/', async (req, res) => {
+router.post('/', auth, logActivity('workorders', 'workorder_add', {
+  getEntityName: (req, responseData) => responseData?.tisJobId || 'WorkOrder'
+}), async (req, res) => {
   try {
     const { 
       date, time, municipality, address, type, technicianId, technician2Id, details, comment,
@@ -1448,7 +1472,10 @@ router.post('/', async (req, res) => {
 });
 
 // PUT - Ažuriraj radni nalog
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.tisJobId || 'WorkOrder'
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
@@ -2062,7 +2089,9 @@ router.put('/:id/verify', async (req, res) => {
 });
 
 // PUT - Vraćanje radnog naloga kao neispravno popunjenog
-router.put('/:id/return-incorrect', async (req, res) => {
+router.put('/:id/return-incorrect', logActivity('workorders', 'workorder_return_incorrect', {
+  getEntityId: (req) => req.params.id
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const { adminComment } = req.body;
@@ -2352,20 +2381,23 @@ router.post('/:id/used-equipment', (req, res) => {
 });
 
 // DELETE - Brisanje radnog naloga
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, logActivity('workorders', 'workorder_delete', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.deletedData?.tisJobId || 'WorkOrder'
+}), async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
-    
+
     const workOrder = await WorkOrder.findById(id);
-    
+
     if (!workOrder) {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
-    
+
     // Uklanjanje referenci na radni nalog iz korisnika
     if (workOrder.user) {
       await User.findByIdAndUpdate(workOrder.user, {
@@ -2380,11 +2412,23 @@ router.delete('/:id', async (req, res) => {
         });
       }
     }
-    
+
     // Brisanje radnog naloga
     await WorkOrder.findByIdAndDelete(id);
-    
-    res.json({ message: 'Radni nalog uspešno obrisan' });
+
+    // Vrati podatke o obrisanom radnom nalogu za logovanje
+    res.json({
+      message: 'Radni nalog uspešno obrisan',
+      deletedData: {
+        tisJobId: workOrder.tisJobId,
+        address: workOrder.address,
+        municipality: workOrder.municipality,
+        type: workOrder.type,
+        status: workOrder.status,
+        date: workOrder.date,
+        _id: workOrder._id
+      }
+    });
   } catch (error) {
     console.error('Greška pri brisanju radnog naloga:', error);
     res.status(500).json({ error: 'Greška pri brisanju radnog naloga' });

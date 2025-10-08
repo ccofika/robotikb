@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const { Material } = require('../models');
+const { logActivity } = require('../middleware/activityLogger');
+const { auth } = require('../middleware/auth');
 
 // GET - Dohvati sve materijale sa podrškom za query parametre (optimized)
 router.get('/', async (req, res) => {
@@ -61,7 +63,9 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST - Dodaj novi materijal
-router.post('/', async (req, res) => {
+router.post('/', auth, logActivity('materials', 'material_add', {
+  getEntityName: (req, responseData) => responseData?.type
+}), async (req, res) => {
   try {
     const { type, quantity } = req.body;
     
@@ -92,7 +96,10 @@ router.post('/', async (req, res) => {
 });
 
 // PUT - Ažuriranje materijala
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, logActivity('materials', 'material_edit', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.type
+}), async (req, res) => {
   try {
     const { id } = req.params;
     const { type, quantity } = req.body;
@@ -138,21 +145,32 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE - Brisanje materijala
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, logActivity('materials', 'material_delete', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.deletedData?.type || 'Material'
+}), async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
-    
+
     const deletedMaterial = await Material.findByIdAndDelete(id);
-    
+
     if (!deletedMaterial) {
       return res.status(404).json({ error: 'Materijal nije pronađen' });
     }
-    
-    res.json({ message: 'Materijal uspešno obrisan' });
+
+    // Vrati podatke o obrisanom materijalu za logovanje
+    res.json({
+      message: 'Materijal uspešno obrisan',
+      deletedData: {
+        type: deletedMaterial.type,
+        quantity: deletedMaterial.quantity,
+        _id: deletedMaterial._id
+      }
+    });
   } catch (error) {
     console.error('Greška pri brisanju materijala:', error);
     res.status(500).json({ error: 'Greška pri brisanju materijala' });
