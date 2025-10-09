@@ -26,6 +26,9 @@ const corsOptions = {
   origin: [
     'http://localhost:3000',
     'http://localhost:5173',
+    'http://localhost:19000',  // Expo dev server
+    'http://localhost:19006',  // Expo web
+    'http://localhost:8081',   // React Native Metro bundler
     'https://robotik-three.vercel.app',  // UKLONJENO "/" na kraju!
     'https://robotikb.onrender.com',
     'https://administracija.robotik.rs'  // Novi domen
