@@ -8,6 +8,7 @@ const WorkOrderEvidence = require('./WorkOrderEvidence');
 const Log = require('./Log');
 const DismissedWorkOrder = require('./DismissedWorkOrder');
 const Notification = require('./Notification');
+const AndroidNotification = require('./AndroidNotification');
 const FinancialTransaction = require('./FinancialTransaction');
 const FinancialSettings = require('./FinancialSettings');
 const AdminActivityLog = require('./AdminActivityLog');
@@ -25,6 +26,7 @@ module.exports = {
   Log,
   DismissedWorkOrder,
   Notification,
+  AndroidNotification,
   FinancialTransaction,
   FinancialSettings,
   AdminActivityLog,

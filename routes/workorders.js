@@ -1255,6 +1255,22 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
               } else {
                 console.error('❌ Failed to send bulk work order assignment email notification:', emailResult.error);
               }
+
+              // DODATO: Kreiranje Android notifikacija za svaki radni nalog
+              const androidNotificationService = require('../services/androidNotificationService');
+              for (const order of workOrders) {
+                try {
+                  await androidNotificationService.createWorkOrderNotification(techId, {
+                    address: order.address,
+                    municipality: order.municipality,
+                    date: order.date,
+                    time: order.time,
+                    orderId: order._id
+                  });
+                } catch (notifError) {
+                  console.error(`❌ Error creating Android notification for work order ${order._id}:`, notifError.message);
+                }
+              }
             }
           } catch (emailError) {
             console.error(`❌ Error sending email to technician ${techId}:`, emailError.message);
@@ -1453,6 +1469,20 @@ router.post('/', auth, logActivity('workorders', 'workorder_add', {
               console.log(`✅ Work order assignment email sent to technician ${tech.name}`);
             } else {
               console.error('❌ Failed to send work order assignment email notification:', emailResult.error);
+            }
+
+            // DODATO: Kreiranje Android notifikacije za radni nalog
+            const androidNotificationService = require('../services/androidNotificationService');
+            try {
+              await androidNotificationService.createWorkOrderNotification(tech.id, {
+                address: savedWorkOrder.address,
+                municipality: savedWorkOrder.municipality,
+                date: savedWorkOrder.date,
+                time: savedWorkOrder.time,
+                orderId: savedWorkOrder._id
+              });
+            } catch (notifError) {
+              console.error(`❌ Error creating Android notification for work order:`, notifError.message);
             }
           } catch (emailError) {
             console.error(`❌ Error sending email to technician ${tech.name}:`, emailError.message);

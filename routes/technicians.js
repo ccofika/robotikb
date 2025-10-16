@@ -737,6 +737,14 @@ router.post('/:id/equipment', auth, logActivity('technicians', 'equipment_assign
             } else {
               console.error('❌ Failed to send email notification:', emailResult.error);
             }
+
+            // DODATO: Kreiranje Android notifikacije za dodjeljivanje opreme
+            const androidNotificationService = require('../services/androidNotificationService');
+            try {
+              await androidNotificationService.createEquipmentAddNotification(id, assignedEquipment.length);
+            } catch (notifError) {
+              console.error(`❌ Error creating Android notification for equipment assignment:`, notifError.message);
+            }
           } catch (emailError) {
             console.error('❌ Error sending equipment assignment email:', emailError.message);
           }
@@ -876,6 +884,14 @@ router.post('/:id/equipment/return', auth, logActivity('technicians', 'equipment
               console.log(`✅ Unassignment email sent to technician ${technician.name} about ${equipmentToReturn.length} returned equipment items`);
             } else {
               console.error('❌ Failed to send unassignment email notification:', emailResult.error);
+            }
+
+            // DODATO: Kreiranje Android notifikacije za uklanjanje opreme
+            const androidNotificationService = require('../services/androidNotificationService');
+            try {
+              await androidNotificationService.createEquipmentRemoveNotification(id, equipmentToReturn.length);
+            } catch (notifError) {
+              console.error(`❌ Error creating Android notification for equipment unassignment:`, notifError.message);
             }
           } catch (emailError) {
             console.error('❌ Error sending equipment unassignment email:', emailError.message);

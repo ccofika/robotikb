@@ -678,6 +678,14 @@ router.put('/:id', auth, logActivity('equipment', 'equipment_edit', {
               } else {
                 console.error('❌ Failed to send email notification:', emailResult.error);
               }
+
+              // DODATO: Kreiranje Android notifikacije za dodjeljivanje opreme (pojedinačno)
+              const androidNotificationService = require('../services/androidNotificationService');
+              try {
+                await androidNotificationService.createEquipmentAddNotification(technicianId, 1);
+              } catch (notifError) {
+                console.error(`❌ Error creating Android notification for equipment assignment:`, notifError.message);
+              }
             } catch (emailError) {
               console.error('❌ Error sending equipment assignment email:', emailError.message);
             }

@@ -65,6 +65,16 @@ const TechnicianSchema = new Schema({
     type: Number,
     default: 0,
     min: 0
+  },
+  // Push notification token za Android notifikacije
+  pushNotificationToken: {
+    type: String,
+    required: false,
+    default: null
+  },
+  pushNotificationsEnabled: {
+    type: Boolean,
+    default: true
   }
 }, { timestamps: true });
 
