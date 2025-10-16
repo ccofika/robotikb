@@ -682,7 +682,18 @@ router.put('/:id', auth, logActivity('equipment', 'equipment_edit', {
               // DODATO: Kreiranje Android notifikacije za dodjeljivanje opreme (pojedinačno)
               const androidNotificationService = require('../services/androidNotificationService');
               try {
-                await androidNotificationService.createEquipmentAddNotification(technicianId, 1);
+                // Pripremi detalje pojedinačne opreme
+                const equipmentDetails = [{
+                  _id: equipment._id,
+                  name: equipment.description || equipment.category || 'Nepoznato',
+                  serialNumber: equipment.serialNumber,
+                  serial: equipment.serialNumber,
+                  category: equipment.category,
+                  equipmentName: equipment.description,
+                  equipmentCategory: equipment.category
+                }];
+
+                await androidNotificationService.createEquipmentAddNotification(technicianId, equipmentDetails);
               } catch (notifError) {
                 console.error(`❌ Error creating Android notification for equipment assignment:`, notifError.message);
               }

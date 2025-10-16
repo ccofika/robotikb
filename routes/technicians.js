@@ -741,7 +741,18 @@ router.post('/:id/equipment', auth, logActivity('technicians', 'equipment_assign
             // DODATO: Kreiranje Android notifikacije za dodjeljivanje opreme
             const androidNotificationService = require('../services/androidNotificationService');
             try {
-              await androidNotificationService.createEquipmentAddNotification(id, assignedEquipment.length);
+              // Pripremi listu opreme sa svim detaljima
+              const equipmentDetails = assignedEquipment.map(eq => ({
+                _id: eq._id,
+                name: eq.description || eq.category || 'Nepoznato',
+                serialNumber: eq.serialNumber,
+                serial: eq.serialNumber,
+                category: eq.category,
+                equipmentName: eq.description,
+                equipmentCategory: eq.category
+              }));
+
+              await androidNotificationService.createEquipmentAddNotification(id, equipmentDetails);
             } catch (notifError) {
               console.error(`❌ Error creating Android notification for equipment assignment:`, notifError.message);
             }
@@ -889,7 +900,18 @@ router.post('/:id/equipment/return', auth, logActivity('technicians', 'equipment
             // DODATO: Kreiranje Android notifikacije za uklanjanje opreme
             const androidNotificationService = require('../services/androidNotificationService');
             try {
-              await androidNotificationService.createEquipmentRemoveNotification(id, equipmentToReturn.length);
+              // Pripremi listu opreme sa svim detaljima
+              const equipmentDetails = equipmentToReturn.map(eq => ({
+                _id: eq._id,
+                name: eq.description || eq.category || 'Nepoznato',
+                serialNumber: eq.serialNumber,
+                serial: eq.serialNumber,
+                category: eq.category,
+                equipmentName: eq.description,
+                equipmentCategory: eq.category
+              }));
+
+              await androidNotificationService.createEquipmentRemoveNotification(id, equipmentDetails);
             } catch (notifError) {
               console.error(`❌ Error creating Android notification for equipment unassignment:`, notifError.message);
             }

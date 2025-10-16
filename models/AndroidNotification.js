@@ -156,27 +156,61 @@ AndroidNotificationSchema.statics.createWorkOrderNotification = async function(t
 };
 
 // Static metoda - kreiranje notifikacije za dodavanje opreme
-AndroidNotificationSchema.statics.createEquipmentAddNotification = async function(technicianId, count) {
+AndroidNotificationSchema.statics.createEquipmentAddNotification = async function(technicianId, equipmentList) {
+  const count = equipmentList.length;
+
+  // Kreiraj detaljan message
+  let message = '';
+  if (count === 1) {
+    const eq = equipmentList[0];
+    message = `${eq.name} (S/N: ${eq.serialNumber || eq.serial || 'N/A'})`;
+  } else {
+    message = `${count} ${count < 5 ? 'stavke' : 'stavki'} opreme`;
+  }
+
   return this.create({
     technicianId,
     type: 'equipment_add',
     title: 'Zadužena oprema',
-    message: `${count} ${count === 1 ? 'stavka' : count < 5 ? 'stavke' : 'stavki'} opreme je dodato`,
+    message,
     relatedData: {
-      count
+      count,
+      equipment: equipmentList.map(eq => ({
+        id: eq._id || eq.id,
+        name: eq.name || eq.equipmentName || 'Nepoznato',
+        serialNumber: eq.serialNumber || eq.serial || 'N/A',
+        category: eq.category || eq.equipmentCategory || 'N/A'
+      }))
     }
   });
 };
 
 // Static metoda - kreiranje notifikacije za uklanjanje opreme
-AndroidNotificationSchema.statics.createEquipmentRemoveNotification = async function(technicianId, count) {
+AndroidNotificationSchema.statics.createEquipmentRemoveNotification = async function(technicianId, equipmentList) {
+  const count = equipmentList.length;
+
+  // Kreiraj detaljan message
+  let message = '';
+  if (count === 1) {
+    const eq = equipmentList[0];
+    message = `${eq.name} (S/N: ${eq.serialNumber || eq.serial || 'N/A'})`;
+  } else {
+    message = `${count} ${count < 5 ? 'stavke' : 'stavki'} opreme`;
+  }
+
   return this.create({
     technicianId,
     type: 'equipment_remove',
     title: 'Razdužena oprema',
-    message: `${count} ${count === 1 ? 'stavka' : count < 5 ? 'stavke' : 'stavki'} opreme je uklonjeno`,
+    message,
     relatedData: {
-      count
+      count,
+      equipment: equipmentList.map(eq => ({
+        id: eq._id || eq.id,
+        name: eq.name || eq.equipmentName || 'Nepoznato',
+        serialNumber: eq.serialNumber || eq.serial || 'N/A',
+        category: eq.category || eq.equipmentCategory || 'N/A'
+      }))
     }
   });
 };

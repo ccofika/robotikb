@@ -42,16 +42,16 @@ class AndroidNotificationService {
   /**
    * Kreiranje notifikacije za dodjeljivanje opreme
    * @param {String} technicianId - ID tehničara
-   * @param {Number} count - Broj stavki opreme
+   * @param {Array} equipmentList - Lista opreme sa detaljima
    */
-  async createEquipmentAddNotification(technicianId, count) {
+  async createEquipmentAddNotification(technicianId, equipmentList) {
     try {
       const notification = await AndroidNotification.createEquipmentAddNotification(
         technicianId,
-        count
+        equipmentList
       );
 
-      console.log(`✅ Android notifikacija kreirana - Oprema dodana tehničaru ${technicianId} (${count} stavki)`);
+      console.log(`✅ Android notifikacija kreirana - Oprema dodana tehničaru ${technicianId} (${equipmentList.length} stavki)`);
 
       // Pokušaj slanja push notifikacije (non-blocking)
       setImmediate(async () => {
@@ -79,16 +79,16 @@ class AndroidNotificationService {
   /**
    * Kreiranje notifikacije za uklanjanje opreme
    * @param {String} technicianId - ID tehničara
-   * @param {Number} count - Broj stavki opreme
+   * @param {Array} equipmentList - Lista opreme sa detaljima
    */
-  async createEquipmentRemoveNotification(technicianId, count) {
+  async createEquipmentRemoveNotification(technicianId, equipmentList) {
     try {
       const notification = await AndroidNotification.createEquipmentRemoveNotification(
         technicianId,
-        count
+        equipmentList
       );
 
-      console.log(`✅ Android notifikacija kreirana - Oprema uklonjena od tehničara ${technicianId} (${count} stavki)`);
+      console.log(`✅ Android notifikacija kreirana - Oprema uklonjena od tehničara ${technicianId} (${equipmentList.length} stavki)`);
 
       // Pokušaj slanja push notifikacije (non-blocking)
       setImmediate(async () => {
