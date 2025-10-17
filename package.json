@@ -11,7 +11,9 @@
     "clear-equipment": "node scripts/clearEquipment.js",
     "clear-users": "node scripts/clearUsers.js",
     "migrate-data": "node scripts/migrateData.js",
-    "test-images": "node scripts/testImageDuplicates.js"
+    "test-images": "node scripts/testImageDuplicates.js",
+    "publish-update": "node scripts/publishUpdate.js",
+    "check-updates": "node scripts/checkUpdateSystem.js"
   },
   "keywords": [],
   "author": "",

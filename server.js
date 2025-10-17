@@ -23,20 +23,35 @@ const PORT = process.env.PORT || 5000;
 
 // CORS konfiguracija - ISPRAVKA!
 const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:19000',  // Expo dev server
-    'http://localhost:19006',  // Expo web
-    'http://localhost:8081',   // React Native Metro bundler
-    'https://robotik-three.vercel.app',  // UKLONJENO "/" na kraju!
-    'https://robotikb.onrender.com',
-    'https://administracija.robotik.rs'  // Novi domen
-  ],
+  origin: function (origin, callback) {
+    // Dozvoli sve lokalne IP adrese za mobilnu aplikaciju
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:19000',  // Expo dev server
+      'http://localhost:19006',  // Expo web
+      'http://localhost:8081',   // React Native Metro bundler
+      'https://robotik-three.vercel.app',
+      'https://robotikb.onrender.com',
+      'https://administracija.robotik.rs'
+    ];
+
+    // Dozvoli undefined origin (mobilna aplikacija)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    }
+    // Dozvoli sve lokalne IP adrese (192.168.x.x, 10.x.x.x, itd.)
+    else if (origin && (origin.startsWith('http://192.168.') || origin.startsWith('http://10.') || origin.startsWith('http://172.'))) {
+      callback(null, true);
+    }
+    else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 200 // Za starije browsere
+  optionsSuccessStatus: 200
 };
 
 // Middleware
@@ -208,6 +223,7 @@ const androidNotificationsRoutes = require('./routes/androidNotifications');
 const financesRoutes = require('./routes/finances');
 const aiAnalysisRoutes = require('./routes/aiAnalysis');
 const aiTechnicianAnalysisRoutes = require('./routes/aiTechnicianAnalysis');
+const updatesRoutes = require('./routes/updates');
 
 // Definisanje ruta
 app.use('/api/auth', authRoutes);
@@ -228,6 +244,7 @@ app.use('/api/android-notifications', androidNotificationsRoutes);
 app.use('/api/finances', financesRoutes);
 app.use('/api/ai-analysis', aiAnalysisRoutes);
 app.use('/api/ai-technician-analysis', aiTechnicianAnalysisRoutes);
+app.use('/api/updates', updatesRoutes);
 
 // Error logging middleware - dodato za Backend Logs
 app.use(errorLogger);
@@ -241,7 +258,7 @@ app.use((err, req, res, next) => {
 // Pokretanje servera - OPTIMIZOVANO!
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server pokrenut na portu: ${PORT}`);
-  console.log(`🌐 CORS omogućen za: ${corsOptions.origin.join(', ')}`);
+  console.log(`🌐 CORS omogućen za sve lokalne IP adrese (192.168.x.x, 10.x.x.x)`);
 
   // Pokretanje scheduler-a za radne naloge
   startWorkOrderScheduler();

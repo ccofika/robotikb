@@ -8,6 +8,10 @@ yarn-error.log*
 dist/
 build/
 
+# OTA Update bundles - može biti veliki
+bundles/
+bundles/*.bundle
+
 
 
 # Data folder - NEVER push to git
