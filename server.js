@@ -87,7 +87,7 @@ app.get('/', (req, res) => {
     message: 'TelCo Inventory Management API is running!',
     timestamp: new Date().toISOString(),
     port: PORT,
-    cors: corsOptions.origin,
+    cors: 'Dynamic CORS enabled for local IPs',
     database: {
       connected: isDBConnected(),
       ...dbStats
