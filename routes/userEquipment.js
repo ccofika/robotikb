@@ -501,10 +501,10 @@ router.put('/:id/remove', async (req, res) => {
 
 // POST - Ukloni opremu po serijskom broju
 router.post('/remove-by-serial', async (req, res) => {
-  const { workOrderId, technicianId, equipmentName, serialNumber, condition } = req.body;
+  const { workOrderId, technicianId, equipmentName, equipmentDescription, serialNumber } = req.body;
 
-  if (!workOrderId || !technicianId || !equipmentName || !serialNumber || !condition) {
-    return res.status(400).json({ error: 'Nedostaju obavezni podaci' });
+  if (!workOrderId || !technicianId || !equipmentName || !equipmentDescription || !serialNumber) {
+    return res.status(400).json({ error: 'Nedostaju obavezni podaci (naziv, opis, serijski broj)' });
   }
 
   try {
@@ -514,34 +514,24 @@ router.post('/remove-by-serial', async (req, res) => {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
 
-    // Pronađi opremu po serijskom broju koja je kod korisnika
+    // Pronađi opremu po serijskom broju (samo po S/N, ne proverava lokaciju)
     const equipment = await Equipment.findOne({
-      serialNumber: serialNumber,
-      location: `user-${workOrder.tisId}`,
-      status: 'installed'
+      serialNumber: serialNumber
     });
 
     let equipmentRemoved = false;
     let equipmentDetails = null;
 
     if (equipment) {
-      // Oprema postoji u sistemu - ukloni je iz korisnikovog inventara
+      // Oprema postoji u sistemu - dodeli je tehničaru
       console.log('Found equipment in system:', equipment);
 
-      if (condition === 'ispravna') {
-        // Ako je oprema ispravna, vrati je tehničaru
-        equipment.location = `tehnicar-${technicianId}`;
-        equipment.status = 'assigned';
-        equipment.assignedToUser = null;
-        equipment.removedAt = new Date();
-      } else {
-        // Ako je oprema neispravna, označi je kao neispravnu
-        equipment.location = 'defective';
-        equipment.status = 'defective';
-        equipment.assignedToUser = null;
-        equipment.assignedTo = null;
-        equipment.removedAt = new Date();
-      }
+      // Automatski dodeljuje opremu tehničaru
+      equipment.location = `tehnicar-${technicianId}`;
+      equipment.status = 'assigned';
+      equipment.assignedTo = technicianId;
+      equipment.assignedToUser = null;
+      equipment.removedAt = new Date();
 
       await equipment.save();
       equipmentRemoved = true;
@@ -563,12 +553,25 @@ router.post('/remove-by-serial', async (req, res) => {
       await workOrder.save();
 
     } else {
-      console.log('Equipment not found in system - will only add to removedEquipment');
-      equipmentDetails = {
+      console.log('Equipment not found in system - creating new equipment and assigning to technician');
+
+      // Kreira novu opremu koja se automatski dodeljuje tehničaru
+      const newEquipment = new Equipment({
         category: equipmentName,
+        description: equipmentDescription,
         serialNumber: serialNumber,
-        status: condition === 'ispravna' ? 'working' : 'defective'
-      };
+        location: `tehnicar-${technicianId}`,
+        status: 'assigned',
+        assignedTo: technicianId,
+        assignedToUser: null,
+        removedAt: new Date()
+      });
+
+      await newEquipment.save();
+      console.log('New equipment created and assigned to technician:', newEquipment);
+
+      equipmentDetails = newEquipment;
+      equipmentRemoved = true;
     }
 
     // Ažuriranje WorkOrderEvidence sa uklonjenom opremom
@@ -595,7 +598,7 @@ router.post('/remove-by-serial', async (req, res) => {
         const removedEquipmentData = {
           equipmentType: mappedEquipmentType,
           serialNumber: serialNumber,
-          condition: condition === 'ispravna' ? 'N' : 'R',
+          condition: 'N', // Sva oprema se automatski dodeljuje tehničaru kao 'N' (ispravna)
           removedAt: new Date(),
           notes: `Uklonjeno od tehničara - ${equipmentName}`
         };
@@ -616,7 +619,7 @@ router.post('/remove-by-serial', async (req, res) => {
     try {
       const technician = await Technician.findById(technicianId);
       if (technician) {
-        await logEquipmentRemoved(technicianId, technician.name, workOrder, equipmentDetails, condition === 'ispravna', `Uklonjeno po serijskom broju: ${equipmentName}`);
+        await logEquipmentRemoved(technicianId, technician.name, workOrder, equipmentDetails, true, `Uklonjeno po serijskom broju: ${equipmentName}`);
       }
     } catch (logError) {
       console.error('Greška pri logovanju uklanjanja opreme:', logError);
