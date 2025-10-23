@@ -224,6 +224,7 @@ const financesRoutes = require('./routes/finances');
 const aiAnalysisRoutes = require('./routes/aiAnalysis');
 const aiTechnicianAnalysisRoutes = require('./routes/aiTechnicianAnalysis');
 const updatesRoutes = require('./routes/updates');
+const apkRoutes = require('./routes/apk');
 
 // Definisanje ruta
 app.use('/api/auth', authRoutes);
@@ -245,6 +246,7 @@ app.use('/api/finances', financesRoutes);
 app.use('/api/ai-analysis', aiAnalysisRoutes);
 app.use('/api/ai-technician-analysis', aiTechnicianAnalysisRoutes);
 app.use('/api/updates', updatesRoutes);
+app.use('/api/apk', apkRoutes);
 
 // Error logging middleware - dodato za Backend Logs
 app.use(errorLogger);

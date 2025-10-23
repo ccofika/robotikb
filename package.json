@@ -13,7 +13,8 @@
     "migrate-data": "node scripts/migrateData.js",
     "test-images": "node scripts/testImageDuplicates.js",
     "publish-update": "node scripts/publishUpdate.js",
-    "check-updates": "node scripts/checkUpdateSystem.js"
+    "check-updates": "node scripts/checkUpdateSystem.js",
+    "publish-apk": "node scripts/publishApk.js"
   },
   "keywords": [],
   "author": "",
