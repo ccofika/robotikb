@@ -158,6 +158,10 @@ const WorkOrderSchema = new Schema({
     quantity: {
       type: Number,
       default: 1
+    },
+    technicianId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Technician'
     }
   }],
   installedEquipment: [{

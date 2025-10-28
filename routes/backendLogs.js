@@ -88,6 +88,21 @@ router.get('/activities', auth, isSupervisorOrSuperAdmin, async (req, res) => {
       });
     }
 
+    // Debug: Check edit activities
+    const editActivity = activities.find(a => a.category === 'edit');
+    if (editActivity) {
+      console.log('🔍 [Backend API] Found edit activity:', {
+        action: editActivity.action,
+        category: editActivity.category,
+        detailsAction: editActivity.details?.action,
+        hasEquipment: !!editActivity.details?.equipment,
+        hasMaterial: !!editActivity.details?.material,
+        equipment: editActivity.details?.equipment,
+        material: editActivity.details?.material,
+        fullDetails: JSON.stringify(editActivity.details, null, 2)
+      });
+    }
+
     res.json({
       activities,
       pagination: {

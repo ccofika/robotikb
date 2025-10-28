@@ -53,14 +53,18 @@ const AdminActivityLogSchema = new Schema({
       'vehicle_add', 'vehicle_edit', 'vehicle_delete',
 
       // Basic Equipment actions
-      'basic_equipment_add', 'basic_equipment_edit', 'basic_equipment_delete'
+      'basic_equipment_add', 'basic_equipment_edit', 'basic_equipment_delete',
+
+      // Edit page actions (admin/superadmin/supervisor editing work orders)
+      'edit_equipment_add', 'edit_equipment_remove',
+      'edit_material_add', 'edit_material_remove'
     ]
   },
 
   category: {
     type: String,
     required: true,
-    enum: ['equipment', 'materials', 'technicians', 'workorders', 'users', 'settings', 'vehicles', 'basic_equipment', 'finances']
+    enum: ['equipment', 'materials', 'technicians', 'workorders', 'users', 'settings', 'vehicles', 'basic_equipment', 'finances', 'edit']
   },
 
   // Entitet koji je promenjen
@@ -79,14 +83,18 @@ const AdminActivityLogSchema = new Schema({
     before: Schema.Types.Mixed,     // Stanje pre promene
     after: Schema.Types.Mixed,      // Stanje posle promene
     diff: Schema.Types.Mixed,       // Samo promenjeni podaci
-    action: String,                 // bulk_created, created, updated, deleted, bulk_assigned, bulk_unassigned
+    action: String,                 // bulk_created, created, updated, deleted, bulk_assigned, bulk_unassigned, added, removed
     summary: Schema.Types.Mixed,    // Za bulk operacije ili tekstualni opis izmena
     addedItems: Schema.Types.Mixed, // Za bulk operacije (bulk_created)
     assignedItems: Schema.Types.Mixed, // Za bulk assign/unassign operacije (bulk_assigned, bulk_unassigned)
     duplicates: Schema.Types.Mixed, // Za bulk operacije
     errors: Schema.Types.Mixed,     // Za bulk operacije
     changes: Schema.Types.Mixed,    // Array promenjenih polja (za updated akcije)
-    changeCount: Number             // Broj promena (za updated akcije)
+    changeCount: Number,            // Broj promena (za updated akcije)
+    // Edit actions - equipment/material details
+    equipment: Schema.Types.Mixed,  // Za edit akcije (oprema)
+    material: Schema.Types.Mixed,   // Za edit akcije (materijal)
+    workOrder: Schema.Types.Mixed   // Za edit akcije (radni nalog info)
   },
 
   // Request metadata
