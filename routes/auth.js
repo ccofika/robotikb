@@ -218,37 +218,44 @@ router.post('/login', async (req, res) => {
     
     // Traženje tehničara u bazi
     const technician = await Technician.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
-    
+
     if (!technician) {
       console.log('Technician not found');
       return res.status(401).json({ error: 'Neispravno korisničko ime ili lozinka' });
     }
-    
+
     // Provera lozinke
     const validPassword = await bcrypt.compare(password, technician.password);
     if (!validPassword) {
       console.log('Invalid password');
       return res.status(401).json({ error: 'Neispravno korisničko ime ili lozinka' });
     }
-    
-    // Kreiranje JWT tokena
+
+    // Određivanje role iz baze podataka
+    const userRole = technician.role || 'technician';
+
+    // Kreiranje JWT tokena - koristi _id za admin/superadmin/supervisor, id za tehničare
+    const tokenPayload = (userRole === 'admin' || userRole === 'superadmin' || userRole === 'supervisor')
+      ? { _id: technician._id, name: technician.name, role: userRole }
+      : { id: technician._id, name: technician.name, role: userRole };
+
     const token = jwt.sign(
-      { id: technician._id, name: technician.name, role: 'technician' },
+      tokenPayload,
       JWT_SECRET,
       { expiresIn: '24h' }
     );
-    
+
     // Ne vraćamo lozinku
     const technicianResponse = technician.toObject();
     delete technicianResponse.password;
-    
-    console.log('Technician login successful');
-    
+
+    console.log(`Login successful for ${technician.name} with role: ${userRole}`);
+
     res.json({
       message: 'Uspešno prijavljivanje',
       user: {
         ...technicianResponse,
-        role: 'technician'
+        role: userRole
       },
       token
     });
@@ -357,15 +364,24 @@ router.post('/refresh-token', async (req, res) => {
         profileImage: admin.profileImage
       };
     }
-    // Technician refresh
-    else if (decoded.role === 'technician') {
-      const technician = await Technician.findById(decoded.id);
+    // Technician refresh (or any other role not explicitly handled above)
+    else {
+      // Try to find by id first (for technicians), then by _id (for other roles)
+      const technician = await Technician.findById(decoded.id || decoded._id);
       if (!technician) {
-        return res.status(401).json({ error: 'Tehničar nije pronađen' });
+        return res.status(401).json({ error: 'Korisnik nije pronađen' });
       }
 
+      // Use actual role from database
+      const userRole = technician.role || 'technician';
+
+      // Create token with appropriate ID field based on role
+      const tokenPayload = (userRole === 'admin' || userRole === 'superadmin' || userRole === 'supervisor')
+        ? { _id: technician._id, name: technician.name, role: userRole }
+        : { id: technician._id, name: technician.name, role: userRole };
+
       newToken = jwt.sign(
-        { id: technician._id, name: technician.name, role: 'technician' },
+        tokenPayload,
         JWT_SECRET,
         { expiresIn: '24h' }
       );
@@ -374,10 +390,8 @@ router.post('/refresh-token', async (req, res) => {
       delete technicianResponse.password;
       userData = {
         ...technicianResponse,
-        role: 'technician'
+        role: userRole
       };
-    } else {
-      return res.status(401).json({ error: 'Nepoznata uloga' });
     }
 
     console.log('✅ Token successfully refreshed for user:', userData.name, 'role:', userData.role);

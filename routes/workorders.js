@@ -9,6 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 const mongoose = require('mongoose');
 const { WorkOrder, User, Technician, Equipment, Material } = require('../models');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
+const AdminActivityLog = require('../models/AdminActivityLog');
 const FinancialTransaction = require('../models/FinancialTransaction');
 const FinancialSettings = require('../models/FinancialSettings');
 const FailedFinancialTransaction = require('../models/FailedFinancialTransaction');
@@ -677,32 +678,110 @@ const imageUpload = multer({
 // GET - Dohvati sve radne naloge
 router.get('/', async (req, res) => {
   try {
-    const { recent } = req.query;
+    const { recent, page, limit, search, status, municipality, technician, lastMonthOnly } = req.query;
     const startTime = Date.now();
 
-    let query = {};
-    let sort = { date: -1 }; // Default sort by newest first
+    // Server-side pagination support
+    if (page && limit) {
+      const pageNum = parseInt(page) || 1;
+      const limitNum = parseInt(limit) || 24;
+      const skip = (pageNum - 1) * limitNum;
 
-    // Recent filter for optimization
-    if (recent) {
-      const daysAgo = new Date();
-      daysAgo.setDate(daysAgo.getDate() - parseInt(recent));
-      query.date = { $gte: daysAgo };
+      let query = {};
+
+      // Last month filter for Edit page
+      if (lastMonthOnly === 'true') {
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+        query.date = { $gte: oneMonthAgo };
+      }
+
+      // Search filter
+      if (search) {
+        query.$or = [
+          { tisId: { $regex: search, $options: 'i' } },
+          { userName: { $regex: search, $options: 'i' } },
+          { address: { $regex: search, $options: 'i' } },
+          { municipality: { $regex: search, $options: 'i' } }
+        ];
+      }
+
+      // Status filter
+      if (status) {
+        query.status = status;
+      }
+
+      // Municipality filter
+      if (municipality) {
+        query.municipality = municipality;
+      }
+
+      // Technician filter
+      if (technician) {
+        query.$or = [
+          { technicianId: technician },
+          { technician2Id: technician }
+        ];
+      }
+
+      // Get total count
+      const totalCount = await WorkOrder.countDocuments(query);
+
+      // Get paginated results
+      const workOrders = await WorkOrder.find(query)
+        .populate('technicianId', 'name _id')
+        .populate('technician2Id', 'name _id')
+        .populate('statusChangedBy', 'name _id')
+        .populate('materials.material', 'type')
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean()
+        .exec();
+
+      const duration = Date.now() - startTime;
+      const totalPages = Math.ceil(totalCount / limitNum);
+
+      res.json({
+        workOrders,
+        pagination: {
+          currentPage: pageNum,
+          totalPages,
+          totalCount,
+          limit: limitNum,
+          hasNextPage: pageNum < totalPages,
+          hasPreviousPage: pageNum > 1
+        },
+        performance: {
+          queryTime: duration,
+          resultsPerPage: workOrders.length
+        }
+      });
+    } else {
+      // Original behavior for backward compatibility
+      let query = {};
+      let sort = { date: -1 };
+
+      if (recent) {
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - parseInt(recent));
+        query.date = { $gte: daysAgo };
+      }
+
+      const workOrders = await WorkOrder.find(query)
+        .populate('technicianId', 'name _id')
+        .populate('technician2Id', 'name _id')
+        .populate('statusChangedBy', 'name _id')
+        .populate('materials.material', 'type')
+        .sort(sort)
+        .lean()
+        .exec();
+
+      const duration = Date.now() - startTime;
+      console.log(`Work orders query completed in ${duration}ms (${workOrders.length} orders)`);
+
+      res.json(workOrders);
     }
-
-    const workOrders = await WorkOrder.find(query)
-      .populate('technicianId', 'name _id')
-      .populate('technician2Id', 'name _id')
-      .populate('statusChangedBy', 'name _id')
-      .populate('materials.material', 'type')
-      .sort(sort)
-      .lean()
-      .exec();
-
-    const duration = Date.now() - startTime;
-    console.log(`Work orders query completed in ${duration}ms (${workOrders.length} orders)`);
-
-    res.json(workOrders);
   } catch (error) {
     console.error('Greška pri dohvatanju radnih naloga:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju radnih naloga' });
@@ -879,9 +958,10 @@ router.get('/:id/user-equipment', async (req, res) => {
           ...item.equipmentId,
           installedAt: item.installedAt,
           notes: item.notes || '',
+          technicianId: item.technicianId, // IMPORTANT: Include technicianId for filtering
           id: item._id // Dodaj ID zapisa za eventualno uklanjanje
         }));
-      
+
       return res.json(installedEquipmentData);
     }
     
@@ -971,7 +1051,9 @@ router.get('/:id', async (req, res) => {
     
     const workOrder = await WorkOrder.findById(id)
       .populate('technicianId')
+      .populate('technician2Id')
       .populate('materials.material', 'type')
+      .populate('materials.technicianId', 'name')
       .lean()
       .exec();
     
@@ -2476,7 +2558,7 @@ router.put('/:id/return-incorrect', auth, logActivity('workorders', 'workorder_e
 });
 
 // POST - Ažuriranje utrošenog materijala za radni nalog
-router.post('/:id/used-materials', async (req, res) => {
+router.post('/:id/used-materials', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const { materials, technicianId } = req.body;
@@ -2598,8 +2680,16 @@ router.post('/:id/used-materials', async (req, res) => {
     }
     
     // Ažuriranje utrošenih materijala
-    workOrder.materials = materials;
-    
+    // Za svaki materijal, dodaj technicianId ako je nov, ili zadrži postojeći ako već postoji
+    workOrder.materials = materials.map(mat => {
+      const existing = oldMaterials.find(old => old.material.toString() === mat.material.toString());
+      return {
+        material: mat.material,
+        quantity: mat.quantity,
+        technicianId: existing ? existing.technicianId : technicianId
+      };
+    });
+
     const updatedWorkOrder = await workOrder.save();
     
     // Log material additions
@@ -2680,7 +2770,135 @@ router.post('/:id/used-materials', async (req, res) => {
         console.error('Greška pri logovanju dodavanja materijala:', logError);
       }
     }
-    
+
+    // Log to AdminActivityLog if action is done by admin/superadmin/supervisor
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'supervisor')) {
+      try {
+        // Log material additions and removals
+        for (const newMaterial of materials) {
+          const existingMaterial = oldMaterials.find(
+            old => old.material.toString() === newMaterial.material.toString()
+          );
+
+          const newQuantity = newMaterial.quantity;
+          const oldQuantity = existingMaterial ? existingMaterial.quantity : 0;
+
+          if (newQuantity > oldQuantity) {
+            // Material was added
+            const materialDoc = await Material.findById(newMaterial.material);
+            if (materialDoc) {
+              await AdminActivityLog.create({
+                userId: req.user._id,
+                userName: req.user.name,
+                userRole: req.user.role,
+                action: 'edit_material_add',
+                category: 'edit',
+                entityType: 'WorkOrder',
+                entityId: workOrder._id,
+                entityName: `Radni nalog ${workOrder.tisId} - ${workOrder.userName || workOrder.user || 'N/A'}`,
+                details: {
+                  action: 'added',
+                  workOrder: {
+                    _id: workOrder._id,
+                    tisId: workOrder.tisId,
+                    userName: workOrder.userName || workOrder.user || 'N/A',
+                    address: workOrder.address,
+                    municipality: workOrder.municipality,
+                    type: workOrder.type,
+                    date: workOrder.date
+                  },
+                  material: {
+                    _id: materialDoc._id,
+                    type: materialDoc.type,
+                    quantity: newQuantity - oldQuantity
+                  }
+                },
+                timestamp: new Date()
+              });
+            }
+          } else if (newQuantity < oldQuantity) {
+            // Material was reduced
+            const materialDoc = await Material.findById(newMaterial.material);
+            if (materialDoc) {
+              await AdminActivityLog.create({
+                userId: req.user._id,
+                userName: req.user.name,
+                userRole: req.user.role,
+                action: 'edit_material_remove',
+                category: 'edit',
+                entityType: 'WorkOrder',
+                entityId: workOrder._id,
+                entityName: `Radni nalog ${workOrder.tisId} - ${workOrder.userName || workOrder.user || 'N/A'}`,
+                details: {
+                  action: 'removed',
+                  workOrder: {
+                    _id: workOrder._id,
+                    tisId: workOrder.tisId,
+                    userName: workOrder.userName || workOrder.user || 'N/A',
+                    address: workOrder.address,
+                    municipality: workOrder.municipality,
+                    type: workOrder.type,
+                    date: workOrder.date
+                  },
+                  material: {
+                    _id: materialDoc._id,
+                    type: materialDoc.type,
+                    quantity: oldQuantity - newQuantity
+                  }
+                },
+                timestamp: new Date()
+              });
+            }
+          }
+        }
+
+        // Log materials that were completely removed from workorder
+        for (const oldMaterial of oldMaterials) {
+          const stillExists = materials.find(
+            mat => mat.material.toString() === oldMaterial.material.toString()
+          );
+
+          if (!stillExists) {
+            const materialDoc = await Material.findById(oldMaterial.material);
+            if (materialDoc) {
+              await AdminActivityLog.create({
+                userId: req.user._id,
+                userName: req.user.name,
+                userRole: req.user.role,
+                action: 'edit_material_remove',
+                category: 'edit',
+                entityType: 'WorkOrder',
+                entityId: workOrder._id,
+                entityName: `Radni nalog ${workOrder.tisId} - ${workOrder.userName || workOrder.user || 'N/A'}`,
+                details: {
+                  action: 'removed',
+                  workOrder: {
+                    _id: workOrder._id,
+                    tisId: workOrder.tisId,
+                    userName: workOrder.userName || workOrder.user || 'N/A',
+                    address: workOrder.address,
+                    municipality: workOrder.municipality,
+                    type: workOrder.type,
+                    date: workOrder.date
+                  },
+                  material: {
+                    _id: materialDoc._id,
+                    type: materialDoc.type,
+                    quantity: oldMaterial.quantity
+                  }
+                },
+                timestamp: new Date()
+              });
+            }
+          }
+        }
+
+        console.log(`✅ Admin activity logged for materials by ${req.user.name} (${req.user.role})`);
+      } catch (logError) {
+        console.error('Greška pri logovanju edit akcije za materijale:', logError);
+      }
+    }
+
     res.json({
       message: 'Uspešno ažurirani utrošeni materijali',
       workOrder: updatedWorkOrder
@@ -3593,6 +3811,317 @@ router.post('/:id/ai-verify', async (req, res) => {
     });
   }
 });
+
+// ============================================================================
+// EDIT PAGE ROUTES - For admin/superadmin/supervisor to edit work orders
+// ============================================================================
+
+// POST - Add equipment to work order via Edit page
+router.post('/:id/edit/add-equipment', auth, logActivity('edit', 'edit_equipment_add', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.workOrder?.tisJobId || 'WorkOrder'
+}), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { equipmentId, technicianId, addedBy, addedByRole } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID radnog naloga' });
+    }
+
+    if (!equipmentId || !technicianId) {
+      return res.status(400).json({ error: 'Nedostaju obavezni podaci (equipmentId, technicianId)' });
+    }
+
+    // Verify user has admin privileges
+    if (!['admin', 'superadmin', 'supervisor'].includes(addedByRole)) {
+      return res.status(403).json({ error: 'Nemate dozvolu za ovu akciju' });
+    }
+
+    const workOrder = await WorkOrder.findById(id);
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    // Verify technician is assigned to this work order
+    const tech1Id = workOrder.technicianId?._id || workOrder.technicianId;
+    const tech2Id = workOrder.technician2Id?._id || workOrder.technician2Id;
+
+    if (tech1Id?.toString() !== technicianId && tech2Id?.toString() !== technicianId) {
+      return res.status(400).json({
+        error: 'Tehničar nije dodeljen ovom radnom nalogu'
+      });
+    }
+
+    // Verify equipment exists and belongs to the technician
+    const equipment = await Equipment.findById(equipmentId);
+    if (!equipment) {
+      return res.status(404).json({ error: 'Oprema nije pronađena' });
+    }
+
+    const expectedLocation = `tehnicar-${technicianId}`;
+    if (equipment.location !== expectedLocation) {
+      return res.status(400).json({
+        error: 'Oprema ne pripada odabranom tehničaru'
+      });
+    }
+
+    // Get user ID for assigning equipment
+    const userId = workOrder.user?._id || workOrder.user || workOrder.tisId;
+
+    // Update equipment
+    equipment.assignedToUser = userId;
+    equipment.location = `user-${userId}`;
+    equipment.status = 'installed';
+    equipment.installedAt = new Date();
+    await equipment.save();
+
+    // Update work order with installed equipment
+    if (!workOrder.installedEquipment) {
+      workOrder.installedEquipment = [];
+    }
+
+    workOrder.installedEquipment.push({
+      equipmentId: equipment._id,
+      installedAt: new Date(),
+      technicianId,
+      addedViaEdit: true, // Mark as added via Edit page
+      addedBy
+    });
+
+    if (!workOrder.equipment) {
+      workOrder.equipment = [];
+    }
+
+    const equipmentExists = workOrder.equipment.some(eq => eq.toString() === equipment._id.toString());
+    if (!equipmentExists) {
+      workOrder.equipment.push(equipment._id);
+    }
+
+    await workOrder.save();
+
+    // Update WorkOrderEvidence if exists
+    try {
+      const evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+      if (evidence) {
+        const mappedEquipmentType = equipment.category || 'ONT/HFC';
+
+        const equipmentData = {
+          equipmentType: mappedEquipmentType,
+          serialNumber: equipment.serialNumber || '',
+          condition: equipment.status === 'defective' ? 'R' : 'N',
+          installedAt: new Date(),
+          notes: `Dodato preko Edit stranice od ${addedByRole} - ${equipment.description || ''}`
+        };
+
+        // Remove from removedEquipment if exists
+        evidence.removedEquipment = evidence.removedEquipment.filter(
+          removedEq => removedEq.serialNumber !== equipmentData.serialNumber
+        );
+
+        // Remove duplicates from installedEquipment
+        evidence.installedEquipment = evidence.installedEquipment.filter(
+          installedEq => installedEq.serialNumber !== equipmentData.serialNumber
+        );
+
+        evidence.installedEquipment.push(equipmentData);
+        await evidence.save();
+      }
+    } catch (evidenceError) {
+      console.error('Greška pri ažuriranju WorkOrderEvidence:', evidenceError);
+    }
+
+    // Log equipment addition
+    try {
+      const technician = await Technician.findById(technicianId);
+      if (technician) {
+        await logEquipmentAdded(technicianId, technician.name, workOrder, equipment);
+      }
+    } catch (logError) {
+      console.error('Greška pri logovanju dodavanja opreme:', logError);
+    }
+
+    res.json({
+      message: 'Oprema uspešno dodata',
+      workOrder,
+      equipment
+    });
+
+  } catch (error) {
+    console.error('Greška pri dodavanju opreme:', error);
+    res.status(500).json({ error: 'Greška pri dodavanju opreme' });
+  }
+});
+
+// POST - Add materials to work order via Edit page
+router.post('/:id/edit/add-materials', auth, logActivity('edit', 'edit_material_add', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.workOrder?.tisJobId || 'WorkOrder'
+}), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { materials, technicianId, addedBy, addedByRole } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID radnog naloga' });
+    }
+
+    if (!Array.isArray(materials) || materials.length === 0) {
+      return res.status(400).json({ error: 'Potrebno je dostaviti niz materijala' });
+    }
+
+    if (!technicianId) {
+      return res.status(400).json({ error: 'Nedostaje ID tehničara' });
+    }
+
+    // Verify user has admin privileges
+    if (!['admin', 'superadmin', 'supervisor'].includes(addedByRole)) {
+      return res.status(403).json({ error: 'Nemate dozvolu za ovu akciju' });
+    }
+
+    // Validate materials
+    for (const material of materials) {
+      if (!material.material || !mongoose.Types.ObjectId.isValid(material.material)) {
+        return res.status(400).json({ error: 'Neispravan ID materijala' });
+      }
+      if (!material.quantity || material.quantity <= 0) {
+        return res.status(400).json({ error: 'Količina mora biti veća od 0' });
+      }
+    }
+
+    const workOrder = await WorkOrder.findById(id);
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    // Verify technician is assigned to this work order
+    const tech1Id = workOrder.technicianId?._id || workOrder.technicianId;
+    const tech2Id = workOrder.technician2Id?._id || workOrder.technician2Id;
+
+    if (tech1Id?.toString() !== technicianId && tech2Id?.toString() !== technicianId) {
+      return res.status(400).json({
+        error: 'Tehničar nije dodeljen ovom radnom nalogu'
+      });
+    }
+
+    const technician = await Technician.findById(technicianId);
+    if (!technician) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    // Store old materials for comparison
+    const oldMaterials = workOrder.materials || [];
+
+    // Check if technician has sufficient materials and update inventory
+    for (const materialItem of materials) {
+      const existingOldMaterial = oldMaterials.find(
+        old => old.material.toString() === materialItem.material.toString()
+      );
+
+      const newQuantity = materialItem.quantity;
+      const oldQuantity = existingOldMaterial ? existingOldMaterial.quantity : 0;
+      const quantityDiff = newQuantity - oldQuantity;
+
+      if (quantityDiff > 0) {
+        // Adding material - deduct from technician's inventory
+        const techMaterialIndex = technician.materials.findIndex(
+          tm => tm.materialId.toString() === materialItem.material.toString()
+        );
+
+        if (techMaterialIndex === -1) {
+          return res.status(400).json({
+            error: `Tehničar nema materijal u svom inventaru`
+          });
+        }
+
+        const techMaterial = technician.materials[techMaterialIndex];
+        if (techMaterial.quantity < quantityDiff) {
+          const materialDoc = await Material.findById(materialItem.material);
+          return res.status(400).json({
+            error: `Tehničar nema dovoljno materijala ${materialDoc ? materialDoc.type : ''}. Dostupno: ${techMaterial.quantity}, potrebno: ${quantityDiff}`
+          });
+        }
+
+        // Deduct from technician's inventory
+        techMaterial.quantity -= quantityDiff;
+        if (techMaterial.quantity === 0) {
+          technician.materials.splice(techMaterialIndex, 1);
+        }
+      }
+    }
+
+    await technician.save();
+
+    // Update work order materials
+    workOrder.materials = materials;
+    await workOrder.save();
+
+    // Log material additions
+    for (const newMaterial of materials) {
+      const existingMaterial = oldMaterials.find(
+        old => old.material.toString() === newMaterial.material.toString()
+      );
+
+      const newQuantity = newMaterial.quantity;
+      const oldQuantity = existingMaterial ? existingMaterial.quantity : 0;
+
+      if (newQuantity > oldQuantity) {
+        const materialDoc = await Material.findById(newMaterial.material);
+        if (materialDoc) {
+          const log = await logMaterialAdded(
+            technicianId,
+            technician.name,
+            workOrder,
+            materialDoc,
+            newQuantity - oldQuantity
+          );
+
+          if (log) {
+            await checkMaterialAnomaly(
+              technicianId,
+              technician.name,
+              workOrder,
+              materialDoc,
+              newQuantity - oldQuantity,
+              log._id
+            );
+          }
+        }
+      }
+    }
+
+    res.json({
+      message: 'Materijal uspešno dodat',
+      workOrder
+    });
+
+  } catch (error) {
+    console.error('Greška pri dodavanju materijala:', error);
+    res.status(500).json({ error: 'Greška pri dodavanju materijala' });
+  }
+});
+
+// GET - Get removed equipment for work order
+router.get('/:id/removed-equipment', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID radnog naloga' });
+    }
+
+    // Find removed equipment from WorkOrderEvidence
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
+    const removedEquipment = evidence?.removedEquipment || [];
+
+    res.json(removedEquipment);
+  } catch (error) {
+    console.error('Greška pri dohvatanju uklonjene opreme:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju uklonjene opreme' });
+  }
+});
+
+// ============================================================================
 
 // Eksportuj funkciju za korišćenje u drugim rutama
 module.exports = router;
