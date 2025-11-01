@@ -6,6 +6,8 @@ const Equipment = require('../models/Equipment');
 const WorkOrder = require('../models/WorkOrder');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const Technician = require('../models/Technician');
+const AdminActivityLog = require('../models/AdminActivityLog');
+const { auth } = require('../middleware/auth');
 const { logEquipmentAdded, logEquipmentRemoved } = require('../utils/logger');
 
 // Mapiranje kategorija opreme na validne enum vrednosti
@@ -56,6 +58,72 @@ function mapEquipmentTypeToEnum(category) {
   // Default fallback
   return 'ONT/HFC';
 }
+
+// Helper function to log edit actions to AdminActivityLog
+const logEditAction = async (action, user, workOrder, equipment, material, quantity) => {
+  try {
+    console.log('🔍 [logEditAction] Called with:', {
+      action,
+      user: user ? { _id: user._id, name: user.name, role: user.role } : 'MISSING',
+      workOrder: workOrder ? { _id: workOrder._id, tisId: workOrder.tisId } : 'MISSING',
+      equipment: equipment ? { _id: equipment._id, category: equipment.category, serialNumber: equipment.serialNumber } : 'MISSING',
+      material: material ? { _id: material._id, type: material.type } : 'MISSING',
+      quantity
+    });
+
+    if (!user || !user._id || !user.name || !user.role) {
+      console.error('❌ Missing user information for logging:', user);
+      return;
+    }
+
+    const logData = {
+      userId: user._id,
+      userName: user.name,
+      userRole: user.role,
+      action: action,
+      category: 'edit',
+      entityType: 'WorkOrder',
+      entityId: workOrder._id,
+      entityName: `Radni nalog ${workOrder.tisId} - ${workOrder.userName || workOrder.user || 'N/A'}`,
+      details: {
+        action: action.includes('add') ? 'added' : 'removed',
+        workOrder: {
+          _id: workOrder._id,
+          tisId: workOrder.tisId,
+          userName: workOrder.userName || workOrder.user || 'N/A',
+          address: workOrder.address,
+          municipality: workOrder.municipality,
+          type: workOrder.type,
+          date: workOrder.date
+        }
+      },
+      timestamp: new Date()
+    };
+
+    if (equipment) {
+      logData.details.equipment = {
+        _id: equipment._id,
+        category: equipment.category,
+        description: equipment.description,
+        serialNumber: equipment.serialNumber
+      };
+    }
+
+    if (material) {
+      logData.details.material = {
+        _id: material._id,
+        type: material.type,
+        quantity: quantity
+      };
+    }
+
+    const savedLog = await AdminActivityLog.create(logData);
+    console.log(`✅ Admin activity logged: ${action} by ${user.name} (${user.role})`);
+    console.log('📝 Saved log data:', JSON.stringify(savedLog, null, 2));
+  } catch (error) {
+    console.error('Error logging edit action to AdminActivityLog:', error);
+  }
+};
 
 // GET - Dohvati svu opremu kod korisnika (optimized)
 router.get('/', async (req, res) => {
@@ -241,7 +309,7 @@ router.get('/user/:userId/history', async (req, res) => {
 });
 
 // POST - Dodaj novu opremu korisniku
-router.post('/', async (req, res) => {
+router.post('/', auth, async (req, res) => {
   console.log('Received request to add equipment:', req.body);
   const { userId, equipmentId, workOrderId, technicianId } = req.body;
   
@@ -371,6 +439,23 @@ router.post('/', async (req, res) => {
       console.error('Greška pri logovanju dodavanja opreme:', logError);
     }
 
+    // Log to AdminActivityLog if action is done by admin/superadmin/supervisor
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'supervisor')) {
+      try {
+        console.log('🔍 [POST /user-equipment] Before calling logEditAction:', {
+          hasReqUser: !!req.user,
+          reqUser: req.user,
+          hasWorkOrder: !!workOrder,
+          workOrder: workOrder ? { _id: workOrder._id, tisId: workOrder.tisId } : null,
+          hasEquipment: !!equipment,
+          equipment: equipment ? { _id: equipment._id, category: equipment.category, serialNumber: equipment.serialNumber } : null
+        });
+        await logEditAction('edit_equipment_add', req.user, workOrder, equipment, null, null);
+      } catch (logError) {
+        console.error('Greška pri logovanju edit akcije:', logError);
+      }
+    }
+
     res.status(201).json(equipment);
   } catch (error) {
     console.error('Error adding equipment:', error);
@@ -379,7 +464,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT - Ukloni opremu od korisnika
-router.put('/:id/remove', async (req, res) => {
+router.put('/:id/remove', auth, async (req, res) => {
   const { id } = req.params;
   const { workOrderId, technicianId, isWorking, removalReason } = req.body;
   
@@ -486,9 +571,26 @@ router.put('/:id/remove', async (req, res) => {
     } catch (logError) {
       console.error('Greška pri logovanju uklanjanja opreme:', logError);
     }
-    
-    res.json({ 
-      message: 'Oprema uspešno uklonjena', 
+
+    // Log to AdminActivityLog if action is done by admin/superadmin/supervisor
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'supervisor')) {
+      try {
+        console.log('🔍 [PUT /:id/remove] Before calling logEditAction:', {
+          hasReqUser: !!req.user,
+          reqUser: req.user,
+          hasWorkOrder: !!workOrder,
+          workOrder: workOrder ? { _id: workOrder._id, tisId: workOrder.tisId } : null,
+          hasEquipment: !!equipment,
+          equipment: equipment ? { _id: equipment._id, category: equipment.category, serialNumber: equipment.serialNumber } : null
+        });
+        await logEditAction('edit_equipment_remove', req.user, workOrder, equipment, null, null);
+      } catch (logError) {
+        console.error('Greška pri logovanju edit akcije:', logError);
+      }
+    }
+
+    res.json({
+      message: 'Oprema uspešno uklonjena',
       equipment,
       isWorking,
       removalReason
@@ -501,10 +603,10 @@ router.put('/:id/remove', async (req, res) => {
 
 // POST - Ukloni opremu po serijskom broju
 router.post('/remove-by-serial', async (req, res) => {
-  const { workOrderId, technicianId, equipmentName, serialNumber, condition } = req.body;
+  const { workOrderId, technicianId, equipmentName, equipmentDescription, serialNumber } = req.body;
 
-  if (!workOrderId || !technicianId || !equipmentName || !serialNumber || !condition) {
-    return res.status(400).json({ error: 'Nedostaju obavezni podaci' });
+  if (!workOrderId || !technicianId || !equipmentName || !equipmentDescription || !serialNumber) {
+    return res.status(400).json({ error: 'Nedostaju obavezni podaci (naziv, opis, serijski broj)' });
   }
 
   try {
@@ -514,34 +616,24 @@ router.post('/remove-by-serial', async (req, res) => {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
 
-    // Pronađi opremu po serijskom broju koja je kod korisnika
+    // Pronađi opremu po serijskom broju (samo po S/N, ne proverava lokaciju)
     const equipment = await Equipment.findOne({
-      serialNumber: serialNumber,
-      location: `user-${workOrder.tisId}`,
-      status: 'installed'
+      serialNumber: serialNumber
     });
 
     let equipmentRemoved = false;
     let equipmentDetails = null;
 
     if (equipment) {
-      // Oprema postoji u sistemu - ukloni je iz korisnikovog inventara
+      // Oprema postoji u sistemu - dodeli je tehničaru
       console.log('Found equipment in system:', equipment);
 
-      if (condition === 'ispravna') {
-        // Ako je oprema ispravna, vrati je tehničaru
-        equipment.location = `tehnicar-${technicianId}`;
-        equipment.status = 'assigned';
-        equipment.assignedToUser = null;
-        equipment.removedAt = new Date();
-      } else {
-        // Ako je oprema neispravna, označi je kao neispravnu
-        equipment.location = 'defective';
-        equipment.status = 'defective';
-        equipment.assignedToUser = null;
-        equipment.assignedTo = null;
-        equipment.removedAt = new Date();
-      }
+      // Automatski dodeljuje opremu tehničaru
+      equipment.location = `tehnicar-${technicianId}`;
+      equipment.status = 'assigned';
+      equipment.assignedTo = technicianId;
+      equipment.assignedToUser = null;
+      equipment.removedAt = new Date();
 
       await equipment.save();
       equipmentRemoved = true;
@@ -563,12 +655,25 @@ router.post('/remove-by-serial', async (req, res) => {
       await workOrder.save();
 
     } else {
-      console.log('Equipment not found in system - will only add to removedEquipment');
-      equipmentDetails = {
+      console.log('Equipment not found in system - creating new equipment and assigning to technician');
+
+      // Kreira novu opremu koja se automatski dodeljuje tehničaru
+      const newEquipment = new Equipment({
         category: equipmentName,
+        description: equipmentDescription,
         serialNumber: serialNumber,
-        status: condition === 'ispravna' ? 'working' : 'defective'
-      };
+        location: `tehnicar-${technicianId}`,
+        status: 'assigned',
+        assignedTo: technicianId,
+        assignedToUser: null,
+        removedAt: new Date()
+      });
+
+      await newEquipment.save();
+      console.log('New equipment created and assigned to technician:', newEquipment);
+
+      equipmentDetails = newEquipment;
+      equipmentRemoved = true;
     }
 
     // Ažuriranje WorkOrderEvidence sa uklonjenom opremom
@@ -595,7 +700,7 @@ router.post('/remove-by-serial', async (req, res) => {
         const removedEquipmentData = {
           equipmentType: mappedEquipmentType,
           serialNumber: serialNumber,
-          condition: condition === 'ispravna' ? 'N' : 'R',
+          condition: 'N', // Sva oprema se automatski dodeljuje tehničaru kao 'N' (ispravna)
           removedAt: new Date(),
           notes: `Uklonjeno od tehničara - ${equipmentName}`
         };
@@ -616,7 +721,7 @@ router.post('/remove-by-serial', async (req, res) => {
     try {
       const technician = await Technician.findById(technicianId);
       if (technician) {
-        await logEquipmentRemoved(technicianId, technician.name, workOrder, equipmentDetails, condition === 'ispravna', `Uklonjeno po serijskom broju: ${equipmentName}`);
+        await logEquipmentRemoved(technicianId, technician.name, workOrder, equipmentDetails, true, `Uklonjeno po serijskom broju: ${equipmentName}`);
       }
     } catch (logError) {
       console.error('Greška pri logovanju uklanjanja opreme:', logError);
