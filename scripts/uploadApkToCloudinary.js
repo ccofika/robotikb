@@ -16,7 +16,7 @@ async function addGoogleDriveApk() {
 
     // Version info
     const version = '1.0.2';
-    const versionCode = 3;
+    const versionCode = 6;
     const googleDriveUrl = 'https://drive.usercontent.google.com/download?id=1cY1dey46jsflMczmmvu9vaUwms8z5ldF&export=download&authuser=0';
     const fileSize = 87596058; // 83.54 MB in bytes
 
@@ -31,9 +31,11 @@ async function addGoogleDriveApk() {
     let apkVersion;
 
     if (existingVersion) {
-      console.log('⚠️  Version already exists, updating with Google Drive URL...');
+      console.log('⚠️  Version already exists, updating versionCode and Google Drive URL...');
+      existingVersion.versionCode = versionCode;
       existingVersion.cloudinaryUrl = googleDriveUrl;
       existingVersion.fileSize = fileSize;
+      existingVersion.isActive = true;
       apkVersion = await existingVersion.save();
       console.log('✅ Updated existing APK version in database');
     } else {
