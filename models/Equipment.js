@@ -63,4 +63,12 @@ EquipmentSchema.index({ location: 1 });
 EquipmentSchema.index({ assignedTo: 1 });
 EquipmentSchema.index({ status: 1, location: 1 }); // Kompozitni indeks za česte kombinovane upite
 
+// Pre-save hook za normalizaciju serijskog broja u lowercase
+EquipmentSchema.pre('save', function(next) {
+  if (this.serialNumber) {
+    this.serialNumber = this.serialNumber.toLowerCase();
+  }
+  next();
+});
+
 module.exports = mongoose.model('Equipment', EquipmentSchema); 

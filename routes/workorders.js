@@ -18,6 +18,15 @@ const { uploadImage, deleteImage } = require('../config/cloudinary');
 const convert = require('heic-convert');
 const { logActivity } = require('../middleware/activityLogger');
 const { auth } = require('../middleware/auth');
+
+// Helper funkcija za case-insensitive pretragu serijskog broja
+const findEquipmentBySerialNumber = (serialNumber) => {
+  // Escape special regex characters
+  const escapedSerial = serialNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return Equipment.findOne({
+    serialNumber: { $regex: new RegExp(`^${escapedSerial}$`, 'i') }
+  });
+};
 const {
   logCommentAdded,
   logWorkOrderStatusChanged,
@@ -3437,9 +3446,9 @@ router.post('/:id/removed-equipment', async (req, res) => {
   try {
     const { id } = req.params;
     const { equipmentType, serialNumber, condition, reason, notes } = req.body;
-    
+
     console.log('Received request for removed equipment:', { id, equipmentType, serialNumber, condition, reason, notes });
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
@@ -3451,9 +3460,29 @@ router.post('/:id/removed-equipment', async (req, res) => {
     console.log('Looking for WorkOrderEvidence with workOrderId:', id);
     const evidence = await WorkOrderEvidence.findOne({ workOrderId: id });
     console.log('Found evidence:', evidence ? 'Yes' : 'No');
-    
+
     if (!evidence) {
       return res.status(404).json({ error: 'WorkOrderEvidence nije pronađen' });
+    }
+
+    // Provera da li oprema postoji u Equipment bazi (case-insensitive)
+    const existingEquipment = await findEquipmentBySerialNumber(serialNumber);
+
+    if (existingEquipment) {
+      console.log('Equipment found in database:', existingEquipment.serialNumber);
+
+      // Automatski markiranje opreme kao defektivne ako je u lošem stanju
+      if (condition === 'R' && existingEquipment.status !== 'defective') {
+        existingEquipment.status = 'defective';
+        existingEquipment.location = 'defective';
+        existingEquipment.removedAt = new Date();
+        existingEquipment.assignedTo = null;
+        existingEquipment.assignedToUser = null;
+        await existingEquipment.save();
+        console.log('Equipment marked as defective in database');
+      }
+    } else {
+      console.log('Equipment not found in database - proceeding with manual entry');
     }
 
     const equipmentData = {
@@ -3467,24 +3496,25 @@ router.post('/:id/removed-equipment', async (req, res) => {
 
     console.log('Adding removed equipment data:', equipmentData);
     console.log('Current removedEquipment length:', evidence.removedEquipment.length);
-    
+
     evidence.removedEquipment.push(equipmentData);
-    
+
     console.log('New removedEquipment length:', evidence.removedEquipment.length);
-    
+
     const savedEvidence = await evidence.save();
     console.log('Evidence saved successfully');
 
     res.json({
       message: 'Uređaj uspešno dodat u listu uklonjenih',
-      evidence: savedEvidence
+      evidence: savedEvidence,
+      equipmentMarkedDefective: existingEquipment && condition === 'R'
     });
   } catch (error) {
     console.error('Greška pri dodavanju uklonjenog uređaja:', error);
     console.error('Error stack:', error.stack);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Greška pri dodavanju uklonjenog uređaja',
-      details: error.message 
+      details: error.message
     });
   }
 });

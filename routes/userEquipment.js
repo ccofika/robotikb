@@ -10,6 +10,15 @@ const AdminActivityLog = require('../models/AdminActivityLog');
 const { auth } = require('../middleware/auth');
 const { logEquipmentAdded, logEquipmentRemoved } = require('../utils/logger');
 
+// Helper funkcija za case-insensitive pretragu serijskog broja
+const findEquipmentBySerialNumber = (serialNumber) => {
+  // Escape special regex characters
+  const escapedSerial = serialNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return Equipment.findOne({
+    serialNumber: { $regex: new RegExp(`^${escapedSerial}$`, 'i') }
+  });
+};
+
 // Mapiranje kategorija opreme na validne enum vrednosti
 function mapEquipmentTypeToEnum(category) {
   const categoryLower = (category || '').toLowerCase().trim();
@@ -404,16 +413,16 @@ router.post('/', auth, async (req, res) => {
         console.log('Equipment data to be added:', equipmentData);
         
         // Logika za uklanjanje duplikata i premestanje između array-eva
-        const serialNumber = equipmentData.serialNumber;
-        
-        // 1. Ukloni iz removedEquipment ako postoji (vraćamo uređaj u upotrebu)
+        const serialNumber = equipmentData.serialNumber.toLowerCase();
+
+        // 1. Ukloni iz removedEquipment ako postoji (vraćamo uređaj u upotrebu) - case-insensitive
         evidence.removedEquipment = evidence.removedEquipment.filter(
-          removedEq => removedEq.serialNumber !== serialNumber
+          removedEq => removedEq.serialNumber.toLowerCase() !== serialNumber
         );
-        
-        // 2. Proveri da li već postoji u installedEquipment i ukloni postojeći
+
+        // 2. Proveri da li već postoji u installedEquipment i ukloni postojeći - case-insensitive
         evidence.installedEquipment = evidence.installedEquipment.filter(
-          installedEq => installedEq.serialNumber !== serialNumber
+          installedEq => installedEq.serialNumber.toLowerCase() !== serialNumber
         );
         
         // 3. Dodaj novi zapis u installedEquipment
@@ -545,11 +554,11 @@ router.put('/:id/remove', auth, async (req, res) => {
     try {
       const evidence = await WorkOrderEvidence.findOne({ workOrderId });
       if (evidence) {
-        const serialNumber = equipment.serialNumber;
+        const serialNumber = equipment.serialNumber.toLowerCase();
 
-        // Ukloni opremu iz installedEquipment array-a
+        // Ukloni opremu iz installedEquipment array-a (case-insensitive)
         evidence.installedEquipment = evidence.installedEquipment.filter(
-          installedEq => installedEq.serialNumber !== serialNumber
+          installedEq => installedEq.serialNumber.toLowerCase() !== serialNumber
         );
         
         await evidence.save();
@@ -603,11 +612,14 @@ router.put('/:id/remove', auth, async (req, res) => {
 
 // POST - Ukloni opremu po serijskom broju
 router.post('/remove-by-serial', async (req, res) => {
-  const { workOrderId, technicianId, equipmentName, equipmentDescription, serialNumber } = req.body;
+  let { workOrderId, technicianId, equipmentName, equipmentDescription, serialNumber } = req.body;
 
   if (!workOrderId || !technicianId || !equipmentName || !equipmentDescription || !serialNumber) {
     return res.status(400).json({ error: 'Nedostaju obavezni podaci (naziv, opis, serijski broj)' });
   }
+
+  // Normalizuj serijski broj u lowercase za konzistentnost
+  serialNumber = serialNumber.toLowerCase();
 
   try {
     // Pronađi radni nalog
@@ -616,10 +628,8 @@ router.post('/remove-by-serial', async (req, res) => {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
 
-    // Pronađi opremu po serijskom broju (samo po S/N, ne proverava lokaciju)
-    const equipment = await Equipment.findOne({
-      serialNumber: serialNumber
-    });
+    // Pronađi opremu po serijskom broju (case-insensitive)
+    const equipment = await findEquipmentBySerialNumber(serialNumber);
 
     let equipmentRemoved = false;
     let equipmentDetails = null;
@@ -661,7 +671,7 @@ router.post('/remove-by-serial', async (req, res) => {
       const newEquipment = new Equipment({
         category: equipmentName,
         description: equipmentDescription,
-        serialNumber: serialNumber,
+        serialNumber: serialNumber.toLowerCase(),
         location: `tehnicar-${technicianId}`,
         status: 'assigned',
         assignedTo: technicianId,
@@ -680,9 +690,9 @@ router.post('/remove-by-serial', async (req, res) => {
     try {
       const evidence = await WorkOrderEvidence.findOne({ workOrderId });
       if (evidence) {
-        // Proveri da li oprema već postoji u removedEquipment
+        // Proveri da li oprema već postoji u removedEquipment (case-insensitive)
         const alreadyRemoved = evidence.removedEquipment.some(
-          removedEq => removedEq.serialNumber === serialNumber
+          removedEq => removedEq.serialNumber.toLowerCase() === serialNumber
         );
 
         if (alreadyRemoved) {
@@ -691,9 +701,9 @@ router.post('/remove-by-serial', async (req, res) => {
 
         const mappedEquipmentType = mapEquipmentTypeToEnum(equipmentName);
 
-        // Ukloni iz installedEquipment ako postoji
+        // Ukloni iz installedEquipment ako postoji (case-insensitive)
         evidence.installedEquipment = evidence.installedEquipment.filter(
-          installedEq => installedEq.serialNumber !== serialNumber
+          installedEq => installedEq.serialNumber.toLowerCase() !== serialNumber
         );
 
         // Dodaj u removedEquipment

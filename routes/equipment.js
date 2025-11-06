@@ -11,6 +11,15 @@ const { createInventorySummary } = require('../utils/emailTemplates');
 const { logActivity } = require('../middleware/activityLogger');
 const { auth } = require('../middleware/auth');
 
+// Helper funkcija za case-insensitive pretragu serijskog broja
+const findEquipmentBySerialNumber = (serialNumber) => {
+  // Escape special regex characters
+  const escapedSerial = serialNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return Equipment.findOne({
+    serialNumber: { $regex: new RegExp(`^${escapedSerial}$`, 'i') }
+  });
+};
+
 // Konfiguracija za multer (upload fajlova)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -456,7 +465,7 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
     const newEquipmentItems = data.map(item => ({
       category: normalizeCategory(item.Kategorija || item.kategorija || ''),
       description: item.MODEL || item.Opis || '',
-      serialNumber: String(item.SN || item["Fabrički broj"] || ''),
+      serialNumber: String(item.SN || item["Fabrički broj"] || '').toLowerCase(),
       location: 'magacin',
       status: 'available'
     }));
@@ -465,6 +474,7 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
     const filteredNewEquipment = [];
     const duplicates = [];
     const errors = [];
+    const seenSerialNumbers = new Set(); // Tracking internal duplicates (case-insensitive)
 
     for (const newItem of newEquipmentItems) {
       try {
@@ -473,7 +483,26 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
           continue;
         }
 
-        const existingItem = await Equipment.findOne({ serialNumber: newItem.serialNumber });
+        // Normalizuj serijski broj u lowercase za case-insensitive proveru
+        const normalizedSerial = newItem.serialNumber.toLowerCase();
+
+        // Provera internih duplikata unutar Excel fajla (case-insensitive)
+        if (seenSerialNumbers.has(normalizedSerial)) {
+          duplicates.push({
+            category: newItem.category,
+            model: newItem.description,
+            serialNumber: newItem.serialNumber,
+            status: 'N/A',
+            location: 'N/A',
+            assignedTo: null,
+            assignedToUser: null,
+            reason: `Duplikat unutar Excel fajla - serijski broj ${newItem.serialNumber} se pojavljuje više puta`
+          });
+          continue;
+        }
+
+        // Provera postojećih duplikata u bazi (case-insensitive)
+        const existingItem = await findEquipmentBySerialNumber(newItem.serialNumber);
         if (existingItem) {
           duplicates.push({
             category: existingItem.category,
@@ -486,6 +515,8 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
             reason: `Oprema sa serijskim brojem ${newItem.serialNumber} već postoji u sistemu`
           });
         } else {
+          // Dodaj u set za tracking (lowercase) i u listu za insert (original)
+          seenSerialNumbers.add(normalizedSerial);
           filteredNewEquipment.push(newItem);
         }
       } catch (error) {
@@ -493,10 +524,29 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
       }
     }
 
-    // Dodavanje nove opreme u bazu
+    // Dodavanje nove opreme u bazu sa ordered: false za bolje rukovanje greškama
     let insertedEquipment = [];
     if (filteredNewEquipment.length > 0) {
-      insertedEquipment = await Equipment.insertMany(filteredNewEquipment);
+      try {
+        insertedEquipment = await Equipment.insertMany(filteredNewEquipment, { ordered: false });
+      } catch (error) {
+        // Ako je bulk write error, neki items su možda uspešno insertovani
+        if (error.name === 'MongoBulkWriteError' || error.code === 11000) {
+          // Uzmi uspešno insertovane items
+          if (error.insertedDocs) {
+            insertedEquipment = error.insertedDocs;
+          }
+          // Dodaj greške u errors array
+          if (error.writeErrors) {
+            error.writeErrors.forEach(writeError => {
+              const failedItem = filteredNewEquipment[writeError.index];
+              errors.push(`Greška pri dodavanju ${failedItem?.serialNumber}: ${writeError.errmsg || writeError.err?.errmsg || 'Nepoznata greška'}`);
+            });
+          }
+        } else {
+          throw error; // Re-throw ako nije bulk write error
+        }
+      }
     }
 
     // Brisanje privremenog fajla
@@ -533,8 +583,8 @@ router.post('/', auth, logActivity('equipment', 'equipment_add', {
       return res.status(400).json({ error: 'Nedostaju obavezni podaci' });
     }
 
-    // Provera da li već postoji oprema sa istim serijskim brojem
-    const existingEquipment = await Equipment.findOne({ serialNumber: equipmentData.serialNumber });
+    // Provera da li već postoji oprema sa istim serijskim brojem (case-insensitive)
+    const existingEquipment = await findEquipmentBySerialNumber(equipmentData.serialNumber);
     if (existingEquipment) {
       return res.status(400).json({ error: 'Oprema sa istim serijskim brojem već postoji' });
     }
@@ -542,7 +592,7 @@ router.post('/', auth, logActivity('equipment', 'equipment_add', {
     const newEquipment = new Equipment({
       category: equipmentData.category,
       description: equipmentData.description,
-      serialNumber: equipmentData.serialNumber,
+      serialNumber: equipmentData.serialNumber.toLowerCase(),
       location: equipmentData.location || 'magacin',
       status: equipmentData.status || 'available'
     });
@@ -577,13 +627,14 @@ router.put('/:id', auth, logActivity('equipment', 'equipment_edit', {
     // Sačuvaj stari status da možemo proveriti da li se menja
     const oldStatus = equipment.status;
     
-    // Provera da li drugi komad opreme već koristi ovaj serijski broj
-    if (updateData.serialNumber && updateData.serialNumber !== equipment.serialNumber) {
-      const duplicateSerial = await Equipment.findOne({ 
+    // Provera da li drugi komad opreme već koristi ovaj serijski broj (case-insensitive)
+    if (updateData.serialNumber && updateData.serialNumber.toLowerCase() !== equipment.serialNumber.toLowerCase()) {
+      const escapedSerial = updateData.serialNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const duplicateSerial = await Equipment.findOne({
         _id: { $ne: id },
-        serialNumber: updateData.serialNumber
+        serialNumber: { $regex: new RegExp(`^${escapedSerial}$`, 'i') }
       });
-      
+
       if (duplicateSerial) {
         return res.status(400).json({ error: 'Oprema sa ovim serijskim brojem već postoji' });
       }
@@ -592,7 +643,7 @@ router.put('/:id', auth, logActivity('equipment', 'equipment_edit', {
     // Ažuriranje polja
     if (updateData.category) equipment.category = updateData.category;
     if (updateData.description) equipment.description = updateData.description;
-    if (updateData.serialNumber) equipment.serialNumber = updateData.serialNumber;
+    if (updateData.serialNumber) equipment.serialNumber = updateData.serialNumber.toLowerCase();
     if (updateData.location) equipment.location = updateData.location;
     if (updateData.status) equipment.status = updateData.status;
     if (updateData.assignedTo !== undefined) equipment.assignedTo = updateData.assignedTo;
