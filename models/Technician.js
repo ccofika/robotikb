@@ -49,6 +49,11 @@ const TechnicianSchema = new Schema({
     required: false,
     default: ''
   },
+  phoneNumber: {
+    type: String,
+    required: false,
+    default: ''
+  },
   profileImage: {
     type: String,
     required: false,

@@ -14,7 +14,7 @@ const FinancialTransaction = require('../models/FinancialTransaction');
 const FinancialSettings = require('../models/FinancialSettings');
 const FailedFinancialTransaction = require('../models/FailedFinancialTransaction');
 const MunicipalityDiscountConfirmation = require('../models/MunicipalityDiscountConfirmation');
-const { uploadImage, deleteImage } = require('../config/cloudinary');
+const { uploadImage, deleteImage, uploadVoiceRecording, deleteVoiceRecording } = require('../config/cloudinary');
 const convert = require('heic-convert');
 const { logActivity } = require('../middleware/activityLogger');
 const { auth } = require('../middleware/auth');
@@ -4148,6 +4148,269 @@ router.get('/:id/removed-equipment', async (req, res) => {
   } catch (error) {
     console.error('Greška pri dohvatanju uklonjene opreme:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju uklonjene opreme' });
+  }
+});
+
+// ============================================================================
+// VOICE RECORDINGS ENDPOINTS
+// ============================================================================
+
+// Helper funkcija za normalizaciju broja telefona
+const normalizePhoneNumber = (phoneNumber) => {
+  if (!phoneNumber) return null;
+
+  // Ukloni sve ne-numeričke karaktere
+  let cleaned = phoneNumber.replace(/\D/g, '');
+
+  // Ako počinje sa +381, zameni sa 0
+  if (cleaned.startsWith('381')) {
+    cleaned = '0' + cleaned.substring(3);
+  }
+
+  // Ako počinje sa 381 bez +
+  if (cleaned.startsWith('381') && cleaned.length > 10) {
+    cleaned = '0' + cleaned.substring(3);
+  }
+
+  return cleaned;
+};
+
+// Helper funkcija za pronalaženje tehničara po broju telefona
+const findTechnicianByPhone = async (phoneNumber) => {
+  const normalized = normalizePhoneNumber(phoneNumber);
+  if (!normalized) return null;
+
+  // Pokušaj direktno
+  let technician = await Technician.findOne({ phoneNumber: normalized });
+  if (technician) return technician;
+
+  // Pokušaj sa +381 prefiksom
+  const withPrefix = '+381' + normalized.substring(1);
+  technician = await Technician.findOne({ phoneNumber: withPrefix });
+  if (technician) return technician;
+
+  // Pokušaj sa 381 prefiksom
+  const with381 = '381' + normalized.substring(1);
+  technician = await Technician.findOne({ phoneNumber: with381 });
+
+  return technician;
+};
+
+// Helper funkcija za pronalaženje najbližeg radnog naloga
+const findMatchingWorkOrder = async (technicianId, customerPhone, recordedAt) => {
+  const normalizedCustomerPhone = normalizePhoneNumber(customerPhone);
+  if (!normalizedCustomerPhone) return null;
+
+  // Traži radne naloge tehničara u periodu ±2 dana od poziva
+  const twoDaysBefore = new Date(recordedAt);
+  twoDaysBefore.setDate(twoDaysBefore.getDate() - 2);
+
+  const twoDaysAfter = new Date(recordedAt);
+  twoDaysAfter.setDate(twoDaysAfter.getDate() + 2);
+
+  // Pronađi sve radne naloge u tom periodu
+  const workOrders = await WorkOrder.find({
+    $or: [
+      { technicianId: technicianId },
+      { technician2Id: technicianId }
+    ],
+    date: {
+      $gte: twoDaysBefore,
+      $lte: twoDaysAfter
+    }
+  }).sort({ date: 1 });
+
+  // Filtriraj one koji imaju matching customer phone
+  const matchingOrders = workOrders.filter(wo => {
+    const woPhone = normalizePhoneNumber(wo.userPhone);
+    return woPhone === normalizedCustomerPhone;
+  });
+
+  if (matchingOrders.length === 0) return null;
+
+  // Ako ima više, uzmi najbližeg po vremenu
+  let closest = matchingOrders[0];
+  let minDiff = Math.abs(new Date(closest.date) - new Date(recordedAt));
+
+  for (const wo of matchingOrders) {
+    const diff = Math.abs(new Date(wo.date) - new Date(recordedAt));
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = wo;
+    }
+  }
+
+  return closest;
+};
+
+// Multer konfiguracija za voice recordings (memory storage)
+const voiceStorage = multer.memoryStorage();
+const voiceUpload = multer({
+  storage: voiceStorage,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Prihvati samo audio fajlove
+    const allowedMimes = ['audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/m4a', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/3gpp'];
+    if (allowedMimes.includes(file.mimetype) || file.originalname.match(/\.(mp3|m4a|wav|ogg|webm|3gp|aac)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Nepodržan format audio fajla. Podržani formati: MP3, M4A, WAV, OGG, WebM, 3GP, AAC'));
+    }
+  }
+});
+
+// POST /api/workorders/voice-recordings/upload
+// Upload voice recording sa automatskim povezivanjem na radni nalog
+router.post('/voice-recordings/upload', auth, voiceUpload.single('audio'), async (req, res) => {
+  try {
+    console.log('=== VOICE RECORDING UPLOAD REQUEST ===');
+    console.log('Body:', req.body);
+    console.log('File:', req.file ? { name: req.file.originalname, size: req.file.size, mime: req.file.mimetype } : 'No file');
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Audio fajl nije pronađen' });
+    }
+
+    const { phoneNumber, recordedAt, duration } = req.body;
+
+    if (!phoneNumber || !recordedAt) {
+      return res.status(400).json({ error: 'Nedostaju obavezni parametri: phoneNumber, recordedAt' });
+    }
+
+    // Normalizuj broj telefona iz naziva fajla (format: +3816389927)
+    const callerPhone = normalizePhoneNumber(phoneNumber);
+    console.log('Normalized caller phone:', callerPhone);
+
+    // Pronađi tehničara po broju telefona
+    const technician = await findTechnicianByPhone(callerPhone);
+    if (!technician) {
+      return res.status(404).json({
+        error: 'Tehničar sa ovim brojem telefona nije pronađen',
+        phoneNumber: callerPhone
+      });
+    }
+
+    console.log('Found technician:', technician.name);
+
+    // Izvuci customer phone iz imena fajla ili body-ja
+    // Format fajla: +3816389927_20231106_143022.m4a
+    const filenameParts = req.file.originalname.split('_');
+    let customerPhone = req.body.customerPhone;
+
+    if (!customerPhone && filenameParts.length > 0) {
+      customerPhone = filenameParts[0]; // Prvi deo je broj telefona
+    }
+
+    if (!customerPhone) {
+      return res.status(400).json({ error: 'Broj korisnika (customerPhone) nije pronađen' });
+    }
+
+    const normalizedCustomerPhone = normalizePhoneNumber(customerPhone);
+    console.log('Normalized customer phone:', normalizedCustomerPhone);
+
+    // Pronađi matching radni nalog
+    const workOrder = await findMatchingWorkOrder(
+      technician._id,
+      normalizedCustomerPhone,
+      new Date(recordedAt)
+    );
+
+    if (!workOrder) {
+      return res.status(404).json({
+        error: 'Nije pronađen radni nalog koji odgovara ovom pozivu',
+        technicianName: technician.name,
+        customerPhone: normalizedCustomerPhone,
+        recordedAt: recordedAt
+      });
+    }
+
+    console.log('Found matching work order:', workOrder._id);
+
+    // Upload na Cloudinary sa kompresijom
+    const cloudinaryResult = await uploadVoiceRecording(
+      req.file.buffer,
+      workOrder._id,
+      normalizedCustomerPhone
+    );
+
+    // Dodaj voice recording u radni nalog
+    const voiceRecording = {
+      url: cloudinaryResult.secure_url,
+      fileName: req.file.originalname,
+      phoneNumber: normalizedCustomerPhone,
+      duration: duration ? parseInt(duration) : null,
+      recordedAt: new Date(recordedAt),
+      uploadedBy: req.technician._id,
+      fileSize: req.file.size
+    };
+
+    workOrder.voiceRecordings.push(voiceRecording);
+    await workOrder.save();
+
+    console.log('Voice recording added to work order successfully');
+
+    res.json({
+      success: true,
+      message: 'Voice recording uspešno uploadovan i povezan sa radnim nalogom',
+      workOrderId: workOrder._id,
+      voiceRecording: voiceRecording
+    });
+
+  } catch (error) {
+    console.error('Greška pri upload-u voice recording-a:', error);
+    res.status(500).json({
+      error: 'Greška pri upload-u voice recording-a',
+      details: error.message
+    });
+  }
+});
+
+// DELETE /api/workorders/:id/voice-recordings/:recordingId
+// Brisanje voice recording-a iz radnog naloga
+router.delete('/:id/voice-recordings/:recordingId', auth, async (req, res) => {
+  try {
+    const { id, recordingId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID radnog naloga' });
+    }
+
+    const workOrder = await WorkOrder.findById(id);
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    // Pronađi recording
+    const recording = workOrder.voiceRecordings.id(recordingId);
+    if (!recording) {
+      return res.status(404).json({ error: 'Voice recording nije pronađen' });
+    }
+
+    // Izvuci public_id iz URL-a
+    const urlParts = recording.url.split('/');
+    const publicIdWithExt = urlParts[urlParts.length - 1];
+    const publicId = 'voice-recordings/' + publicIdWithExt.split('.')[0];
+
+    // Obriši sa Cloudinary
+    await deleteVoiceRecording(publicId);
+
+    // Ukloni iz array-a
+    workOrder.voiceRecordings.pull(recordingId);
+    await workOrder.save();
+
+    res.json({
+      success: true,
+      message: 'Voice recording uspešno obrisan'
+    });
+
+  } catch (error) {
+    console.error('Greška pri brisanju voice recording-a:', error);
+    res.status(500).json({
+      error: 'Greška pri brisanju voice recording-a',
+      details: error.message
+    });
   }
 });
 

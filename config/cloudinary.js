@@ -46,6 +46,43 @@ const uploadImage = async (imageBuffer, workOrderId) => {
   }
 };
 
+// Funkcija za upload audio fajlova (voice recordings) sa kompresijom
+const uploadVoiceRecording = async (audioBuffer, workOrderId, phoneNumber) => {
+  try {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'voice-recordings', // Organizuje audio fajlove u folder
+          resource_type: 'video', // Cloudinary tretira audio kao video resource
+          public_id: `call_${workOrderId}_${phoneNumber}_${Date.now()}`, // Jedinstveno ime
+          format: 'mp3', // Konvertuje u MP3 format
+          transformation: [
+            {
+              audio_codec: 'mp3',
+              bit_rate: '64k', // Niska bitrate za kompresiju (32k-96k optimalno za govor)
+              audio_frequency: 22050 // Smanjena frekvencija (dovoljno za govor)
+            }
+          ]
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary voice recording upload greška:', error);
+            reject(error);
+          } else {
+            console.log('Cloudinary voice recording upload uspešan:', result.secure_url);
+            resolve(result);
+          }
+        }
+      );
+
+      uploadStream.end(audioBuffer);
+    });
+  } catch (error) {
+    console.error('Greška pri upload-u voice recording-a na Cloudinary:', error);
+    throw error;
+  }
+};
+
 // Funkcija za brisanje slike
 const deleteImage = async (publicId) => {
   try {
@@ -58,8 +95,24 @@ const deleteImage = async (publicId) => {
   }
 };
 
+// Funkcija za brisanje audio fajla
+const deleteVoiceRecording = async (publicId) => {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: 'video' // Audio se briše kao video resource
+    });
+    console.log('Cloudinary voice recording delete result:', result);
+    return result;
+  } catch (error) {
+    console.error('Greška pri brisanju voice recording-a sa Cloudinary:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   cloudinary,
   uploadImage,
-  deleteImage
+  deleteImage,
+  uploadVoiceRecording,
+  deleteVoiceRecording
 }; 
