@@ -17,15 +17,28 @@ const apkVersionSchema = new mongoose.Schema({
   },
   filePath: {
     type: String,
-    required: true
+    required: false // Legacy support - old versions have this
+  },
+  cloudinaryUrl: {
+    type: String,
+    required: false // New versions use Cloudinary
+  },
+  cloudinaryPublicId: {
+    type: String,
+    required: false
   },
   fileSize: {
     type: Number,
     required: true
   },
   changelog: {
-    type: String,
+    type: [String], // Changed from String to Array of Strings
     required: true
+  },
+  uploadedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Technician',
+    required: false
   },
   isMandatory: {
     type: Boolean,

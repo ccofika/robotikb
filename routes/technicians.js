@@ -285,8 +285,8 @@ router.put('/:id', auth, logActivity('technicians', 'technician_edit', {
 }), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, password, gmail, profileImage } = req.body;
-    
+    const { name, password, gmail, profileImage, phoneNumber } = req.body;
+
     // Ako se pokušava ažurirati sa "admin" ID-om, pronađi pravog korisnika iz tokena
     let technician;
     
@@ -332,12 +332,17 @@ router.put('/:id', auth, logActivity('technicians', 'technician_edit', {
     if (gmail !== undefined) {
       technician.gmail = gmail;
     }
-    
+
+    // Ažuriraj broj telefona
+    if (phoneNumber !== undefined) {
+      technician.phoneNumber = phoneNumber;
+    }
+
     // Ažuriraj profilnu sliku
     if (profileImage !== undefined) {
       technician.profileImage = profileImage;
     }
-    
+
     const updatedTechnician = await technician.save();
     
     // Ne vraćamo lozinku u odgovoru

@@ -2,9 +2,10 @@ const cloudinary = require('cloudinary').v2;
 
 // Cloudinary konfiguracija
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dmcfc0jv',
-  api_key: process.env.CLOUDINARY_API_KEY || '884217485372871',
-  api_secret: process.env.CLOUDINARY_API_SECRET || 'RF7HXKhs08ZGCgdtCN7Us02aseE'
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  timeout: process.env.CLOUDINARY_TIMEOUT || 600000
 });
 
 // Funkcija za upload slika sa maksimalnom kompresijom
@@ -46,6 +47,43 @@ const uploadImage = async (imageBuffer, workOrderId) => {
   }
 };
 
+// Funkcija za upload audio fajlova (voice recordings) sa kompresijom
+const uploadVoiceRecording = async (audioBuffer, workOrderId, phoneNumber) => {
+  try {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'voice-recordings', // Organizuje audio fajlove u folder
+          resource_type: 'video', // Cloudinary tretira audio kao video resource
+          public_id: `call_${workOrderId}_${phoneNumber}_${Date.now()}`, // Jedinstveno ime
+          format: 'mp3', // Konvertuje u MP3 format
+          transformation: [
+            {
+              audio_codec: 'mp3',
+              bit_rate: '64k', // Niska bitrate za kompresiju (32k-96k optimalno za govor)
+              audio_frequency: 22050 // Smanjena frekvencija (dovoljno za govor)
+            }
+          ]
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary voice recording upload greška:', error);
+            reject(error);
+          } else {
+            console.log('Cloudinary voice recording upload uspešan:', result.secure_url);
+            resolve(result);
+          }
+        }
+      );
+
+      uploadStream.end(audioBuffer);
+    });
+  } catch (error) {
+    console.error('Greška pri upload-u voice recording-a na Cloudinary:', error);
+    throw error;
+  }
+};
+
 // Funkcija za brisanje slike
 const deleteImage = async (publicId) => {
   try {
@@ -58,8 +96,71 @@ const deleteImage = async (publicId) => {
   }
 };
 
+// Funkcija za brisanje audio fajla
+const deleteVoiceRecording = async (publicId) => {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: 'video' // Audio se briše kao video resource
+    });
+    console.log('Cloudinary voice recording delete result:', result);
+    return result;
+  } catch (error) {
+    console.error('Greška pri brisanju voice recording-a sa Cloudinary:', error);
+    throw error;
+  }
+};
+
+// Funkcija za upload APK fajlova
+const uploadAPK = async (apkBuffer, version) => {
+  try {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'apk-releases', // Organizuje APK fajlove u folder
+          resource_type: 'raw', // Za non-image/video fajlove
+          public_id: `robotik-mobile-v${version}`, // Jedinstveno ime sa verzijom
+          format: 'apk',
+          access_mode: 'public' // Javno dostupan za download
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary APK upload greška:', error);
+            reject(error);
+          } else {
+            console.log('Cloudinary APK upload uspešan:', result.secure_url);
+            resolve(result);
+          }
+        }
+      );
+
+      uploadStream.end(apkBuffer);
+    });
+  } catch (error) {
+    console.error('Greška pri upload-u APK fajla na Cloudinary:', error);
+    throw error;
+  }
+};
+
+// Funkcija za brisanje APK fajla
+const deleteAPK = async (publicId) => {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: 'raw' // APK je raw resource
+    });
+    console.log('Cloudinary APK delete result:', result);
+    return result;
+  } catch (error) {
+    console.error('Greška pri brisanju APK fajla sa Cloudinary:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   cloudinary,
   uploadImage,
-  deleteImage
+  deleteImage,
+  uploadVoiceRecording,
+  deleteVoiceRecording,
+  uploadAPK,
+  deleteAPK
 }; 

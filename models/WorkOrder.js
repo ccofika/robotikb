@@ -182,6 +182,39 @@ const WorkOrderSchema = new Schema({
       type: String
     }
   }],
+  // Voice recordings from calls
+  voiceRecordings: [{
+    url: {
+      type: String,
+      required: true
+    },
+    fileName: {
+      type: String,
+      required: true
+    },
+    phoneNumber: {
+      type: String,
+      required: true
+    },
+    duration: {
+      type: Number // in seconds
+    },
+    recordedAt: {
+      type: Date,
+      required: true
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now
+    },
+    uploadedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'Technician'
+    },
+    fileSize: {
+      type: Number // in bytes
+    }
+  }],
   // Overdue fields
   isOverdue: {
     type: Boolean,
