@@ -12,6 +12,11 @@ build/
 bundles/
 bundles/*.bundle
 
+# APK releases - large files
+apk-releases/
+apk-releases/*
+*.apk
+
 
 
 # Data folder - NEVER push to git
