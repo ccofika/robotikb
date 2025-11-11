@@ -141,7 +141,11 @@ class AndroidNotificationService {
         };
       }
 
-      // Pripremi push notification payload
+      // Pripremi push notification payload za Expo Push API
+      // Format: Hybrid notification (title + body + data)
+      // - Android OS automatski prikazuje notifikaciju u notification tray-u
+      // - channelId određuje kako se notifikacija prikazuje (zvuk, vibracija, LED)
+      // - data payload se prosleđuje u app kada korisnik tap-uje notifikaciju
       const message = {
         to: pushToken,
         sound: 'default',
@@ -154,6 +158,8 @@ class AndroidNotificationService {
           relatedData: notification.relatedData
         },
         priority: 'high',
+        // KRITIČNO: channelId MORA da odgovara kanalu kreiranom u Android app-u
+        // Ako kanal ne postoji, notifikacija NEĆE biti prikazana na Android 8+
         channelId: this.getChannelId(notification.type)
       };
 
