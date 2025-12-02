@@ -7,6 +7,17 @@ const ServiceSchema = new Schema({
     type: Date,
     required: true
   },
+  // Nova struktura cena
+  partsPrice: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  laborPrice: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
   price: {
     type: Number,
     required: true,
@@ -24,14 +35,15 @@ const ServiceSchema = new Schema({
   nextServiceDue: {
     type: Date
   },
-  nextServiceMileage: {
-    type: Number,
-    min: 0
-  },
   serviceType: {
     type: String,
     enum: ['regular', 'repair', 'inspection', 'oil_change', 'brake_check', 'other'],
     default: 'regular'
+  },
+  // Slika fakture servisa
+  invoiceImage: {
+    type: String,
+    trim: true
   }
 }, { timestamps: true });
 

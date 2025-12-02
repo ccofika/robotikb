@@ -155,6 +155,57 @@ const deleteAPK = async (publicId) => {
   }
 };
 
+// Funkcija za upload slika faktura servisa vozila
+const uploadServiceInvoice = async (imageBuffer, vehicleId, serviceId) => {
+  try {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'vehicle-service-invoices', // Odvojen folder za fakture servisa vozila
+          resource_type: 'image',
+          public_id: `service_${vehicleId}_${serviceId}_${Date.now()}`, // Jedinstveno ime
+          transformation: [
+            {
+              width: 1200,
+              height: 1200,
+              crop: 'limit', // Ograničava veličinu ali zadržava proporcije
+              quality: 'auto:low', // Automatska optimizacija sa niskim kvalitetom
+              format: 'webp' // Konvertuje u WebP format za bolje kompresije
+            }
+          ],
+          flags: 'progressive' // Progressive loading
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary service invoice upload greška:', error);
+            reject(error);
+          } else {
+            console.log('Cloudinary service invoice upload uspešan:', result.secure_url);
+            resolve(result);
+          }
+        }
+      );
+
+      uploadStream.end(imageBuffer);
+    });
+  } catch (error) {
+    console.error('Greška pri upload-u fakture servisa na Cloudinary:', error);
+    throw error;
+  }
+};
+
+// Funkcija za brisanje slike fakture servisa
+const deleteServiceInvoice = async (publicId) => {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId);
+    console.log('Cloudinary service invoice delete result:', result);
+    return result;
+  } catch (error) {
+    console.error('Greška pri brisanju fakture servisa sa Cloudinary:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   cloudinary,
   uploadImage,
@@ -162,5 +213,7 @@ module.exports = {
   uploadVoiceRecording,
   deleteVoiceRecording,
   uploadAPK,
-  deleteAPK
+  deleteAPK,
+  uploadServiceInvoice,
+  deleteServiceInvoice
 }; 

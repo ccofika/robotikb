@@ -1,8 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const multer = require('multer');
 const Vehicle = require('../models/Vehicle');
 const { logActivity } = require('../middleware/activityLogger');
+const { uploadServiceInvoice, deleteServiceInvoice } = require('../config/cloudinary');
+
+// Multer config za upload slike fakture
+const invoiceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Samo slike su dozvoljene!'), false);
+    }
+  }
+});
 
 // Cache for vehicle statistics
 let vehicleStatsCache = null;
@@ -264,29 +281,30 @@ router.post('/:id/services', async (req, res) => {
   try {
     const { id } = req.params;
     const serviceData = req.body;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
-    
+
     // Validation
     if (!serviceData.date || serviceData.price === undefined || serviceData.price < 0) {
       return res.status(400).json({ error: 'Datum i cena servisa su obavezni' });
     }
-    
+
     const vehicle = await Vehicle.findById(id);
-    
+
     if (!vehicle) {
       return res.status(404).json({ error: 'Vozilo nije pronađeno' });
     }
-    
+
     const newService = {
       date: new Date(serviceData.date),
+      partsPrice: serviceData.partsPrice ? parseFloat(serviceData.partsPrice) : 0,
+      laborPrice: serviceData.laborPrice ? parseFloat(serviceData.laborPrice) : 0,
       price: parseFloat(serviceData.price),
       comment: serviceData.comment ? serviceData.comment.trim() : '',
       mileage: serviceData.mileage ? parseInt(serviceData.mileage) : undefined,
       nextServiceDue: serviceData.nextServiceDue ? new Date(serviceData.nextServiceDue) : undefined,
-      nextServiceMileage: serviceData.nextServiceMileage ? parseInt(serviceData.nextServiceMileage) : undefined,
       serviceType: serviceData.serviceType || 'regular'
     };
 
@@ -296,7 +314,7 @@ router.post('/:id/services', async (req, res) => {
     if (serviceData.mileage && serviceData.mileage > vehicle.mileage) {
       vehicle.mileage = serviceData.mileage;
     }
-    
+
     const updatedVehicle = await vehicle.save();
 
     // Invalidate statistics cache after adding service
@@ -391,32 +409,33 @@ router.put('/:id/services/:serviceId', async (req, res) => {
   try {
     const { id, serviceId } = req.params;
     const updateData = req.body;
-    
+
     if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(serviceId)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
-    
+
     const vehicle = await Vehicle.findById(id);
-    
+
     if (!vehicle) {
       return res.status(404).json({ error: 'Vozilo nije pronađeno' });
     }
-    
+
     const service = vehicle.services.id(serviceId);
-    
+
     if (!service) {
       return res.status(404).json({ error: 'Servis nije pronađen' });
     }
-    
+
     // Update service fields
     if (updateData.date) service.date = new Date(updateData.date);
+    if (updateData.partsPrice !== undefined) service.partsPrice = updateData.partsPrice ? parseFloat(updateData.partsPrice) : 0;
+    if (updateData.laborPrice !== undefined) service.laborPrice = updateData.laborPrice ? parseFloat(updateData.laborPrice) : 0;
     if (updateData.price !== undefined) service.price = parseFloat(updateData.price);
     if (updateData.comment !== undefined) service.comment = updateData.comment.trim();
     if (updateData.mileage !== undefined) service.mileage = updateData.mileage ? parseInt(updateData.mileage) : undefined;
     if (updateData.nextServiceDue !== undefined) service.nextServiceDue = updateData.nextServiceDue ? new Date(updateData.nextServiceDue) : undefined;
-    if (updateData.nextServiceMileage !== undefined) service.nextServiceMileage = updateData.nextServiceMileage ? parseInt(updateData.nextServiceMileage) : undefined;
     if (updateData.serviceType) service.serviceType = updateData.serviceType;
-    
+
     const updatedVehicle = await vehicle.save();
 
     // Invalidate statistics cache after updating service
@@ -584,6 +603,98 @@ router.get('/stats/overview', async (req, res) => {
   } catch (error) {
     console.error('Greška pri dohvatanju statistika vozila:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju statistika vozila' });
+  }
+});
+
+// POST - Upload invoice image for service
+router.post('/:id/services/:serviceId/invoice', invoiceUpload.single('invoice'), async (req, res) => {
+  try {
+    const { id, serviceId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(serviceId)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Slika fakture nije priložena' });
+    }
+
+    const vehicle = await Vehicle.findById(id);
+
+    if (!vehicle) {
+      return res.status(404).json({ error: 'Vozilo nije pronađeno' });
+    }
+
+    const service = vehicle.services.id(serviceId);
+
+    if (!service) {
+      return res.status(404).json({ error: 'Servis nije pronađen' });
+    }
+
+    // Upload image to Cloudinary
+    console.log('Uploading service invoice to Cloudinary...');
+    const cloudinaryResult = await uploadServiceInvoice(req.file.buffer, id, serviceId);
+
+    // Save the URL to the service
+    service.invoiceImage = cloudinaryResult.secure_url;
+    await vehicle.save();
+
+    console.log('Service invoice uploaded successfully:', cloudinaryResult.secure_url);
+
+    res.json({
+      message: 'Slika fakture uspešno uploadovana',
+      invoiceImage: cloudinaryResult.secure_url
+    });
+  } catch (error) {
+    console.error('Greška pri upload-u slike fakture:', error);
+    res.status(500).json({ error: 'Greška pri upload-u slike fakture' });
+  }
+});
+
+// DELETE - Delete invoice image for service
+router.delete('/:id/services/:serviceId/invoice', async (req, res) => {
+  try {
+    const { id, serviceId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(serviceId)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const vehicle = await Vehicle.findById(id);
+
+    if (!vehicle) {
+      return res.status(404).json({ error: 'Vozilo nije pronađeno' });
+    }
+
+    const service = vehicle.services.id(serviceId);
+
+    if (!service) {
+      return res.status(404).json({ error: 'Servis nije pronađen' });
+    }
+
+    if (!service.invoiceImage) {
+      return res.status(400).json({ error: 'Servis nema sliku fakture' });
+    }
+
+    // Extract public_id from Cloudinary URL
+    const urlParts = service.invoiceImage.split('/');
+    const folderAndFilename = urlParts.slice(-2).join('/'); // vehicle-service-invoices/filename
+    const publicId = folderAndFilename.split('.')[0]; // Remove extension
+
+    // Delete from Cloudinary
+    console.log('Deleting service invoice from Cloudinary:', publicId);
+    await deleteServiceInvoice(publicId);
+
+    // Remove URL from service
+    service.invoiceImage = undefined;
+    await vehicle.save();
+
+    console.log('Service invoice deleted successfully');
+
+    res.json({ message: 'Slika fakture uspešno obrisana' });
+  } catch (error) {
+    console.error('Greška pri brisanju slike fakture:', error);
+    res.status(500).json({ error: 'Greška pri brisanju slike fakture' });
   }
 });
 
