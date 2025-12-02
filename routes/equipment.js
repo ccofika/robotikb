@@ -48,34 +48,152 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
 }
 
-// Funkcija za normalizaciju kategorija
+// Lista validnih kategorija
+const VALID_CATEGORIES = [
+  'STB', 'Cam Modul', 'Hybrid', 'OTT tv po tvom', 'Smart Card',
+  'HFC Modem', 'GPON Modem', 'ATV', 'PON',
+  'M-Cam Modul', 'M-Smart Card', 'M-HFC Modem', 'M-GPON Modem',
+  'M-ATV', 'M-STB', 'M-OTT tv po tvom', 'M-Hybrid', 'M-PON'
+];
+
+// Funkcija za normalizaciju kategorija - mapiranje starih naziva na nove standardizovane
 const normalizeCategory = (category) => {
   if (!category) return '';
-  
+
+  const lowerCategory = category.toLowerCase().trim();
+
+  // Mapiranje starih kategorija na nove standardizovane
   const categoryMappings = {
-    'CAM': 'cam',
-    'modem': 'modem',
-    'STB': 'stb',
-    'fiksi telefon': 'fiksni telefon',
-    'mini nod': 'mini nod',
-    'hybrid': 'hybrid'
+    // STB
+    'box': 'STB',
+    'dtv': 'STB',
+    'stb': 'STB',
+    'skaymaster': 'STB',
+    'sky': 'STB',
+    'sky master': 'STB',
+    'skymaster': 'STB',
+
+    // Cam Modul
+    'c modul': 'Cam Modul',
+    'c-modul': 'Cam Modul',
+    'cmodul': 'Cam Modul',
+    'cam': 'Cam Modul',
+    'cam cmodul': 'Cam Modul',
+    'can': 'Cam Modul',
+    'ci': 'Cam Modul',
+    'crypto': 'Cam Modul',
+    'crypto gard': 'Cam Modul',
+    'kam': 'Cam Modul',
+    'cam modul': 'Cam Modul',
+
+    // Hybrid
+    'hibrid': 'Hybrid',
+    'move': 'Hybrid',
+    'move stb': 'Hybrid',
+    'hybrid': 'Hybrid',
+
+    // OTT tv po tvom
+    'ott': 'OTT tv po tvom',
+    'ott media': 'OTT tv po tvom',
+    'ott tv po tvom': 'OTT tv po tvom',
+    'ip stb': 'OTT tv po tvom',
+    'tv po tvom': 'OTT tv po tvom',
+
+    // Smart Card
+    'kartica': 'Smart Card',
+    'sim': 'Smart Card',
+    'smart': 'Smart Card',
+    'smart kartica': 'Smart Card',
+    'smart card': 'Smart Card',
+    'sim kartica': 'Smart Card',
+    'sim karticu': 'Smart Card',
+
+    // HFC Modem
+    'modem hfc': 'HFC Modem',
+    'hfc modem': 'HFC Modem',
+    'hfc mode': 'HFC Modem',
+    'modem': 'HFC Modem',
+
+    // GPON Modem
+    'gpon modem': 'GPON Modem',
+
+    // ATV
+    'atv': 'ATV',
+
+    // PON
+    'pon': 'PON',
+
+    // M- prefixed categories
+    'm cam': 'M-Cam Modul',
+    'm-cam': 'M-Cam Modul',
+    'm cam modul': 'M-Cam Modul',
+    'm-cam modul': 'M-Cam Modul',
+
+    'm sim': 'M-Smart Card',
+    'm-sim': 'M-Smart Card',
+    'm smart card': 'M-Smart Card',
+    'm-smart card': 'M-Smart Card',
+
+    'm hfc modem': 'M-HFC Modem',
+    'm-hfc modem': 'M-HFC Modem',
+    'm hfc': 'M-HFC Modem',
+    'm-hfc': 'M-HFC Modem',
+
+    'm gpon modem': 'M-GPON Modem',
+    'm-gpon modem': 'M-GPON Modem',
+    'm gpon': 'M-GPON Modem',
+    'm-gpon': 'M-GPON Modem',
+
+    'm atv': 'M-ATV',
+    'm-atv': 'M-ATV',
+
+    'm stb': 'M-STB',
+    'm-stb': 'M-STB',
+
+    'm ott': 'M-OTT tv po tvom',
+    'm-ott': 'M-OTT tv po tvom',
+    'm ott tv po tvom': 'M-OTT tv po tvom',
+    'm-ott tv po tvom': 'M-OTT tv po tvom',
+
+    'm hybrid': 'M-Hybrid',
+    'm-hybrid': 'M-Hybrid',
+    'm hibrid': 'M-Hybrid',
+    'm-hibrid': 'M-Hybrid',
+
+    'm pon': 'M-PON',
+    'm-pon': 'M-PON'
   };
-  
-  // Potraži direktno mapiranje
-  if (categoryMappings[category]) {
-    return categoryMappings[category];
+
+  // Direktno mapiranje
+  if (categoryMappings[lowerCategory]) {
+    return categoryMappings[lowerCategory];
   }
-  
-  // Potraži case-insensitive mapiranje
-  const lowerCategory = category.toLowerCase();
-  for (let [key, value] of Object.entries(categoryMappings)) {
-    if (key.toLowerCase() === lowerCategory) {
-      return value;
-    }
+
+  // Ako kategorija već ima ispravan format, vrati je
+  const validCategories = [
+    'STB', 'Cam Modul', 'Hybrid', 'OTT tv po tvom', 'Smart Card',
+    'HFC Modem', 'GPON Modem', 'ATV', 'PON',
+    'M-Cam Modul', 'M-Smart Card', 'M-HFC Modem', 'M-GPON Modem',
+    'M-ATV', 'M-STB', 'M-OTT tv po tvom', 'M-Hybrid', 'M-PON'
+  ];
+
+  const matchedCategory = validCategories.find(
+    vc => vc.toLowerCase() === lowerCategory
+  );
+
+  if (matchedCategory) {
+    return matchedCategory;
   }
-  
-  // Ako nema mapiranja, vrati originalni naziv u malom slovu
-  return category.toLowerCase();
+
+  // Ako nije pronađeno mapiranje, vrati null da označimo da je nevalidna kategorija
+  return null;
+};
+
+// Funkcija za proveru da li je kategorija validna
+const isValidCategory = (category) => {
+  if (!category) return false;
+  const normalized = normalizeCategory(category);
+  return normalized !== null;
 };
 
 // GET - Dohvati sve komade opreme (optimized)
@@ -460,6 +578,39 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
 
     if (data.length === 0) {
       return res.status(400).json({ error: 'Excel fajl ne sadrži podatke' });
+    }
+
+    // Prvo proveri sve kategorije da li su validne
+    const invalidCategories = [];
+    const rowsWithInvalidCategories = [];
+
+    data.forEach((item, index) => {
+      const rawCategory = item.Kategorija || item.kategorija || '';
+      const normalizedCategory = normalizeCategory(rawCategory);
+
+      if (rawCategory && normalizedCategory === null) {
+        if (!invalidCategories.includes(rawCategory)) {
+          invalidCategories.push(rawCategory);
+        }
+        rowsWithInvalidCategories.push({
+          row: index + 2, // Excel rows start from 1, plus header row
+          category: rawCategory,
+          serialNumber: item.SN || item["Fabrički broj"] || 'N/A'
+        });
+      }
+    });
+
+    // Ako postoje nevalidne kategorije, vrati grešku
+    if (invalidCategories.length > 0) {
+      fs.unlinkSync(req.file.path); // Obriši privremeni fajl
+
+      return res.status(400).json({
+        error: `Pronađene nevalidne kategorije: ${invalidCategories.join(', ')}`,
+        invalidCategories: invalidCategories,
+        invalidRows: rowsWithInvalidCategories,
+        validCategories: VALID_CATEGORIES,
+        message: `Upload nije uspeo. Sledeće kategorije nisu validne: ${invalidCategories.join(', ')}. Molimo koristite samo validne kategorije.`
+      });
     }
 
     const newEquipmentItems = data.map(item => ({
