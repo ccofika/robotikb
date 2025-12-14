@@ -284,9 +284,11 @@ class AndroidNotificationService {
    */
   async sendSyncRecordingsNotificationToAll() {
     try {
+      console.log('=== sendSyncRecordingsNotificationToAll START ===');
       console.log('📤 Slanje sync recordings notifikacije svim tehničarima...');
 
       // Pronađi sve tehničare sa push token-om
+      console.log('Querying technicians with push tokens...');
       const technicians = await Technician.find({
         pushNotificationToken: { $exists: true, $ne: null, $ne: '' },
         pushNotificationsEnabled: true
@@ -294,16 +296,35 @@ class AndroidNotificationService {
 
       console.log(`Pronađeno ${technicians.length} tehničara sa push token-om`);
 
+      // Debug: prikaži imena pronađenih tehničara
+      if (technicians.length > 0) {
+        console.log('Tehničari sa push tokenima:', technicians.map(t => ({
+          name: t.name,
+          tokenPrefix: t.pushNotificationToken?.substring(0, 30) + '...'
+        })));
+      } else {
+        console.log('UPOZORENJE: Nema tehničara sa aktivnim push tokenima!');
+        return {
+          success: true,
+          totalTechnicians: 0,
+          successCount: 0,
+          failCount: 0,
+          message: 'Nema tehničara sa aktivnim push tokenima'
+        };
+      }
+
       let successCount = 0;
       let failCount = 0;
+      const errors = [];
 
       for (const technician of technicians) {
         try {
           const pushToken = technician.pushNotificationToken;
 
           if (!pushToken.startsWith('ExponentPushToken[')) {
-            console.log(`⚠️ Nevažeći push token za ${technician.name}`);
+            console.log(`⚠️ Nevažeći push token za ${technician.name}: ${pushToken}`);
             failCount++;
+            errors.push({ name: technician.name, error: 'Invalid token format' });
             continue;
           }
 
@@ -320,43 +341,60 @@ class AndroidNotificationService {
             _contentAvailable: true
           };
 
+          console.log(`Sending to ${technician.name}...`);
           const response = await axios.post('https://exp.host/--/api/v2/push/send', message, {
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json'
-            }
+            },
+            timeout: 10000 // 10 second timeout
           });
 
           const result = response.data;
+          console.log(`Response for ${technician.name}:`, JSON.stringify(result));
 
           if (result.data && result.data[0] && result.data[0].status === 'ok') {
             console.log(`✅ Sync notifikacija poslata: ${technician.name}`);
             successCount++;
           } else {
-            console.log(`❌ Neuspešno za ${technician.name}:`, result.data?.[0]?.message);
+            const errorMsg = result.data?.[0]?.message || 'Unknown error';
+            console.log(`❌ Neuspešno za ${technician.name}:`, errorMsg);
             failCount++;
+            errors.push({ name: technician.name, error: errorMsg });
           }
 
-        } catch (error) {
-          console.error(`❌ Greška za ${technician.name}:`, error.message);
+        } catch (techError) {
+          console.error(`❌ Greška za ${technician.name}:`, techError.message);
+          if (techError.response) {
+            console.error('Response data:', techError.response.data);
+            console.error('Response status:', techError.response.status);
+          }
           failCount++;
+          errors.push({ name: technician.name, error: techError.message });
         }
       }
 
       console.log(`📊 Sync notifikacije: ${successCount} uspešno, ${failCount} neuspešno`);
+      console.log('=== sendSyncRecordingsNotificationToAll END ===');
 
       return {
         success: true,
         totalTechnicians: technicians.length,
         successCount,
-        failCount
+        failCount,
+        errors: errors.length > 0 ? errors : undefined
       };
 
     } catch (error) {
-      console.error('❌ Greška pri slanju sync notifikacija:', error);
+      console.error('=== sendSyncRecordingsNotificationToAll ERROR ===');
+      console.error('Error name:', error.name);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
       return {
         success: false,
-        error: error.message
+        error: error.message,
+        errorName: error.name,
+        errorStack: error.stack
       };
     }
   }

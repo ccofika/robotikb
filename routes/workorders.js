@@ -4570,18 +4570,48 @@ router.delete('/:id/voice-recordings/:recordingId', auth, async (req, res) => {
 // Samo za superadmin i supervisor
 router.post('/voice-recordings/trigger-sync', auth, async (req, res) => {
   try {
+    console.log('=== TRIGGER SYNC RECORDINGS ===');
+    console.log('Request received at:', new Date().toISOString());
+
+    // Debug: proveri req.technician
+    if (!req.technician) {
+      console.error('ERROR: req.technician is undefined');
+      return res.status(401).json({
+        error: 'Autentifikacija nije uspela - korisnik nije pronađen'
+      });
+    }
+
+    console.log('User info:', {
+      id: req.technician._id,
+      name: req.technician.name,
+      role: req.technician.role
+    });
+
     // Proveri da li je korisnik superadmin ili supervisor
     if (!['superadmin', 'supervisor'].includes(req.technician.role)) {
+      console.log('ACCESS DENIED - role:', req.technician.role);
       return res.status(403).json({
         error: 'Nemate dozvolu za ovu akciju. Potrebna je superadmin ili supervisor uloga.'
       });
     }
 
-    console.log('=== TRIGGER SYNC RECORDINGS ===');
-    console.log('Triggered by:', req.technician.name, '(', req.technician.role, ')');
+    console.log('Loading androidNotificationService...');
+    let androidNotificationService;
+    try {
+      androidNotificationService = require('../services/androidNotificationService');
+      console.log('Service loaded successfully');
+    } catch (requireError) {
+      console.error('ERROR loading androidNotificationService:', requireError);
+      return res.status(500).json({
+        error: 'Greška pri učitavanju notification servisa',
+        details: requireError.message,
+        stack: requireError.stack
+      });
+    }
 
-    const androidNotificationService = require('../services/androidNotificationService');
+    console.log('Calling sendSyncRecordingsNotificationToAll...');
     const result = await androidNotificationService.sendSyncRecordingsNotificationToAll();
+    console.log('Service result:', JSON.stringify(result, null, 2));
 
     if (result.success) {
       res.json({
@@ -4592,17 +4622,25 @@ router.post('/voice-recordings/trigger-sync', auth, async (req, res) => {
         failCount: result.failCount
       });
     } else {
+      console.error('Service returned error:', result.error);
       res.status(500).json({
         success: false,
-        error: result.error
+        error: result.error || 'Nepoznata greška u servisu'
       });
     }
 
   } catch (error) {
-    console.error('Greška pri slanju sync notifikacije:', error);
+    console.error('=== TRIGGER SYNC ERROR ===');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Full error:', error);
+
     res.status(500).json({
       error: 'Greška pri slanju sync notifikacije',
-      details: error.message
+      details: error.message,
+      errorName: error.name,
+      stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
     });
   }
 });
