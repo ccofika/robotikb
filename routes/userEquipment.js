@@ -771,6 +771,141 @@ router.get('/workorder/:workOrderId', async (req, res) => {
   }
 });
 
+// POST - Ukloni demontiranu opremu (obriši iz evidencije ili vrati na prethodno mesto)
+router.post('/workorder/:workOrderId/undo-removal', auth, async (req, res) => {
+  try {
+    const { workOrderId } = req.params;
+    const { technicianId, serialNumber } = req.body;
+
+    console.log('Removing dismounted equipment:', { workOrderId, serialNumber, technicianId });
+
+    if (!technicianId) {
+      return res.status(400).json({ error: 'Nedostaje ID tehničara' });
+    }
+
+    if (!serialNumber) {
+      return res.status(400).json({ error: 'Nedostaje serijski broj opreme' });
+    }
+
+    // Pronađi radni nalog
+    const workOrder = await WorkOrder.findById(workOrderId);
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    // Pronađi evidenciju radnog naloga
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId });
+    if (!evidence) {
+      return res.status(404).json({ error: 'Evidencija radnog naloga nije pronađena' });
+    }
+
+    // Pronađi demontiranu opremu u evidenciji (case-insensitive)
+    const normalizedSerial = serialNumber.toLowerCase();
+    const removedIndex = evidence.removedEquipment.findIndex(
+      eq => eq.serialNumber.toLowerCase() === normalizedSerial
+    );
+
+    if (removedIndex === -1) {
+      return res.status(404).json({ error: 'Demontirana oprema nije pronađena u evidenciji' });
+    }
+
+    const removedEquipmentData = evidence.removedEquipment[removedIndex];
+
+    // Pronađi opremu u Equipment kolekciji (case-insensitive)
+    const equipment = await findEquipmentBySerialNumber(serialNumber);
+
+    let action = '';
+    let equipmentDetails = null;
+
+    if (equipment) {
+      // Oprema postoji u sistemu
+      console.log('Found equipment in system:', equipment._id);
+
+      // Proveri da li je oprema kreirana tokom demontaže (nema prethodnu lokaciju osim tehničara)
+      // Ako je location tehnicar-X i nema assignedToUser, onda je verovatno nova
+      const wasCreatedDuringDismount = equipment.location === `tehnicar-${technicianId}` &&
+                                        !equipment.assignedToUser &&
+                                        equipment.status === 'assigned';
+
+      if (wasCreatedDuringDismount) {
+        // Oprema je kreirana tokom demontaže - obriši je iz baze
+        await Equipment.findByIdAndDelete(equipment._id);
+        action = 'deleted';
+        equipmentDetails = { _id: equipment._id, serialNumber: equipment.serialNumber, deleted: true };
+        console.log('Equipment was created during dismount - deleted from database');
+      } else {
+        // Oprema je postojala pre - vrati je na prethodno mesto (korisniku)
+        // Pronađi tisId korisnika iz radnog naloga
+        const userTisId = workOrder.tisId;
+
+        equipment.location = `user-${userTisId}`;
+        equipment.status = 'installed';
+        equipment.assignedToUser = userTisId;
+        equipment.installedAt = new Date();
+        equipment.removedAt = null;
+
+        await equipment.save();
+        action = 'restored';
+        equipmentDetails = equipment;
+        console.log('Equipment restored to user:', userTisId);
+
+        // Dodaj opremu nazad u radni nalog
+        if (!workOrder.installedEquipment) {
+          workOrder.installedEquipment = [];
+        }
+        workOrder.installedEquipment.push({
+          equipmentId: equipment._id,
+          installedAt: new Date(),
+          technicianId
+        });
+
+        if (!workOrder.equipment) {
+          workOrder.equipment = [];
+        }
+        const equipmentExists = workOrder.equipment.some(eq => eq.toString() === equipment._id.toString());
+        if (!equipmentExists) {
+          workOrder.equipment.push(equipment._id);
+        }
+
+        await workOrder.save();
+
+        // Dodaj nazad u installedEquipment evidencije
+        const mappedEquipmentType = mapEquipmentTypeToEnum(removedEquipmentData.equipmentType);
+        evidence.installedEquipment.push({
+          equipmentType: mappedEquipmentType,
+          serialNumber: equipment.serialNumber,
+          condition: removedEquipmentData.condition,
+          installedAt: new Date(),
+          notes: `Vraćeno nakon poništavanja demontaže`
+        });
+      }
+    } else {
+      // Oprema ne postoji u Equipment kolekciji - samo ukloni iz evidencije
+      action = 'removed_from_evidence';
+      console.log('Equipment not found in system - removing from evidence only');
+    }
+
+    // Ukloni iz removedEquipment evidencije
+    evidence.removedEquipment.splice(removedIndex, 1);
+    await evidence.save();
+
+    console.log('Dismounted equipment removal completed:', { action, serialNumber });
+
+    res.json({
+      success: true,
+      message: action === 'deleted' ? 'Oprema obrisana iz sistema' :
+               action === 'restored' ? 'Oprema vraćena korisniku' :
+               'Oprema uklonjena iz evidencije',
+      action,
+      equipment: equipmentDetails
+    });
+
+  } catch (error) {
+    console.error('Greška pri uklanjanju demontirane opreme:', error);
+    res.status(500).json({ error: 'Greška pri uklanjanju demontirane opreme' });
+  }
+});
+
 // GET - Dohvati uklonjenu opremu za radni nalog
 router.get('/workorder/:workOrderId/removed', async (req, res) => {
   try {

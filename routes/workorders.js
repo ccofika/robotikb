@@ -1242,10 +1242,21 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
           }
         }
         
+        // Kreiraj appointmentDateTime kombinovanjem date i time
+        const bulkWorkOrderTime = time || '09:00';
+        let [bulkHours, bulkMinutes] = [9, 0];
+        if (bulkWorkOrderTime && typeof bulkWorkOrderTime === 'string') {
+          const bulkTimeParts = bulkWorkOrderTime.split(':');
+          bulkHours = parseInt(bulkTimeParts[0]) || 9;
+          bulkMinutes = parseInt(bulkTimeParts[1]) || 0;
+        }
+        const bulkAppointmentDateTime = new Date(date);
+        bulkAppointmentDateTime.setHours(bulkHours, bulkMinutes, 0, 0);
+
         // Kreiranje novog radnog naloga
         const newWorkOrder = new WorkOrder({
           date,
-          time,
+          time: bulkWorkOrderTime,
           municipality: area,
           address,
           type: packageName,
@@ -1262,7 +1273,8 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
           additionalJobs,
           images: [],
           verified: false,
-          user: user ? user._id : null
+          user: user ? user._id : null,
+          appointmentDateTime: bulkAppointmentDateTime
         });
         
         const savedWorkOrder = await newWorkOrder.save();
@@ -1452,10 +1464,21 @@ router.post('/', auth, logActivity('workorders', 'workorder_add', {
       userId = user._id;
     }
     
+    // Kreiraj appointmentDateTime kombinovanjem date i time
+    const workOrderTime = time || '09:00';
+    let [hours, minutes] = [9, 0];
+    if (workOrderTime && typeof workOrderTime === 'string') {
+      const timeParts = workOrderTime.split(':');
+      hours = parseInt(timeParts[0]) || 9;
+      minutes = parseInt(timeParts[1]) || 0;
+    }
+    const appointmentDateTime = new Date(date);
+    appointmentDateTime.setHours(hours, minutes, 0, 0);
+
     // Kreiranje novog radnog naloga
     const newWorkOrder = new WorkOrder({
       date,
-      time: time || '09:00',
+      time: workOrderTime,
       municipality,
       address,
       type,
@@ -1472,7 +1495,8 @@ router.post('/', auth, logActivity('workorders', 'workorder_add', {
       additionalJobs: additionalJobs || '',
       images: [],
       verified: false,
-      user: userId
+      user: userId,
+      appointmentDateTime: appointmentDateTime
     });
     
     const savedWorkOrder = await newWorkOrder.save();
@@ -1755,6 +1779,65 @@ router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
     // Konvertuj datum u pravilni Date objekat ako je string
     if (updateData.date && typeof updateData.date === 'string') {
       updateData.date = new Date(updateData.date);
+    }
+
+    // Ažuriraj appointmentDateTime ako se promeni date ili time
+    const dateChanged = updateData.date !== undefined;
+    const timeChanged = updateData.time !== undefined;
+
+    if (dateChanged || timeChanged) {
+      // Koristi nove vrednosti ako postoje, inače koristi postojeće iz workOrder
+      const newDate = updateData.date || workOrder.date;
+      const newTime = updateData.time || workOrder.time || '09:00';
+
+      // Parse time (format: "09:00" or "9:00")
+      let [hours, minutes] = [9, 0];
+      if (newTime && typeof newTime === 'string') {
+        const timeParts = newTime.split(':');
+        hours = parseInt(timeParts[0]) || 9;
+        minutes = parseInt(timeParts[1]) || 0;
+      }
+
+      // Kreiraj novi appointmentDateTime
+      const appointmentDateTime = new Date(newDate);
+      appointmentDateTime.setHours(hours, minutes, 0, 0);
+      updateData.appointmentDateTime = appointmentDateTime;
+
+      console.log('Date/Time changed - updating appointmentDateTime:', {
+        newDate,
+        newTime,
+        appointmentDateTime: appointmentDateTime.toISOString()
+      });
+
+      // Proveri da li treba resetovati isOverdue flag
+      const currentTime = new Date();
+      const oneDayAgo = new Date(currentTime.getTime() - (24 * 60 * 60 * 1000));
+
+      // Ako je novi appointmentDateTime u poslednjih 24 sata ili u budućnosti,
+      // i status je 'nezavrsen', resetuj isOverdue
+      if (appointmentDateTime > oneDayAgo) {
+        // Novi termin nije stariji od 24 sata - nije overdue
+        if (workOrder.isOverdue === true) {
+          updateData.isOverdue = false;
+          updateData.overdueMarkedAt = null;
+          console.log('Resetting isOverdue flag - new appointment time is within 24 hours or in the future');
+        }
+      } else {
+        // Novi termin je stariji od 24 sata
+        const currentStatus = updateData.status || workOrder.status;
+        if (currentStatus === 'nezavrsen' && !workOrder.isOverdue) {
+          updateData.isOverdue = true;
+          updateData.overdueMarkedAt = currentTime;
+          console.log('Setting isOverdue flag - appointment time is more than 24 hours ago and status is nezavrsen');
+        }
+      }
+    }
+
+    // Resetuj isOverdue flag kada se status promeni na završen, otkazan ili odložen
+    if (updateData.status && ['zavrsen', 'otkazan', 'odlozen'].includes(updateData.status)) {
+      updateData.isOverdue = false;
+      updateData.overdueMarkedAt = null;
+      console.log('Resetting isOverdue flag - status changed to:', updateData.status);
     }
 
     console.log('Current work order:', workOrder);
@@ -2094,6 +2177,12 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
         await logWorkOrderStatusChanged(technicianId, technician.name, workOrder, oldStatus, status);
       }
       
+      // Resetuj isOverdue flag kada se status promeni na završen, otkazan ili odložen
+      if (['zavrsen', 'otkazan', 'odlozen'].includes(status)) {
+        workOrder.isOverdue = false;
+        workOrder.overdueMarkedAt = null;
+      }
+
       // Ako je status promenjen na "zavrsen", dodaj timestamp završetka
       if (status === 'zavrsen') {
         workOrder.completedAt = new Date();
@@ -2173,6 +2262,17 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
           workOrder.date = postponeDate;
           workOrder.time = postponeTime;
           workOrder.postponedUntil = postponedDateTime;
+
+          // Ažuriraj appointmentDateTime kada se menja datum/vreme
+          let [postponeHours, postponeMinutes] = [9, 0];
+          if (postponeTime && typeof postponeTime === 'string') {
+            const postponeTimeParts = postponeTime.split(':');
+            postponeHours = parseInt(postponeTimeParts[0]) || 9;
+            postponeMinutes = parseInt(postponeTimeParts[1]) || 0;
+          }
+          const newAppointmentDateTime = new Date(postponeDate);
+          newAppointmentDateTime.setHours(postponeHours, postponeMinutes, 0, 0);
+          workOrder.appointmentDateTime = newAppointmentDateTime;
         }
         
         // Dodaj podatke o odlaganju u historiju
@@ -4198,8 +4298,18 @@ const findTechnicianByPhone = async (phoneNumber) => {
 
 // Helper funkcija za pronalaženje najbližeg radnog naloga
 const findMatchingWorkOrder = async (technicianId, customerPhone, recordedAt) => {
+  console.log('=== FINDING MATCHING WORK ORDER ===');
+  console.log('Input - Technician ID:', technicianId);
+  console.log('Input - Customer Phone:', customerPhone);
+  console.log('Input - Recorded At:', recordedAt);
+
   const normalizedCustomerPhone = normalizePhoneNumber(customerPhone);
-  if (!normalizedCustomerPhone) return null;
+  console.log('Normalized customer phone:', normalizedCustomerPhone);
+
+  if (!normalizedCustomerPhone) {
+    console.log('❌ Could not normalize customer phone');
+    return null;
+  }
 
   // Traži radne naloge tehničara u periodu ±2 dana od poziva
   const twoDaysBefore = new Date(recordedAt);
@@ -4207,6 +4317,8 @@ const findMatchingWorkOrder = async (technicianId, customerPhone, recordedAt) =>
 
   const twoDaysAfter = new Date(recordedAt);
   twoDaysAfter.setDate(twoDaysAfter.getDate() + 2);
+
+  console.log('Date range:', twoDaysBefore.toISOString(), 'to', twoDaysAfter.toISOString());
 
   // Pronađi sve radne naloge u tom periodu
   const workOrders = await WorkOrder.find({
@@ -4220,13 +4332,22 @@ const findMatchingWorkOrder = async (technicianId, customerPhone, recordedAt) =>
     }
   }).sort({ date: 1 });
 
+  console.log('Found', workOrders.length, 'work orders for technician in date range');
+
   // Filtriraj one koji imaju matching customer phone
   const matchingOrders = workOrders.filter(wo => {
     const woPhone = normalizePhoneNumber(wo.userPhone);
-    return woPhone === normalizedCustomerPhone;
+    const isMatch = woPhone === normalizedCustomerPhone;
+    console.log(`  WO ${wo._id}: userPhone="${wo.userPhone}" -> normalized="${woPhone}" | Match: ${isMatch}`);
+    return isMatch;
   });
 
-  if (matchingOrders.length === 0) return null;
+  console.log('Matching orders count:', matchingOrders.length);
+
+  if (matchingOrders.length === 0) {
+    console.log('❌ No matching work orders found');
+    return null;
+  }
 
   // Ako ima više, uzmi najbližeg po vremenu
   let closest = matchingOrders[0];
@@ -4240,6 +4361,7 @@ const findMatchingWorkOrder = async (technicianId, customerPhone, recordedAt) =>
     }
   }
 
+  console.log('✅ Found closest matching work order:', closest._id);
   return closest;
 };
 
