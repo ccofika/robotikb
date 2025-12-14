@@ -4450,6 +4450,31 @@ router.post('/voice-recordings/upload', auth, voiceUpload.single('audio'), async
 
     console.log('Found matching work order:', workOrder._id);
 
+    // DUPLIKAT CHECK - proveri da li fajl sa istim imenom već postoji
+    const originalFileName = req.body.originalFileName || req.file.originalname;
+    const fileUniqueId = req.body.fileUniqueId;
+
+    const existingRecording = workOrder.voiceRecordings.find(r => {
+      // Proveri po fileUniqueId ako postoji
+      if (fileUniqueId && r.fileUniqueId === fileUniqueId) {
+        return true;
+      }
+      // Ili po originalnom imenu fajla
+      if (r.originalFileName === originalFileName || r.fileName === originalFileName) {
+        return true;
+      }
+      return false;
+    });
+
+    if (existingRecording) {
+      console.log('❌ Duplicate recording found:', originalFileName);
+      return res.status(409).json({
+        error: 'Ovaj snimak već postoji u radnom nalogu',
+        fileName: originalFileName,
+        existingRecordingId: existingRecording._id
+      });
+    }
+
     // Upload na Cloudinary sa kompresijom
     const cloudinaryResult = await uploadVoiceRecording(
       req.file.buffer,
@@ -4461,6 +4486,8 @@ router.post('/voice-recordings/upload', auth, voiceUpload.single('audio'), async
     const voiceRecording = {
       url: cloudinaryResult.secure_url,
       fileName: req.file.originalname,
+      originalFileName: originalFileName,
+      fileUniqueId: fileUniqueId || null,
       phoneNumber: normalizedCustomerPhone,
       duration: duration ? parseInt(duration) : null,
       recordedAt: new Date(recordedAt),
@@ -4531,6 +4558,50 @@ router.delete('/:id/voice-recordings/:recordingId', auth, async (req, res) => {
     console.error('Greška pri brisanju voice recording-a:', error);
     res.status(500).json({
       error: 'Greška pri brisanju voice recording-a',
+      details: error.message
+    });
+  }
+});
+
+// ============================================================================
+
+// POST /api/workorders/voice-recordings/trigger-sync
+// Šalje push notifikaciju svim tehničarima da sinhronizuju snimke poziva
+// Samo za superadmin i supervisor
+router.post('/voice-recordings/trigger-sync', auth, async (req, res) => {
+  try {
+    // Proveri da li je korisnik superadmin ili supervisor
+    if (!['superadmin', 'supervisor'].includes(req.technician.role)) {
+      return res.status(403).json({
+        error: 'Nemate dozvolu za ovu akciju. Potrebna je superadmin ili supervisor uloga.'
+      });
+    }
+
+    console.log('=== TRIGGER SYNC RECORDINGS ===');
+    console.log('Triggered by:', req.technician.name, '(', req.technician.role, ')');
+
+    const androidNotificationService = require('../services/androidNotificationService');
+    const result = await androidNotificationService.sendSyncRecordingsNotificationToAll();
+
+    if (result.success) {
+      res.json({
+        success: true,
+        message: `Sync notifikacija poslata ${result.successCount} tehničarima`,
+        totalTechnicians: result.totalTechnicians,
+        successCount: result.successCount,
+        failCount: result.failCount
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('Greška pri slanju sync notifikacije:', error);
+    res.status(500).json({
+      error: 'Greška pri slanju sync notifikacije',
       details: error.message
     });
   }

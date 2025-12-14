@@ -192,6 +192,12 @@ const WorkOrderSchema = new Schema({
       type: String,
       required: true
     },
+    originalFileName: {
+      type: String // Originalno ime fajla sa telefona
+    },
+    fileUniqueId: {
+      type: String // Jedinstveni ID: phoneFolder/fileName za duplikat check
+    },
     phoneNumber: {
       type: String,
       required: true

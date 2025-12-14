@@ -276,6 +276,91 @@ class AndroidNotificationService {
       };
     }
   }
+
+  /**
+   * Slanje push notifikacije svim tehničarima da sinhronizuju snimke poziva
+   * Koristi se kada admin želi da pokrene sinhronizaciju sa weba
+   */
+  async sendSyncRecordingsNotificationToAll() {
+    try {
+      console.log('📤 Slanje sync recordings notifikacije svim tehničarima...');
+
+      // Pronađi sve tehničare sa push token-om
+      const technicians = await Technician.find({
+        pushNotificationToken: { $exists: true, $ne: null, $ne: '' },
+        pushNotificationsEnabled: true
+      });
+
+      console.log(`Pronađeno ${technicians.length} tehničara sa push token-om`);
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const technician of technicians) {
+        try {
+          const pushToken = technician.pushNotificationToken;
+
+          if (!pushToken.startsWith('ExponentPushToken[')) {
+            console.log(`⚠️ Nevažeći push token za ${technician.name}`);
+            failCount++;
+            continue;
+          }
+
+          // Pošalji silent data-only notifikaciju za sync
+          const message = {
+            to: pushToken,
+            data: {
+              type: 'sync_recordings',
+              action: 'trigger_sync',
+              timestamp: new Date().toISOString()
+            },
+            priority: 'high',
+            // Za Android - data-only notifikacija
+            _contentAvailable: true
+          };
+
+          const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(message)
+          });
+
+          const result = await response.json();
+
+          if (result.data && result.data[0] && result.data[0].status === 'ok') {
+            console.log(`✅ Sync notifikacija poslata: ${technician.name}`);
+            successCount++;
+          } else {
+            console.log(`❌ Neuspešno za ${technician.name}:`, result.data?.[0]?.message);
+            failCount++;
+          }
+
+        } catch (error) {
+          console.error(`❌ Greška za ${technician.name}:`, error.message);
+          failCount++;
+        }
+      }
+
+      console.log(`📊 Sync notifikacije: ${successCount} uspešno, ${failCount} neuspešno`);
+
+      return {
+        success: true,
+        totalTechnicians: technicians.length,
+        successCount,
+        failCount
+      };
+
+    } catch (error) {
+      console.error('❌ Greška pri slanju sync notifikacija:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
 }
 
 module.exports = new AndroidNotificationService();
