@@ -4573,23 +4573,23 @@ router.post('/voice-recordings/trigger-sync', auth, async (req, res) => {
     console.log('=== TRIGGER SYNC RECORDINGS ===');
     console.log('Request received at:', new Date().toISOString());
 
-    // Debug: proveri req.technician
-    if (!req.technician) {
-      console.error('ERROR: req.technician is undefined');
+    // Debug: proveri req.user (auth middleware postavlja req.user, NE req.technician)
+    if (!req.user) {
+      console.error('ERROR: req.user is undefined');
       return res.status(401).json({
         error: 'Autentifikacija nije uspela - korisnik nije pronađen'
       });
     }
 
     console.log('User info:', {
-      id: req.technician._id,
-      name: req.technician.name,
-      role: req.technician.role
+      id: req.user._id,
+      name: req.user.name,
+      role: req.user.role
     });
 
     // Proveri da li je korisnik superadmin ili supervisor
-    if (!['superadmin', 'supervisor'].includes(req.technician.role)) {
-      console.log('ACCESS DENIED - role:', req.technician.role);
+    if (!['superadmin', 'supervisor'].includes(req.user.role)) {
+      console.log('ACCESS DENIED - role:', req.user.role);
       return res.status(403).json({
         error: 'Nemate dozvolu za ovu akciju. Potrebna je superadmin ili supervisor uloga.'
       });
