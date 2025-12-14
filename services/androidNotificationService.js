@@ -1,5 +1,6 @@
 const AndroidNotification = require('../models/AndroidNotification');
 const Technician = require('../models/Technician');
+const axios = require('axios');
 
 class AndroidNotificationService {
   /**
@@ -319,16 +320,14 @@ class AndroidNotificationService {
             _contentAvailable: true
           };
 
-          const response = await fetch('https://exp.host/--/api/v2/push/send', {
-            method: 'POST',
+          const response = await axios.post('https://exp.host/--/api/v2/push/send', message, {
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(message)
+            }
           });
 
-          const result = await response.json();
+          const result = response.data;
 
           if (result.data && result.data[0] && result.data[0].status === 'ok') {
             console.log(`✅ Sync notifikacija poslata: ${technician.name}`);
