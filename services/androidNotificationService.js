@@ -287,14 +287,34 @@ class AndroidNotificationService {
       console.log('=== sendSyncRecordingsNotificationToAll START ===');
       console.log('📤 Slanje sync recordings notifikacije svim tehničarima...');
 
+      // Debug: proveri koliko tehničara uopšte ima push token
+      const allWithTokens = await Technician.find({
+        pushNotificationToken: { $exists: true, $ne: null, $ne: '' }
+      }).select('name pushNotificationToken pushNotificationsEnabled');
+
+      console.log(`DEBUG: Ukupno tehničara sa push tokenom: ${allWithTokens.length}`);
+      if (allWithTokens.length > 0) {
+        console.log('DEBUG: Tehničari sa tokenima:', allWithTokens.map(t => ({
+          name: t.name,
+          hasToken: !!t.pushNotificationToken,
+          tokenStart: t.pushNotificationToken?.substring(0, 25),
+          notificationsEnabled: t.pushNotificationsEnabled
+        })));
+      }
+
       // Pronađi sve tehničare sa push token-om
+      // NAPOMENA: pushNotificationsEnabled može ne postojati na starim tehničarima,
+      // pa tražimo i one gde je true i one gde polje ne postoji (default je true)
       console.log('Querying technicians with push tokens...');
       const technicians = await Technician.find({
         pushNotificationToken: { $exists: true, $ne: null, $ne: '' },
-        pushNotificationsEnabled: true
+        $or: [
+          { pushNotificationsEnabled: true },
+          { pushNotificationsEnabled: { $exists: false } }
+        ]
       });
 
-      console.log(`Pronađeno ${technicians.length} tehničara sa push token-om`);
+      console.log(`Pronađeno ${technicians.length} tehničara sa push token-om (sa enabled filter-om)`);
 
       // Debug: prikaži imena pronađenih tehničara
       if (technicians.length > 0) {
