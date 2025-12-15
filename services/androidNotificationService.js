@@ -287,51 +287,55 @@ class AndroidNotificationService {
       console.log('=== sendSyncRecordingsNotificationToAll START ===');
       console.log('📤 Slanje sync recordings notifikacije svim tehničarima...');
 
-      // Debug: proveri koliko tehničara uopšte ima push token
-      const allWithTokens = await Technician.find({
-        pushNotificationToken: { $exists: true, $ne: null, $ne: '' }
-      }).select('name pushNotificationToken pushNotificationsEnabled');
+      // Debug: proveri SVE tehničare i njihove tokene
+      const allTechnicians = await Technician.find({})
+        .select('name pushNotificationToken pushNotificationsEnabled phoneNumber');
 
-      console.log(`DEBUG: Ukupno tehničara sa push tokenom: ${allWithTokens.length}`);
-      if (allWithTokens.length > 0) {
-        console.log('DEBUG: Tehničari sa tokenima:', allWithTokens.map(t => ({
-          name: t.name,
-          hasToken: !!t.pushNotificationToken,
-          tokenStart: t.pushNotificationToken?.substring(0, 25),
-          notificationsEnabled: t.pushNotificationsEnabled
-        })));
-      }
+      console.log(`DEBUG: Ukupno tehničara u bazi: ${allTechnicians.length}`);
 
-      // Pronađi sve tehničare sa push token-om
-      // NAPOMENA: pushNotificationsEnabled može ne postojati na starim tehničarima,
-      // pa tražimo i one gde je true i one gde polje ne postoji (default je true)
-      console.log('Querying technicians with push tokens...');
-      const technicians = await Technician.find({
-        pushNotificationToken: { $exists: true, $ne: null, $ne: '' },
-        $or: [
-          { pushNotificationsEnabled: true },
-          { pushNotificationsEnabled: { $exists: false } }
-        ]
+      // Filtriraj samo one sa VALIDNIM tokenom (string koji počinje sa ExponentPushToken)
+      const technicians = allTechnicians.filter(t => {
+        const token = t.pushNotificationToken;
+        const isValid = typeof token === 'string' &&
+                       token.length > 0 &&
+                       token.startsWith('ExponentPushToken[');
+        return isValid;
       });
 
-      console.log(`Pronađeno ${technicians.length} tehničara sa push token-om (sa enabled filter-om)`);
+      // Debug: prikaži sve tehničare i status njihovog tokena
+      console.log('DEBUG: Status tokena svih tehničara:');
+      allTechnicians.forEach(t => {
+        const token = t.pushNotificationToken;
+        let status;
+        if (token === null || token === undefined) {
+          status = '❌ NULL/UNDEFINED - nije instalirao app';
+        } else if (token === '') {
+          status = '⚠️  PRAZAN STRING';
+        } else if (typeof token === 'string' && token.startsWith('ExponentPushToken[')) {
+          status = '✅ VALIDAN';
+        } else {
+          status = '❓ NEVAŽEĆI FORMAT: ' + String(token).substring(0, 30);
+        }
+        console.log(`  ${t.name}: ${status}`);
+      });
 
-      // Debug: prikaži imena pronađenih tehničara
-      if (technicians.length > 0) {
-        console.log('Tehničari sa push tokenima:', technicians.map(t => ({
-          name: t.name,
-          tokenPrefix: t.pushNotificationToken?.substring(0, 30) + '...'
-        })));
-      } else {
+      console.log(`\nPronađeno ${technicians.length} tehničara sa VALIDNIM push tokenom`);
+
+      // Ako nema tehničara sa validnim tokenom
+      if (technicians.length === 0) {
         console.log('UPOZORENJE: Nema tehničara sa aktivnim push tokenima!');
+        console.log('Tehničari moraju da instaliraju i otvore mobilnu aplikaciju.');
         return {
           success: true,
-          totalTechnicians: 0,
+          totalTechnicians: allTechnicians.length,
           successCount: 0,
           failCount: 0,
-          message: 'Nema tehničara sa aktivnim push tokenima'
+          message: 'Nema tehničara sa aktivnim push tokenima. Tehničari moraju instalirati mobilnu aplikaciju.'
         };
       }
+
+      // Prikaži tehničare koji će dobiti notifikaciju
+      console.log('Tehničari koji će dobiti notifikaciju:', technicians.map(t => t.name));
 
       let successCount = 0;
       let failCount = 0;
@@ -340,13 +344,6 @@ class AndroidNotificationService {
       for (const technician of technicians) {
         try {
           const pushToken = technician.pushNotificationToken;
-
-          if (!pushToken.startsWith('ExponentPushToken[')) {
-            console.log(`⚠️ Nevažeći push token za ${technician.name}: ${pushToken}`);
-            failCount++;
-            errors.push({ name: technician.name, error: 'Invalid token format' });
-            continue;
-          }
 
           // Pošalji silent data-only notifikaciju za sync
           const message = {
