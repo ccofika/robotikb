@@ -191,9 +191,19 @@ router.delete('/:id', auth, async (req, res) => {
 // POST /api/android-notifications/register-token - Registruj push notification token
 router.post('/register-token', auth, async (req, res) => {
   try {
+    console.log('=== REGISTER PUSH TOKEN REQUEST ===');
+    console.log('User from auth:', {
+      id: req.user?.id,
+      _id: req.user?._id,
+      name: req.user?.name,
+      role: req.user?.role
+    });
+    console.log('Body:', req.body);
+
     const { pushToken } = req.body;
 
     if (!pushToken) {
+      console.log('ERROR: Push token missing in body');
       return res.status(400).json({
         success: false,
         message: 'Push token je obavezan'
@@ -201,20 +211,37 @@ router.post('/register-token', auth, async (req, res) => {
     }
 
     // Proveri da li je korisnik tehničar
-    const technician = await Technician.findById(req.user.id);
+    const userId = req.user.id || req.user._id;
+    console.log('Looking for technician with ID:', userId);
+
+    const technician = await Technician.findById(userId);
+    console.log('Technician found:', technician ? technician.name : 'NOT FOUND');
+
     if (!technician) {
+      console.log('ERROR: Technician not found for user ID:', userId);
+      // Debug: pretraži sve tehničare
+      const allTechs = await Technician.find({}).select('_id name');
+      console.log('All technicians in DB:', allTechs.map(t => ({ id: t._id.toString(), name: t.name })));
+
       return res.status(403).json({
         success: false,
-        message: 'Samo tehničari mogu registrovati push token'
+        message: 'Samo tehničari mogu registrovati push token',
+        debug: {
+          searchedId: userId,
+          availableTechnicians: allTechs.map(t => t.name)
+        }
       });
     }
 
     // Sačuvaj token
+    const oldToken = technician.pushNotificationToken;
     technician.pushNotificationToken = pushToken;
     technician.pushNotificationsEnabled = true;
     await technician.save();
 
-    console.log(`✅ Push token registrovan za tehničara ${technician.name}: ${pushToken}`);
+    console.log(`✅ Push token registrovan za tehničara ${technician.name}`);
+    console.log(`   Old token: ${oldToken ? oldToken.substring(0, 30) + '...' : 'null'}`);
+    console.log(`   New token: ${pushToken.substring(0, 30)}...`);
 
     res.json({
       success: true,
@@ -223,7 +250,8 @@ router.post('/register-token', auth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Greška pri registrovanju push tokena:', error);
+    console.error('=== REGISTER TOKEN ERROR ===');
+    console.error('Error:', error);
     res.status(500).json({
       success: false,
       message: 'Greška pri registrovanju push tokena',
