@@ -292,4 +292,99 @@ router.delete('/unregister-token', auth, async (req, res) => {
   }
 });
 
+// GET /api/android-notifications/debug-tokens - Debug endpoint za proveru tokena
+router.get('/debug-tokens', auth, async (req, res) => {
+  try {
+    // Samo za superadmin/supervisor
+    if (!['superadmin', 'supervisor'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Nemate pristup' });
+    }
+
+    const allTechnicians = await Technician.find({})
+      .select('name phoneNumber pushNotificationToken pushNotificationsEnabled role')
+      .lean();
+
+    const stats = {
+      total: allTechnicians.length,
+      withValidToken: 0,
+      withNullToken: 0,
+      withEmptyToken: 0,
+      technicians: []
+    };
+
+    allTechnicians.forEach(t => {
+      const token = t.pushNotificationToken;
+      let tokenStatus;
+
+      if (token === null || token === undefined) {
+        tokenStatus = 'NULL';
+        stats.withNullToken++;
+      } else if (token === '') {
+        tokenStatus = 'EMPTY';
+        stats.withEmptyToken++;
+      } else if (typeof token === 'string' && token.startsWith('ExponentPushToken[')) {
+        tokenStatus = 'VALID';
+        stats.withValidToken++;
+      } else {
+        tokenStatus = 'INVALID_FORMAT';
+      }
+
+      stats.technicians.push({
+        name: t.name,
+        role: t.role,
+        phoneNumber: t.phoneNumber || 'N/A',
+        tokenStatus,
+        tokenPreview: token ? token.substring(0, 40) + '...' : null,
+        notificationsEnabled: t.pushNotificationsEnabled
+      });
+    });
+
+    res.json(stats);
+
+  } catch (error) {
+    console.error('Debug tokens error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/android-notifications/manual-register-token - Ručna registracija tokena (za testiranje)
+router.post('/manual-register-token', auth, async (req, res) => {
+  try {
+    // Samo za superadmin
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Samo superadmin može ručno registrovati tokene' });
+    }
+
+    const { technicianName, pushToken } = req.body;
+
+    if (!technicianName || !pushToken) {
+      return res.status(400).json({ error: 'technicianName i pushToken su obavezni' });
+    }
+
+    const technician = await Technician.findOne({ name: technicianName });
+    if (!technician) {
+      return res.status(404).json({ error: `Tehničar "${technicianName}" nije pronađen` });
+    }
+
+    technician.pushNotificationToken = pushToken;
+    technician.pushNotificationsEnabled = true;
+    await technician.save();
+
+    console.log(`✅ Manual token registration for ${technicianName}: ${pushToken.substring(0, 30)}...`);
+
+    res.json({
+      success: true,
+      message: `Token registrovan za ${technicianName}`,
+      technician: {
+        name: technician.name,
+        tokenPreview: pushToken.substring(0, 40) + '...'
+      }
+    });
+
+  } catch (error) {
+    console.error('Manual register token error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
