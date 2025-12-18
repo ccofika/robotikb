@@ -28,6 +28,13 @@ const EquipmentSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'Technician'
   },
+  previousAssignedTo: {
+    type: Schema.Types.ObjectId,
+    ref: 'Technician'
+  },
+  movedToVirtualWarehouseAt: {
+    type: Date
+  },
   assignedToUser: {
     type: String,
     ref: 'User'
