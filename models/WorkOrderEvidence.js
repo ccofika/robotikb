@@ -39,7 +39,12 @@ const WorkOrderEvidenceSchema = new Schema({
     ],
     required: true
   },
-  
+
+  // Telefon korisnika
+  userPhone: {
+    type: String
+  },
+
   // Podaci o lokaciji
   municipality: {
     type: String,
@@ -53,8 +58,7 @@ const WorkOrderEvidenceSchema = new Schema({
   
   // Podaci o tehničarima
   technician1: {
-    type: String,
-    required: true
+    type: String
   },
   
   technician2: {

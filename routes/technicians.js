@@ -1242,7 +1242,8 @@ router.get('/:id/basic-equipment', async (req, res) => {
           id: basicEquipmentItem.basicEquipmentId.toString(),
           _id: basicEquipmentItem.basicEquipmentId.toString(),
           type: basicEquipmentDetails.type,
-          quantity: basicEquipmentItem.quantity
+          quantity: basicEquipmentItem.quantity,
+          price: basicEquipmentDetails.price || 0
         });
       }
     }
@@ -1322,7 +1323,8 @@ router.post('/:id/basic-equipment', auth, logActivity('technicians', 'basic_equi
           id: basicEquipmentItem.basicEquipmentId.toString(),
           _id: basicEquipmentItem.basicEquipmentId.toString(),
           type: basicEquipmentDetails.type,
-          quantity: basicEquipmentItem.quantity
+          quantity: basicEquipmentItem.quantity,
+          price: basicEquipmentDetails.price || 0
         });
       }
     }
@@ -1407,7 +1409,8 @@ router.post('/:id/basic-equipment/return', auth, async (req, res) => {
           id: basicEquipmentItem.basicEquipmentId.toString(),
           _id: basicEquipmentItem.basicEquipmentId.toString(),
           type: basicEquipmentDetails.type,
-          quantity: basicEquipmentItem.quantity
+          quantity: basicEquipmentItem.quantity,
+          price: basicEquipmentDetails.price || 0
         });
       }
     }

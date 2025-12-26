@@ -1037,10 +1037,10 @@ router.post('/evidencija-new', async (req, res) => {
     
     // Header red 3 - prazan
     evidencijaData.push([]);
-    
+
     // Header red 4 - kolone
     evidencijaData.push([
-      'Datum', 'STATUS', 'Napomena', 'ID zahteva', 'ID korisnika', 'Vrsta Naloga',
+      'Datum', 'STATUS', 'Napomena', 'ID zahteva', 'ID korisnika', 'Telefon', 'Vrsta Naloga',
       'Mesto', 'Adresa', 'Korisnik', 'Napomena', 'Status korisnika',
       'Tehnicar 1', 'Tehnicar 2',
       'Serijski broj', 'N/R',  // ONT/HFC
@@ -1057,16 +1057,18 @@ router.post('/evidencija-new', async (req, res) => {
 
     // Dodavanje podataka za svaki WorkOrderEvidence zapis
     evidenceRecords.forEach(evidence => {
-      // Konvertujemo datum u Excel format (broj dana od 1900-01-01)
-      const excelDate = Math.floor((new Date(evidence.executionDate) - new Date('1900-01-01')) / (24 * 60 * 60 * 1000)) + 1;
-      
+      // Formatiramo datum kao čitljiv string (DD.MM.YYYY)
+      const execDate = new Date(evidence.executionDate);
+      const formattedDate = `${execDate.getDate().toString().padStart(2, '0')}.${(execDate.getMonth() + 1).toString().padStart(2, '0')}.${execDate.getFullYear()}`;
+
       // Osnovni podaci
       const row = [
-        excelDate,                                    // Datum
+        formattedDate,                                // Datum
         evidence.status || 'U TOKU',                  // STATUS
         evidence.notes || '',                         // Napomena
         evidence.tisJobId || '',                      // ID zahteva
         evidence.tisId || '',                         // ID korisnika
+        evidence.userPhone || '',                     // Telefon
         evidence.orderType || '',                     // Vrsta Naloga
         evidence.municipality || '',                  // Mesto
         evidence.address || '',                       // Adresa
@@ -1078,12 +1080,13 @@ router.post('/evidencija-new', async (req, res) => {
       ];
 
       // Kreiranje mapiranja za kategorije opreme sa više slotova
+      // Indeksi su pomereni za +1 zbog nove kolone Telefon
       const equipmentSlots = {
-        'ONT/HFC': { startIndex: 13, maxSlots: 1, equipment: [] },
-        'Hybrid': { startIndex: 15, maxSlots: 1, equipment: [] },
-        'STB/CAM': { startIndex: 17, maxSlots: 3, equipment: [] },
-        'Kartica': { startIndex: 23, maxSlots: 3, equipment: [] },
-        'Mini node': { startIndex: 29, maxSlots: 1, equipment: [] }
+        'ONT/HFC': { startIndex: 14, maxSlots: 1, equipment: [] },
+        'Hybrid': { startIndex: 16, maxSlots: 1, equipment: [] },
+        'STB/CAM': { startIndex: 18, maxSlots: 3, equipment: [] },
+        'Kartica': { startIndex: 24, maxSlots: 3, equipment: [] },
+        'Mini node': { startIndex: 30, maxSlots: 1, equipment: [] }
       };
 
       // Popunjavanje instaliranih uređaja
@@ -1117,13 +1120,14 @@ router.post('/evidencija-new', async (req, res) => {
       });
 
       // Dodavanje demontirane opreme (samo prva stavka)
+      // Indeksi pomereni za +1 zbog nove kolone Telefon
       if (evidence.removedEquipment && evidence.removedEquipment.length > 0) {
         const firstRemoved = evidence.removedEquipment[0];
-        row[31] = firstRemoved.serialNumber || '';
-        row[32] = firstRemoved.condition || 'R';
+        row[32] = firstRemoved.serialNumber || '';
+        row[33] = firstRemoved.condition || 'R';
       } else {
-        row[31] = '';
         row[32] = '';
+        row[33] = '';
       }
 
       evidencijaData.push(row);
@@ -1138,17 +1142,17 @@ router.post('/evidencija-new', async (req, res) => {
     // Spajanje ćelija za "Specifikacija instalacija"
     ws['!merges'].push({ s: { r: 1, c: 6 }, e: { r: 1, c: 7 } });
     
-    // Spajanje ćelija za kategorije opreme
-    ws['!merges'].push({ s: { r: 1, c: 13 }, e: { r: 1, c: 14 } }); // ONT/HFC
-    ws['!merges'].push({ s: { r: 1, c: 15 }, e: { r: 1, c: 16 } }); // Hybrid
-    ws['!merges'].push({ s: { r: 1, c: 17 }, e: { r: 1, c: 18 } }); // STB/CAM 1
-    ws['!merges'].push({ s: { r: 1, c: 19 }, e: { r: 1, c: 20 } }); // STB/CAM 2
-    ws['!merges'].push({ s: { r: 1, c: 21 }, e: { r: 1, c: 22 } }); // STB/CAM 3
-    ws['!merges'].push({ s: { r: 1, c: 23 }, e: { r: 1, c: 24 } }); // Kartica 1
-    ws['!merges'].push({ s: { r: 1, c: 25 }, e: { r: 1, c: 26 } }); // Kartica 2
-    ws['!merges'].push({ s: { r: 1, c: 27 }, e: { r: 1, c: 28 } }); // Kartica 3
-    ws['!merges'].push({ s: { r: 1, c: 29 }, e: { r: 1, c: 30 } }); // Mini node
-    ws['!merges'].push({ s: { r: 1, c: 31 }, e: { r: 1, c: 32 } }); // Demontaža
+    // Spajanje ćelija za kategorije opreme (indeksi pomereni za +1 zbog kolone Telefon)
+    ws['!merges'].push({ s: { r: 1, c: 14 }, e: { r: 1, c: 15 } }); // ONT/HFC
+    ws['!merges'].push({ s: { r: 1, c: 16 }, e: { r: 1, c: 17 } }); // Hybrid
+    ws['!merges'].push({ s: { r: 1, c: 18 }, e: { r: 1, c: 19 } }); // STB/CAM 1
+    ws['!merges'].push({ s: { r: 1, c: 20 }, e: { r: 1, c: 21 } }); // STB/CAM 2
+    ws['!merges'].push({ s: { r: 1, c: 22 }, e: { r: 1, c: 23 } }); // STB/CAM 3
+    ws['!merges'].push({ s: { r: 1, c: 24 }, e: { r: 1, c: 25 } }); // Kartica 1
+    ws['!merges'].push({ s: { r: 1, c: 26 }, e: { r: 1, c: 27 } }); // Kartica 2
+    ws['!merges'].push({ s: { r: 1, c: 28 }, e: { r: 1, c: 29 } }); // Kartica 3
+    ws['!merges'].push({ s: { r: 1, c: 30 }, e: { r: 1, c: 31 } }); // Mini node
+    ws['!merges'].push({ s: { r: 1, c: 32 }, e: { r: 1, c: 33 } }); // Demontaža
 
     // Postavljanje širine kolona
     const colWidths = [
@@ -1157,6 +1161,7 @@ router.post('/evidencija-new', async (req, res) => {
       { width: 30 }, // Napomena
       { width: 12 }, // ID zahteva
       { width: 12 }, // ID korisnika
+      { width: 15 }, // Telefon
       { width: 15 }, // Vrsta Naloga
       { width: 15 }, // Mesto
       { width: 40 }, // Adresa

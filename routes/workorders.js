@@ -516,6 +516,7 @@ async function createWorkOrderEvidence(workOrder) {
       tisId: workOrder.tisId || `tisid-${Date.now()}`,
       customerName: workOrder.userName || 'Nepoznat korisnik',
       customerStatus: 'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme)',
+      userPhone: workOrder.userPhone || '',
       municipality: workOrder.municipality || 'Nepoznata opština',
       address: workOrder.address || 'Nepoznata adresa',
       technician1: '', // Biće popunjeno kada se dodeli tehničar
@@ -584,15 +585,27 @@ async function createWorkOrderEvidence(workOrder) {
 // Funkcija za ažuriranje WorkOrderEvidence zapisa
 async function updateWorkOrderEvidence(workOrderId, updateData) {
   try {
-    const evidence = await WorkOrderEvidence.findOne({ workOrderId });
+    let evidence = await WorkOrderEvidence.findOne({ workOrderId });
+
     if (!evidence) {
-      console.log('WorkOrderEvidence nije pronađen za WorkOrder:', workOrderId);
-      return null;
+      // Ako evidencija ne postoji, kreiraj je
+      console.log('WorkOrderEvidence nije pronađen za WorkOrder:', workOrderId, '- kreiram novu evidenciju');
+      const workOrder = await WorkOrder.findById(workOrderId);
+      if (workOrder) {
+        evidence = await createWorkOrderEvidence(workOrder);
+        if (!evidence) {
+          console.log('Nije moguće kreirati WorkOrderEvidence za WorkOrder:', workOrderId);
+          return null;
+        }
+      } else {
+        console.log('WorkOrder nije pronađen:', workOrderId);
+        return null;
+      }
     }
 
     // Ažuriranje osnovnih podataka
     Object.keys(updateData).forEach(key => {
-      if (evidence[key] !== undefined) {
+      if (key in evidence.schema.paths) {
         evidence[key] = updateData[key];
       }
     });
@@ -1917,8 +1930,8 @@ router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
       const evidenceUpdateData = {
         municipality: updatedWorkOrder.municipality,
         address: updatedWorkOrder.address,
-        status: updatedWorkOrder.status === 'zavrsen' ? 'ZAVRŠENO' : 
-                updatedWorkOrder.status === 'otkazan' ? 'OTKAZANO' : 
+        status: updatedWorkOrder.status === 'zavrsen' ? 'ZAVRŠENO' :
+                updatedWorkOrder.status === 'otkazan' ? 'OTKAZANO' :
                 updatedWorkOrder.status === 'odlozen' ? 'ODLOŽENO' : 'U TOKU',
         executionDate: updatedWorkOrder.date,
         notes: updatedWorkOrder.comment || '',
@@ -1927,6 +1940,7 @@ router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
         technology: updatedWorkOrder.technology,
         verified: updatedWorkOrder.verified,
         customerName: updatedWorkOrder.userName || '',
+        userPhone: updatedWorkOrder.userPhone || '',
         tisJobId: updatedWorkOrder.tisJobId || '',
         tisId: updatedWorkOrder.tisId || ''
       };
@@ -2323,13 +2337,20 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
                 updatedWorkOrder.status === 'otkazan' ? 'OTKAZANO' :
                 updatedWorkOrder.status === 'odlozen' ? 'ODLOŽENO' : 'U TOKU',
         notes: updatedWorkOrder.comment || '',
-        verified: updatedWorkOrder.verified
+        verified: updatedWorkOrder.verified,
+        userPhone: updatedWorkOrder.userPhone || '',
+        customerName: updatedWorkOrder.userName || ''
       };
 
       if (updatedWorkOrder.status === 'zavrsen') {
         evidenceUpdateData.executionDate = new Date();
       } else if (updatedWorkOrder.status === 'odlozen') {
         evidenceUpdateData.executionDate = updatedWorkOrder.date;
+      }
+
+      // Dodeli ime tehničara ako postoji
+      if (technician) {
+        evidenceUpdateData.technician1 = technician.name;
       }
 
       await updateWorkOrderEvidence(updatedWorkOrder._id, evidenceUpdateData);
@@ -3081,6 +3102,12 @@ router.delete('/:id', auth, logActivity('workorders', 'workorder_delete', {
 
     // Brisanje radnog naloga
     await WorkOrder.findByIdAndDelete(id);
+
+    // Brisanje povezane WorkOrderEvidence evidencije
+    const deletedEvidence = await WorkOrderEvidence.deleteMany({ workOrderId: id });
+    if (deletedEvidence.deletedCount > 0) {
+      console.log(`Obrisano ${deletedEvidence.deletedCount} WorkOrderEvidence zapisa za WorkOrder: ${id}`);
+    }
 
     // Vrati podatke o obrisanom radnom nalogu za logovanje
     res.json({

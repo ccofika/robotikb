@@ -42,7 +42,7 @@ router.post('/', logActivity('equipment', 'basic_equipment_add', {
   getEntityName: (req, responseData) => responseData?.type
 }), async (req, res) => {
   try {
-    const { type, serialNumber, quantity } = req.body;
+    const { type, serialNumber, quantity, price } = req.body;
 
     if (!type || quantity === undefined) {
       return res.status(400).json({ error: 'Vrsta i količina osnovne opreme su obavezna polja' });
@@ -60,7 +60,8 @@ router.post('/', logActivity('equipment', 'basic_equipment_add', {
     const newBasicEquipment = new BasicEquipment({
       type,
       serialNumber: serialNumber || '',
-      quantity: parseInt(quantity, 10)
+      quantity: parseInt(quantity, 10),
+      price: parseFloat(price) || 0
     });
 
     const savedBasicEquipment = await newBasicEquipment.save();
@@ -78,13 +79,13 @@ router.put('/:id', logActivity('equipment', 'basic_equipment_edit', {
 }), async (req, res) => {
   try {
     const { id } = req.params;
-    const { type, serialNumber, quantity } = req.body;
+    const { type, serialNumber, quantity, price } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
 
-    if ((!type && quantity === undefined && serialNumber === undefined) || (quantity !== undefined && parseInt(quantity, 10) < 0)) {
+    if ((!type && quantity === undefined && serialNumber === undefined && price === undefined) || (quantity !== undefined && parseInt(quantity, 10) < 0)) {
       return res.status(400).json({ error: 'Neispravni podaci za ažuriranje' });
     }
 
@@ -114,6 +115,10 @@ router.put('/:id', logActivity('equipment', 'basic_equipment_edit', {
 
     if (quantity !== undefined) {
       basicEquipment.quantity = parseInt(quantity, 10);
+    }
+
+    if (price !== undefined) {
+      basicEquipment.price = parseFloat(price) || 0;
     }
 
     const updatedBasicEquipment = await basicEquipment.save();
