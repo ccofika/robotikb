@@ -4286,20 +4286,55 @@ router.get('/:id/removed-equipment', async (req, res) => {
 const normalizePhoneNumber = (phoneNumber) => {
   if (!phoneNumber) return null;
 
-  // Ukloni sve ne-numeričke karaktere
-  let cleaned = phoneNumber.replace(/\D/g, '');
+  // Ukloni sve ne-numeričke karaktere (razmake, crtice, zagrade, +)
+  let cleaned = phoneNumber.toString().replace(/[\s\-\(\)\+\.]/g, '').replace(/\D/g, '');
 
-  // Ako počinje sa +381, zameni sa 0
-  if (cleaned.startsWith('381')) {
+  console.log(`[normalizePhoneNumber] Input: "${phoneNumber}" -> Cleaned: "${cleaned}"`);
+
+  // Ako počinje sa 381 (međunarodni format bez +), zameni sa 0
+  if (cleaned.startsWith('381') && cleaned.length >= 12) {
     cleaned = '0' + cleaned.substring(3);
+    console.log(`[normalizePhoneNumber] Converted from 381 format: "${cleaned}"`);
   }
 
-  // Ako počinje sa 381 bez +
-  if (cleaned.startsWith('381') && cleaned.length > 10) {
-    cleaned = '0' + cleaned.substring(3);
+  // Ako nema vodeću nulu a trebalo bi (npr. "603721085" umesto "0603721085")
+  if (cleaned.length === 9 && !cleaned.startsWith('0')) {
+    cleaned = '0' + cleaned;
+    console.log(`[normalizePhoneNumber] Added leading zero: "${cleaned}"`);
   }
 
+  console.log(`[normalizePhoneNumber] Final result: "${cleaned}"`);
   return cleaned;
+};
+
+// Uporedi dva broja telefona - vraća true ako se poklapaju
+const phoneNumbersMatch = (phone1, phone2) => {
+  if (!phone1 || !phone2) return false;
+
+  const n1 = normalizePhoneNumber(phone1);
+  const n2 = normalizePhoneNumber(phone2);
+
+  if (n1 === n2) return true;
+
+  // Ako se ne poklapaju direktno, probaj dodatne varijacije
+  // Neki brojevi mogu biti sačuvani kao "60 123 456" a drugi kao "+38160123456"
+
+  // Ukloni sve osim cifara za oba
+  const digits1 = phone1.toString().replace(/\D/g, '');
+  const digits2 = phone2.toString().replace(/\D/g, '');
+
+  // Proveri da li se završavaju istim ciframa (ignoriši prefix)
+  const minLen = Math.min(digits1.length, digits2.length);
+  if (minLen >= 8) {
+    const suffix1 = digits1.slice(-minLen);
+    const suffix2 = digits2.slice(-minLen);
+    if (suffix1 === suffix2) {
+      console.log(`[phoneNumbersMatch] Matched by suffix: ${suffix1}`);
+      return true;
+    }
+  }
+
+  return false;
 };
 
 // Helper funkcija za pronalaženje tehničara po broju telefona
@@ -4363,9 +4398,8 @@ const findMatchingWorkOrder = async (technicianId, customerPhone, recordedAt) =>
 
   // Filtriraj one koji imaju matching customer phone
   const matchingOrders = workOrders.filter(wo => {
-    const woPhone = normalizePhoneNumber(wo.userPhone);
-    const isMatch = woPhone === normalizedCustomerPhone;
-    console.log(`  WO ${wo._id}: userPhone="${wo.userPhone}" -> normalized="${woPhone}" | Match: ${isMatch}`);
+    const isMatch = phoneNumbersMatch(wo.userPhone, customerPhone);
+    console.log(`  WO ${wo._id}: userPhone="${wo.userPhone}" vs customerPhone="${customerPhone}" | Match: ${isMatch}`);
     return isMatch;
   });
 
