@@ -4552,7 +4552,7 @@ router.post('/voice-recordings/upload', auth, voiceUpload.single('audio'), async
       phoneNumber: normalizedCustomerPhone,
       duration: duration ? parseInt(duration) : null,
       recordedAt: new Date(recordedAt),
-      uploadedBy: req.technician._id,
+      uploadedBy: technician._id,
       fileSize: req.file.size
     };
 
