@@ -188,6 +188,22 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
+// POST /api/android-notifications/debug-register - Debug endpoint za testiranje registracije
+router.post('/debug-register', auth, async (req, res) => {
+  console.log('=== DEBUG REGISTER CALLED ===');
+  console.log('User:', req.user);
+  console.log('Body:', req.body);
+  console.log('Headers:', req.headers);
+
+  res.json({
+    success: true,
+    message: 'Debug endpoint reached',
+    user: req.user,
+    body: req.body,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // POST /api/android-notifications/register-token - Registruj push notification token
 router.post('/register-token', auth, async (req, res) => {
   try {
