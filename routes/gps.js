@@ -37,6 +37,23 @@ router.post('/request-locations', auth, async (req, res) => {
 
     console.log(`DEBUG: Ukupno tehničara u bazi: ${allTechnicians.length}`);
 
+    // DEBUG: Prikaži sve tokene
+    console.log('DEBUG: Token status za svakog tehničara:');
+    allTechnicians.forEach(t => {
+      const token = t.pushNotificationToken;
+      let status;
+      if (!token) {
+        status = 'NULL/undefined';
+      } else if (token === '') {
+        status = 'EMPTY STRING';
+      } else if (typeof token === 'string' && token.startsWith('ExponentPushToken[')) {
+        status = `VALID: ${token.substring(0, 40)}...`;
+      } else {
+        status = `INVALID FORMAT: ${typeof token} - ${String(token).substring(0, 30)}...`;
+      }
+      console.log(`  - ${t.name}: ${status}`);
+    });
+
     // Filtriraj samo one sa VALIDNIM tokenom
     const technicians = allTechnicians.filter(t => {
       const token = t.pushNotificationToken;
