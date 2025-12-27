@@ -1,0 +1,359 @@
+const express = require('express');
+const router = express.Router();
+const TechnicianLocation = require('../models/TechnicianLocation');
+const Technician = require('../models/Technician');
+const { auth } = require('../middleware/auth');
+const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
+
+// ============================================
+// GPS Location Tracking Routes
+// ============================================
+
+/**
+ * POST /api/gps/request-locations
+ * Admin zahteva GPS lokacije od svih tehničara
+ * Šalje push notifikaciju svim tehničarima da pošalju svoju lokaciju
+ */
+router.post('/request-locations', auth, async (req, res) => {
+  try {
+    // Samo admin, superadmin, supervisor mogu zatražiti lokacije
+    if (!['admin', 'superadmin', 'supervisor'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Nemate dozvolu za ovu akciju'
+      });
+    }
+
+    console.log('=== GPS LOCATION REQUEST START ===');
+    console.log(`📍 Admin ${req.user.name} zahteva GPS lokacije svih tehničara`);
+
+    // Generisanje jedinstvenog ID-a za ovaj zahtev
+    const requestId = uuidv4();
+
+    // Dohvati sve tehničare sa validnim push tokenom
+    const allTechnicians = await Technician.find({})
+      .select('name pushNotificationToken pushNotificationsEnabled phoneNumber');
+
+    console.log(`DEBUG: Ukupno tehničara u bazi: ${allTechnicians.length}`);
+
+    // Filtriraj samo one sa VALIDNIM tokenom
+    const technicians = allTechnicians.filter(t => {
+      const token = t.pushNotificationToken;
+      const isValid = typeof token === 'string' &&
+                     token.length > 0 &&
+                     token.startsWith('ExponentPushToken[');
+      return isValid;
+    });
+
+    console.log(`Pronađeno ${technicians.length} tehničara sa validnim push tokenom`);
+
+    if (technicians.length === 0) {
+      return res.json({
+        success: true,
+        requestId,
+        message: 'Nema tehničara sa aktivnim push tokenima. Tehničari moraju instalirati mobilnu aplikaciju.',
+        totalTechnicians: allTechnicians.length,
+        successCount: 0,
+        failCount: 0
+      });
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+    const errors = [];
+
+    // Pošalji push notifikaciju svakom tehničaru
+    for (const technician of technicians) {
+      try {
+        const pushToken = technician.pushNotificationToken;
+
+        // Data-only notifikacija za GPS zahtev
+        const message = {
+          to: pushToken,
+          data: {
+            type: 'gps_location_request',
+            action: 'send_location',
+            requestId: requestId,
+            timestamp: new Date().toISOString()
+          },
+          priority: 'high',
+          // Za Android - data-only notifikacija koja budi app
+          _contentAvailable: true
+        };
+
+        console.log(`Sending GPS request to ${technician.name}...`);
+        const response = await axios.post('https://exp.host/--/api/v2/push/send', message, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        });
+
+        const result = response.data;
+
+        if (result.data && result.data[0] && result.data[0].status === 'ok') {
+          console.log(`✅ GPS zahtev poslan: ${technician.name}`);
+          successCount++;
+        } else {
+          const errorMsg = result.data?.[0]?.message || 'Unknown error';
+          console.log(`❌ Neuspešno za ${technician.name}:`, errorMsg);
+          failCount++;
+          errors.push({ name: technician.name, error: errorMsg });
+        }
+
+      } catch (techError) {
+        console.error(`❌ Greška za ${technician.name}:`, techError.message);
+        failCount++;
+        errors.push({ name: technician.name, error: techError.message });
+      }
+    }
+
+    console.log(`📊 GPS zahtevi: ${successCount} uspešno, ${failCount} neuspešno`);
+    console.log('=== GPS LOCATION REQUEST END ===');
+
+    res.json({
+      success: true,
+      requestId,
+      message: `GPS zahtev poslan. Uspešno: ${successCount}, Neuspešno: ${failCount}`,
+      totalTechnicians: technicians.length,
+      successCount,
+      failCount,
+      errors: errors.length > 0 ? errors : undefined
+    });
+
+  } catch (error) {
+    console.error('GPS request error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Greška pri slanju GPS zahteva',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/gps/location
+ * Tehničar šalje svoju GPS lokaciju (odgovor na zahtev ili manuelno)
+ */
+router.post('/location', auth, async (req, res) => {
+  try {
+    const {
+      latitude,
+      longitude,
+      accuracy,
+      altitude,
+      speed,
+      heading,
+      deviceTimestamp,
+      requestId,
+      requestType = 'admin_request',
+      deviceInfo
+    } = req.body;
+
+    // Validacija
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Latitude i longitude su obavezni'
+      });
+    }
+
+    // Pronađi tehničara
+    const technician = await Technician.findById(req.user.id);
+    if (!technician) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tehničar nije pronađen'
+      });
+    }
+
+    // Sačuvaj lokaciju
+    const location = new TechnicianLocation({
+      technicianId: req.user.id,
+      latitude,
+      longitude,
+      accuracy,
+      altitude,
+      speed,
+      heading,
+      deviceTimestamp: deviceTimestamp ? new Date(deviceTimestamp) : null,
+      requestId,
+      requestType,
+      deviceInfo
+    });
+
+    await location.save();
+
+    console.log(`📍 GPS lokacija primljena od ${technician.name}: ${latitude}, ${longitude}`);
+
+    res.json({
+      success: true,
+      message: 'Lokacija uspešno sačuvana',
+      location: {
+        _id: location._id,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        createdAt: location.createdAt
+      }
+    });
+
+  } catch (error) {
+    console.error('GPS location save error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Greška pri čuvanju lokacije',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/gps/locations
+ * Dohvata poslednje lokacije svih tehničara (za mapu)
+ */
+router.get('/locations', auth, async (req, res) => {
+  try {
+    // Samo admin, superadmin, supervisor mogu videti lokacije
+    if (!['admin', 'superadmin', 'supervisor'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Nemate dozvolu za ovu akciju'
+      });
+    }
+
+    const locations = await TechnicianLocation.getLatestLocationsForAll();
+
+    res.json({
+      success: true,
+      locations,
+      count: locations.length
+    });
+
+  } catch (error) {
+    console.error('GPS locations fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Greška pri dohvatanju lokacija',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/gps/locations/:technicianId
+ * Dohvata istoriju lokacija za jednog tehničara
+ */
+router.get('/locations/:technicianId', auth, async (req, res) => {
+  try {
+    // Samo admin, superadmin, supervisor mogu videti lokacije
+    if (!['admin', 'superadmin', 'supervisor'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Nemate dozvolu za ovu akciju'
+      });
+    }
+
+    const { technicianId } = req.params;
+    const { limit = 50 } = req.query;
+
+    const locations = await TechnicianLocation.find({ technicianId })
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .populate('technicianId', 'name phoneNumber profileImage');
+
+    res.json({
+      success: true,
+      locations,
+      count: locations.length
+    });
+
+  } catch (error) {
+    console.error('GPS location history fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Greška pri dohvatanju istorije lokacija',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/gps/locations/request/:requestId
+ * Dohvata sve lokacije za određeni zahtev
+ */
+router.get('/locations/request/:requestId', auth, async (req, res) => {
+  try {
+    // Samo admin, superadmin, supervisor mogu videti lokacije
+    if (!['admin', 'superadmin', 'supervisor'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Nemate dozvolu za ovu akciju'
+      });
+    }
+
+    const { requestId } = req.params;
+
+    const locations = await TechnicianLocation.find({ requestId })
+      .populate('technicianId', 'name phoneNumber profileImage')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      requestId,
+      locations,
+      count: locations.length
+    });
+
+  } catch (error) {
+    console.error('GPS request locations fetch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Greška pri dohvatanju lokacija za zahtev',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * DELETE /api/gps/locations/old
+ * Briše stare lokacije (starije od X dana)
+ */
+router.delete('/locations/old', auth, async (req, res) => {
+  try {
+    // Samo superadmin može brisati
+    if (req.user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Samo superadmin može brisati stare lokacije'
+      });
+    }
+
+    const { daysOld = 30 } = req.query;
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - parseInt(daysOld));
+
+    const result = await TechnicianLocation.deleteMany({
+      createdAt: { $lt: cutoffDate }
+    });
+
+    console.log(`🗑️ Obrisano ${result.deletedCount} starih GPS lokacija (starije od ${daysOld} dana)`);
+
+    res.json({
+      success: true,
+      message: `Obrisano ${result.deletedCount} lokacija starijih od ${daysOld} dana`,
+      deletedCount: result.deletedCount
+    });
+
+  } catch (error) {
+    console.error('GPS old locations delete error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Greška pri brisanju starih lokacija',
+      error: error.message
+    });
+  }
+});
+
+module.exports = router;
