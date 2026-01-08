@@ -4,7 +4,7 @@ const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
 const multer = require('multer');
 const jwt = require('jsonwebtoken');
-const { Technician, Equipment, Material, BasicEquipment } = require('../models');
+const { Technician, Equipment, Material, BasicEquipment, CallRecording } = require('../models');
 const { uploadImage } = require('../config/cloudinary');
 const emailService = require('../services/emailService');
 const { createInventorySummary } = require('../utils/emailTemplates');
@@ -1422,6 +1422,154 @@ router.post('/:id/basic-equipment/return', auth, async (req, res) => {
   } catch (error) {
     console.error('Greška pri razduživanju osnovne opreme:', error);
     res.status(500).json({ error: 'Greška pri razduživanju osnovne opreme' });
+  }
+});
+
+// ============================================================
+// CALL RECORDINGS ENDPOINTS
+// ============================================================
+
+// GET /api/technicians/:id/recordings
+// Dohvati sve snimke poziva za tehničara za određeni datum
+router.get('/:id/recordings', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { date, includeWorkOrders } = req.query;
+
+    // Validacija ID-a
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID tehničara' });
+    }
+
+    // Proveri da li tehničar postoji
+    const technician = await Technician.findById(id);
+    if (!technician) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    // Ako nema datuma, koristi današnji
+    const queryDate = date ? new Date(date) : new Date();
+
+    // Kreiraj range za ceo dan (00:00:00 - 23:59:59)
+    const startOfDay = new Date(queryDate);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(queryDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Kreiraj query
+    const query = {
+      technicianId: new mongoose.Types.ObjectId(id),
+      recordedAt: {
+        $gte: startOfDay,
+        $lte: endOfDay
+      }
+    };
+
+    // Opciono filtriraj samo nevezane snimke
+    if (includeWorkOrders === 'false') {
+      query.workOrderId = null;
+    }
+
+    // Dohvati snimke
+    const recordings = await CallRecording.find(query)
+      .sort({ recordedAt: -1 })
+      .lean();
+
+    // Formatiraj odgovor
+    const formattedRecordings = recordings.map(recording => ({
+      _id: recording._id,
+      customerPhone: recording.customerPhone,
+      recordedAt: recording.recordedAt,
+      url: recording.url,
+      fileName: recording.fileName,
+      duration: recording.duration,
+      fileSize: recording.fileSize,
+      linkedToWorkOrder: !!recording.workOrderId,
+      workOrderId: recording.workOrderId,
+      workOrderInfo: recording.workOrderInfo
+    }));
+
+    res.json({
+      success: true,
+      technicianId: id,
+      technicianName: technician.name,
+      date: queryDate.toISOString().split('T')[0],
+      totalCount: formattedRecordings.length,
+      linkedCount: formattedRecordings.filter(r => r.linkedToWorkOrder).length,
+      unlinkedCount: formattedRecordings.filter(r => !r.linkedToWorkOrder).length,
+      recordings: formattedRecordings
+    });
+
+  } catch (error) {
+    console.error('Greška pri dohvatanju snimaka:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju snimaka', details: error.message });
+  }
+});
+
+// GET /api/technicians/:id/recordings/dates
+// Dohvati listu datuma koji imaju snimke za tehničara (za kalendar)
+router.get('/:id/recordings/dates', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { month, year } = req.query;
+
+    // Validacija ID-a
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID tehničara' });
+    }
+
+    // Default: tekući mesec i godina
+    const queryYear = year ? parseInt(year) : new Date().getFullYear();
+    const queryMonth = month ? parseInt(month) - 1 : new Date().getMonth(); // 0-indexed
+
+    // Kreiraj range za ceo mesec
+    const startOfMonth = new Date(queryYear, queryMonth, 1);
+    const endOfMonth = new Date(queryYear, queryMonth + 1, 0, 23, 59, 59, 999);
+
+    // Agregiraj po datumu
+    const recordingDates = await CallRecording.aggregate([
+      {
+        $match: {
+          technicianId: new mongoose.Types.ObjectId(id),
+          recordedAt: {
+            $gte: startOfMonth,
+            $lte: endOfMonth
+          }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m-%d', date: '$recordedAt' }
+          },
+          count: { $sum: 1 },
+          linkedCount: {
+            $sum: { $cond: [{ $ne: ['$workOrderId', null] }, 1, 0] }
+          }
+        }
+      },
+      {
+        $sort: { _id: 1 }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      technicianId: id,
+      year: queryYear,
+      month: queryMonth + 1,
+      dates: recordingDates.map(d => ({
+        date: d._id,
+        totalCount: d.count,
+        linkedCount: d.linkedCount,
+        unlinkedCount: d.count - d.linkedCount
+      }))
+    });
+
+  } catch (error) {
+    console.error('Greška pri dohvatanju datuma snimaka:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju datuma snimaka', details: error.message });
   }
 });
 

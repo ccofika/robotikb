@@ -7,7 +7,7 @@ const multer = require('multer');
 const xlsx = require('xlsx');
 const { v4: uuidv4 } = require('uuid');
 const mongoose = require('mongoose');
-const { WorkOrder, User, Technician, Equipment, Material } = require('../models');
+const { WorkOrder, User, Technician, Equipment, Material, CallRecording } = require('../models');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const AdminActivityLog = require('../models/AdminActivityLog');
 const FinancialTransaction = require('../models/FinancialTransaction');
@@ -4445,7 +4445,7 @@ const voiceUpload = multer({
 });
 
 // POST /api/workorders/voice-recordings/upload
-// Upload voice recording sa automatskim povezivanjem na radni nalog
+// Upload voice recording - UVEK se čuva, sa ili bez matching radnog naloga
 router.post('/voice-recordings/upload', auth, voiceUpload.single('audio'), async (req, res) => {
   try {
     console.log('=== VOICE RECORDING UPLOAD REQUEST ===');
@@ -4493,58 +4493,49 @@ router.post('/voice-recordings/upload', auth, voiceUpload.single('audio'), async
     const normalizedCustomerPhone = normalizePhoneNumber(customerPhone);
     console.log('Normalized customer phone:', normalizedCustomerPhone);
 
-    // Pronađi matching radni nalog
+    const originalFileName = req.body.originalFileName || req.file.originalname;
+    const fileUniqueId = req.body.fileUniqueId;
+
+    // DUPLIKAT CHECK - proveri u CallRecording kolekciji
+    if (fileUniqueId) {
+      const existingCallRecording = await CallRecording.findOne({
+        technicianId: technician._id,
+        fileUniqueId: fileUniqueId
+      });
+
+      if (existingCallRecording) {
+        console.log('❌ Duplicate recording found in CallRecording:', originalFileName);
+        return res.status(409).json({
+          error: 'Ovaj snimak već postoji',
+          fileName: originalFileName,
+          existingRecordingId: existingCallRecording._id
+        });
+      }
+    }
+
+    // Pronađi matching radni nalog (može biti null)
     const workOrder = await findMatchingWorkOrder(
       technician._id,
       normalizedCustomerPhone,
       new Date(recordedAt)
     );
 
-    if (!workOrder) {
-      return res.status(404).json({
-        error: 'Nije pronađen radni nalog koji odgovara ovom pozivu',
-        technicianName: technician.name,
-        customerPhone: normalizedCustomerPhone,
-        recordedAt: recordedAt
-      });
-    }
-
-    console.log('Found matching work order:', workOrder._id);
-
-    // DUPLIKAT CHECK - proveri da li fajl sa istim imenom već postoji
-    const originalFileName = req.body.originalFileName || req.file.originalname;
-    const fileUniqueId = req.body.fileUniqueId;
-
-    const existingRecording = workOrder.voiceRecordings.find(r => {
-      // Proveri po fileUniqueId ako postoji
-      if (fileUniqueId && r.fileUniqueId === fileUniqueId) {
-        return true;
-      }
-      // Ili po originalnom imenu fajla
-      if (r.originalFileName === originalFileName || r.fileName === originalFileName) {
-        return true;
-      }
-      return false;
-    });
-
-    if (existingRecording) {
-      console.log('❌ Duplicate recording found:', originalFileName);
-      return res.status(409).json({
-        error: 'Ovaj snimak već postoji u radnom nalogu',
-        fileName: originalFileName,
-        existingRecordingId: existingRecording._id
-      });
+    if (workOrder) {
+      console.log('Found matching work order:', workOrder._id);
+    } else {
+      console.log('No matching work order found - saving as unlinked recording');
     }
 
     // Upload na Cloudinary sa kompresijom
+    // Koristi workOrder ID ako postoji, inače koristi technician ID
     const cloudinaryResult = await uploadVoiceRecording(
       req.file.buffer,
-      workOrder._id,
+      workOrder ? workOrder._id : `tech_${technician._id}`,
       normalizedCustomerPhone
     );
 
-    // Dodaj voice recording u radni nalog
-    const voiceRecording = {
+    // Pripremi podatke za snimak
+    const recordingData = {
       url: cloudinaryResult.secure_url,
       fileName: req.file.originalname,
       originalFileName: originalFileName,
@@ -4556,16 +4547,55 @@ router.post('/voice-recordings/upload', auth, voiceUpload.single('audio'), async
       fileSize: req.file.size
     };
 
-    workOrder.voiceRecordings.push(voiceRecording);
-    await workOrder.save();
+    // UVEK sačuvaj u CallRecording kolekciju
+    const callRecording = new CallRecording({
+      technicianId: technician._id,
+      customerPhone: normalizedCustomerPhone,
+      recordedAt: new Date(recordedAt),
+      url: cloudinaryResult.secure_url,
+      fileName: req.file.originalname,
+      originalFileName: originalFileName,
+      fileUniqueId: fileUniqueId || null,
+      duration: duration ? parseInt(duration) : null,
+      fileSize: req.file.size,
+      workOrderId: workOrder ? workOrder._id : null,
+      workOrderInfo: workOrder ? {
+        municipality: workOrder.municipality,
+        address: workOrder.address,
+        date: workOrder.date,
+        userPhone: workOrder.userPhone,
+        type: workOrder.type
+      } : null
+    });
 
-    console.log('Voice recording added to work order successfully');
+    await callRecording.save();
+    console.log('CallRecording saved:', callRecording._id);
+
+    // Ako ima matching work order, dodaj i u WorkOrder.voiceRecordings
+    if (workOrder) {
+      // Proveri duplikat u work order-u
+      const existingInWorkOrder = workOrder.voiceRecordings.find(r => {
+        if (fileUniqueId && r.fileUniqueId === fileUniqueId) return true;
+        if (r.originalFileName === originalFileName || r.fileName === originalFileName) return true;
+        return false;
+      });
+
+      if (!existingInWorkOrder) {
+        workOrder.voiceRecordings.push(recordingData);
+        await workOrder.save();
+        console.log('Voice recording also added to work order');
+      }
+    }
 
     res.json({
       success: true,
-      message: 'Voice recording uspešno uploadovan i povezan sa radnim nalogom',
-      workOrderId: workOrder._id,
-      voiceRecording: voiceRecording
+      message: workOrder
+        ? 'Voice recording uspešno uploadovan i povezan sa radnim nalogom'
+        : 'Voice recording uspešno uploadovan (nije pronađen odgovarajući radni nalog)',
+      workOrderId: workOrder ? workOrder._id : null,
+      callRecordingId: callRecording._id,
+      linkedToWorkOrder: !!workOrder,
+      voiceRecording: recordingData
     });
 
   } catch (error) {
