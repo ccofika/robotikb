@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
 // Model za čuvanje SVIH snimaka poziva tehničara
+// Updated: 2026-01-11 - workOrderInfo is an embedded object, not a string
 // Snimci se čuvaju nezavisno od toga da li su povezani sa radnim nalogom
 const CallRecordingSchema = new Schema({
   // Tehničar koji je napravio snimak
