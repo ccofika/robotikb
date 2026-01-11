@@ -1448,9 +1448,10 @@ router.get('/:id/recordings', auth, async (req, res) => {
     }
 
     // Ako nema datuma, koristi današnji
-    const queryDate = date ? new Date(date) : new Date();
+    // Parsiraj datum kao lokalno vreme (Europe/Belgrade = UTC+1 ili UTC+2 za letnje)
+    const queryDate = date ? new Date(date + 'T00:00:00+01:00') : new Date();
 
-    // Kreiraj range za ceo dan (00:00:00 - 23:59:59)
+    // Kreiraj range za ceo dan u lokalnom vremenu
     const startOfDay = new Date(queryDate);
     startOfDay.setHours(0, 0, 0, 0);
 
@@ -1541,7 +1542,7 @@ router.get('/:id/recordings/dates', auth, async (req, res) => {
       {
         $group: {
           _id: {
-            $dateToString: { format: '%Y-%m-%d', date: '$recordedAt' }
+            $dateToString: { format: '%Y-%m-%d', date: '$recordedAt', timezone: 'Europe/Belgrade' }
           },
           count: { $sum: 1 },
           linkedCount: {

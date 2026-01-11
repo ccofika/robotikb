@@ -16,6 +16,7 @@ const FailedFinancialTransaction = require('../models/FailedFinancialTransaction
 const MunicipalityDiscountConfirmation = require('../models/MunicipalityDiscountConfirmation');
 const { uploadImage, deleteImage, uploadVoiceRecording, deleteVoiceRecording } = require('../config/cloudinary');
 const convert = require('heic-convert');
+const { parseBuffer } = require('music-metadata');
 const { logActivity } = require('../middleware/activityLogger');
 const { auth } = require('../middleware/auth');
 
@@ -4526,6 +4527,20 @@ router.post('/voice-recordings/upload', auth, voiceUpload.single('audio'), async
       console.log('No matching work order found - saving as unlinked recording');
     }
 
+    // Izvuci trajanje audio fajla ako nije poslato
+    let audioDuration = duration ? parseInt(duration) : null;
+    if (!audioDuration) {
+      try {
+        const metadata = await parseBuffer(req.file.buffer, { mimeType: req.file.mimetype });
+        if (metadata.format && metadata.format.duration) {
+          audioDuration = Math.round(metadata.format.duration);
+          console.log('Extracted audio duration:', audioDuration, 'seconds');
+        }
+      } catch (metadataError) {
+        console.log('Could not extract audio duration:', metadataError.message);
+      }
+    }
+
     // Upload na Cloudinary sa kompresijom
     // Koristi workOrder ID ako postoji, inače koristi technician ID
     const cloudinaryResult = await uploadVoiceRecording(
@@ -4541,7 +4556,7 @@ router.post('/voice-recordings/upload', auth, voiceUpload.single('audio'), async
       originalFileName: originalFileName,
       fileUniqueId: fileUniqueId || null,
       phoneNumber: normalizedCustomerPhone,
-      duration: duration ? parseInt(duration) : null,
+      duration: audioDuration,
       recordedAt: new Date(recordedAt),
       uploadedBy: technician._id,
       fileSize: req.file.size
@@ -4556,7 +4571,7 @@ router.post('/voice-recordings/upload', auth, voiceUpload.single('audio'), async
       fileName: req.file.originalname,
       originalFileName: originalFileName,
       fileUniqueId: fileUniqueId || null,
-      duration: duration ? parseInt(duration) : null,
+      duration: audioDuration,
       fileSize: req.file.size,
       workOrderId: workOrder ? workOrder._id : null,
       workOrderInfo: workOrder ? {

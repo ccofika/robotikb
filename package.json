@@ -36,6 +36,7 @@
     "mongoose": "^8.16.0",
     "morgan": "^1.10.0",
     "multer": "^2.0.0",
+    "music-metadata": "^11.10.5",
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.6",
