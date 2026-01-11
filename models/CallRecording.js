@@ -58,11 +58,14 @@ const CallRecordingSchema = new Schema({
   },
   // Keširane informacije o radnom nalogu (za brži prikaz bez join-a)
   workOrderInfo: {
-    municipality: String,
-    address: String,
-    date: Date,
-    userPhone: String,
-    type: String
+    type: new Schema({
+      municipality: String,
+      address: String,
+      date: Date,
+      userPhone: String,
+      type: String
+    }, { _id: false }),
+    default: null
   }
 }, {
   timestamps: true
