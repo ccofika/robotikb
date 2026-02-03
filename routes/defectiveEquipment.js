@@ -281,6 +281,82 @@ const express = require('express');
        }
      });
 
+     // PUT /api/defective-equipment/:id/restore - Vraćanje neispravne opreme u ispravnu opremu
+     router.put('/:id/restore', async (req, res) => {
+       try {
+         const { id } = req.params;
+         console.log(`🔄 Restoring defective equipment to available: ${id}`);
+
+         // Pronađi opremu
+         const equipment = await Equipment.findById(id);
+
+         if (!equipment) {
+           return res.status(404).json({
+             success: false,
+             message: 'Oprema nije pronađena'
+           });
+         }
+
+         // Debug: loguj status i lokaciju
+         console.log(`📋 Equipment status: "${equipment.status}", location: "${equipment.location}"`);
+
+         // Proveri da li je oprema zaista neispravna
+         // Oprema je neispravna ako je status='defective' ILI location='defective'
+         const isDefective = equipment.status === 'defective' || equipment.location === 'defective';
+
+         if (!isDefective) {
+           return res.status(400).json({
+             success: false,
+             message: `Oprema nije označena kao neispravna. Status: "${equipment.status}", Lokacija: "${equipment.location}"`
+           });
+         }
+
+         // Proveri da li već postoji ispravna oprema sa istim serijskim brojem
+         // (za slučaj da je serijski broj promenjen ili dupliciran)
+         const existingEquipment = await Equipment.findOne({
+           serialNumber: equipment.serialNumber,
+           _id: { $ne: equipment._id },
+           status: { $ne: 'defective' },
+           location: { $ne: 'defective' }
+         });
+
+         if (existingEquipment) {
+           return res.status(409).json({
+             success: false,
+             message: `Oprema sa serijskim brojem "${equipment.serialNumber}" već postoji u bazi ispravne opreme`
+           });
+         }
+
+         // Vrati opremu u ispravnu
+         equipment.status = 'available';
+         equipment.location = 'magacin';
+         equipment.removedAt = null;
+         equipment.assignedTo = null;
+         equipment.assignedToUser = null;
+
+         await equipment.save();
+
+         // Invalidate cache
+         invalidateDefectiveEquipmentCache();
+
+         console.log(`✅ Equipment ${equipment.serialNumber} restored to available`);
+
+         res.json({
+           success: true,
+           message: `Oprema "${equipment.category} - ${equipment.description}" (${equipment.serialNumber}) je uspešno vraćena u magacin`,
+           data: equipment
+         });
+
+       } catch (error) {
+         console.error('❌ Error restoring defective equipment:', error);
+         res.status(500).json({
+           success: false,
+           message: 'Greška pri vraćanju opreme',
+           error: error.message
+         });
+       }
+     });
+
      // GET /api/defective-equipment/:id - Dobijanje detalja pojedinačne neispravne opreme
      router.get('/:id', async (req, res) => {
        try {
