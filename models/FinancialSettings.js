@@ -38,6 +38,31 @@ const FinancialSettingsSchema = new Schema({
       type: Number,
       default: 0,
       min: 0
+    },
+    'Priključenje novog korisnika WiFi tehnologijom (postavljanje nosača antene, postavljanje i usmeravanje antene ka baznoj stanici sa postavljanjem napajanja za antenu, postavljanje rutera i jednog uređaja za televiziju) - ASTRA TELEKOM': {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    'Dodavanje drugog uređaja ili dorada - ASTRA TELEKOM': {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    'Demontaža postojeće opreme kod korisnika (po korisniku) - ASTRA TELEKOM': {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    'Intervencija kod korisnika - ASTRA TELEKOM': {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    'Priključenje korisnika GPON tehnologijom (povezivanje svih uređaja u okviru paketa) - ASTRA TELEKOM': {
+      type: Number,
+      default: 0,
+      min: 0
     }
   },
 
@@ -95,6 +120,31 @@ const FinancialSettingsSchema = new Schema({
         min: 0
       },
       'Nov korisnik': {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      'Priključenje novog korisnika WiFi tehnologijom (postavljanje nosača antene, postavljanje i usmeravanje antene ka baznoj stanici sa postavljanjem napajanja za antenu, postavljanje rutera i jednog uređaja za televiziju) - ASTRA TELEKOM': {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      'Dodavanje drugog uređaja ili dorada - ASTRA TELEKOM': {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      'Demontaža postojeće opreme kod korisnika (po korisniku) - ASTRA TELEKOM': {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      'Intervencija kod korisnika - ASTRA TELEKOM': {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      'Priključenje korisnika GPON tehnologijom (povezivanje svih uređaja u okviru paketa) - ASTRA TELEKOM': {
         type: Number,
         default: 0,
         min: 0

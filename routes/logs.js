@@ -2857,6 +2857,13 @@ function categorizeFinancialService(customerStatus) {
     ],
     'Novi korisnici': [
       'Nov korisnik'
+    ],
+    'ASTRA TELEKOM': [
+      'WiFi tehnologijom',
+      'Dodavanje drugog uređaja ili dorada',
+      'Demontaža postojeće opreme',
+      'Intervencija kod korisnika',
+      'GPON tehnologijom'
     ]
   };
 

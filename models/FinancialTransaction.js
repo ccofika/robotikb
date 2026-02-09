@@ -58,7 +58,12 @@ const FinancialTransactionSchema = new Schema({
       'Priključenje korisnika na GPON mrežu u zgradi (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme)',
       'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji sa montažnim radovima',
       'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji bez montažnih radova',
-      'Nov korisnik'
+      'Nov korisnik',
+      'Priključenje novog korisnika WiFi tehnologijom (postavljanje nosača antene, postavljanje i usmeravanje antene ka baznoj stanici sa postavljanjem napajanja za antenu, postavljanje rutera i jednog uređaja za televiziju) - ASTRA TELEKOM',
+      'Dodavanje drugog uređaja ili dorada - ASTRA TELEKOM',
+      'Demontaža postojeće opreme kod korisnika (po korisniku) - ASTRA TELEKOM',
+      'Intervencija kod korisnika - ASTRA TELEKOM',
+      'Priključenje korisnika GPON tehnologijom (povezivanje svih uređaja u okviru paketa) - ASTRA TELEKOM'
     ]
   },
 
