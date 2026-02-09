@@ -698,10 +698,62 @@ const imageUpload = multer({
 
 
 
+// GET - Dohvati filter opcije za Edit stranicu (distinct municipalities i technicians)
+router.get('/edit-filters', async (req, res) => {
+  try {
+    const [municipalities, technicianAgg] = await Promise.all([
+      WorkOrder.distinct('municipality'),
+      WorkOrder.aggregate([
+        { $match: { technicianId: { $ne: null } } },
+        {
+          $lookup: {
+            from: 'technicians',
+            localField: 'technicianId',
+            foreignField: '_id',
+            as: 'tech'
+          }
+        },
+        { $unwind: '$tech' },
+        { $group: { _id: '$tech._id', name: { $first: '$tech.name' } } },
+        { $sort: { name: 1 } }
+      ])
+    ]);
+
+    // Also get technician2 entries
+    const tech2Agg = await WorkOrder.aggregate([
+      { $match: { technician2Id: { $ne: null } } },
+      {
+        $lookup: {
+          from: 'technicians',
+          localField: 'technician2Id',
+          foreignField: '_id',
+          as: 'tech'
+        }
+      },
+      { $unwind: '$tech' },
+      { $group: { _id: '$tech._id', name: { $first: '$tech.name' } } }
+    ]);
+
+    // Merge and deduplicate technicians
+    const techMap = new Map();
+    technicianAgg.forEach(t => techMap.set(t._id.toString(), { _id: t._id, name: t.name }));
+    tech2Agg.forEach(t => techMap.set(t._id.toString(), { _id: t._id, name: t.name }));
+    const technicians = Array.from(techMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({
+      municipalities: municipalities.filter(Boolean).sort(),
+      technicians
+    });
+  } catch (error) {
+    console.error('Greška pri dohvatanju filter opcija:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju filter opcija' });
+  }
+});
+
 // GET - Dohvati sve radne naloge
 router.get('/', async (req, res) => {
   try {
-    const { recent, page, limit, search, status, municipality, technician, lastMonthOnly } = req.query;
+    const { recent, page, limit, search, status, municipality, technician } = req.query;
     const startTime = Date.now();
 
     // Server-side pagination support
@@ -711,13 +763,6 @@ router.get('/', async (req, res) => {
       const skip = (pageNum - 1) * limitNum;
 
       let query = {};
-
-      // Last month filter for Edit page
-      if (lastMonthOnly === 'true') {
-        const oneMonthAgo = new Date();
-        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-        query.date = { $gte: oneMonthAgo };
-      }
 
       // Search filter
       if (search) {
@@ -2820,6 +2865,68 @@ router.post('/:id/used-materials', auth, async (req, res) => {
         technicianId: existing ? existing.technicianId : technicianId
       };
     });
+
+    // Record material changes to adminEditLog if admin action
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'supervisor')) {
+      if (!workOrder.adminEditLog) workOrder.adminEditLog = [];
+      const techDoc = technicianId ? await Technician.findById(technicianId).select('name') : null;
+      const techName = techDoc?.name || 'Nepoznat';
+      const adminName = req.user.name || req.user.username || 'Admin';
+
+      // Log added/increased materials
+      for (const newMat of materials) {
+        const oldMat = oldMaterials.find(old => old.material.toString() === newMat.material.toString());
+        const oldQty = oldMat ? oldMat.quantity : 0;
+        const addedQty = newMat.quantity - oldQty;
+        if (addedQty > 0) {
+          const matDoc = await Material.findById(newMat.material);
+          const matName = matDoc?.type || 'Nepoznat materijal';
+          // Check if there's a previous 'material_removed' entry for same material - undo it
+          const removedIdx = workOrder.adminEditLog.findIndex(
+            log => log.action === 'material_removed' && log.materialType === matName
+          );
+          if (removedIdx !== -1) {
+            workOrder.adminEditLog.splice(removedIdx, 1);
+          } else {
+            workOrder.adminEditLog.push({
+              action: 'material_added',
+              materialType: matName,
+              materialQuantity: addedQty,
+              technicianName: techName,
+              technicianId: technicianId,
+              adminName,
+              timestamp: new Date()
+            });
+          }
+        }
+      }
+
+      // Log completely removed materials
+      for (const oldMat of oldMaterials) {
+        const stillExists = materials.find(mat => mat.material.toString() === oldMat.material.toString());
+        if (!stillExists) {
+          const matDoc = await Material.findById(oldMat.material);
+          const matName = matDoc?.type || 'Nepoznat materijal';
+          // Check if there's a previous 'material_added' entry for same material - undo it
+          const addedIdx = workOrder.adminEditLog.findIndex(
+            log => log.action === 'material_added' && log.materialType === matName
+          );
+          if (addedIdx !== -1) {
+            workOrder.adminEditLog.splice(addedIdx, 1);
+          } else {
+            workOrder.adminEditLog.push({
+              action: 'material_removed',
+              materialType: matName,
+              materialQuantity: oldMat.quantity,
+              technicianName: techName,
+              technicianId: technicianId,
+              adminName,
+              timestamp: new Date()
+            });
+          }
+        }
+      }
+    }
 
     const updatedWorkOrder = await workOrder.save();
     

@@ -182,6 +182,29 @@ const WorkOrderSchema = new Schema({
       type: String
     }
   }],
+  // Admin edit log - tracks equipment changes made through the edit page
+  adminEditLog: [{
+    action: {
+      type: String,
+      enum: ['added', 'removed', 'material_added', 'material_removed'],
+      required: true
+    },
+    equipmentCategory: String,
+    equipmentDescription: String,
+    equipmentSerialNumber: String,
+    materialType: String,
+    materialQuantity: Number,
+    technicianName: String,
+    technicianId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Technician'
+    },
+    adminName: String,
+    timestamp: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   // Voice recordings from calls
   voiceRecordings: [{
     url: {

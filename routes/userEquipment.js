@@ -391,7 +391,32 @@ router.post('/', auth, async (req, res) => {
     if (!equipmentExists) {
       workOrder.equipment.push(equipment._id);
     }
-    
+
+    // Record to adminEditLog if admin action
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'supervisor')) {
+      if (!workOrder.adminEditLog) workOrder.adminEditLog = [];
+      const serialNum = (equipment.serialNumber || '').toLowerCase();
+      // If there's a previous 'removed' entry for this equipment, just remove it (undo the remove)
+      const removedIdx = workOrder.adminEditLog.findIndex(
+        log => log.action === 'removed' && (log.equipmentSerialNumber || '').toLowerCase() === serialNum
+      );
+      if (removedIdx !== -1) {
+        workOrder.adminEditLog.splice(removedIdx, 1);
+      } else {
+        const tech = await Technician.findById(technicianId).select('name');
+        workOrder.adminEditLog.push({
+          action: 'added',
+          equipmentCategory: equipment.category,
+          equipmentDescription: equipment.description,
+          equipmentSerialNumber: equipment.serialNumber,
+          technicianName: tech?.name || 'Nepoznat',
+          technicianId: technicianId,
+          adminName: req.user.name || req.user.username || 'Admin',
+          timestamp: new Date()
+        });
+      }
+    }
+
     await workOrder.save();
     console.log('Work order updated with installed equipment:', workOrder);
 
@@ -542,14 +567,39 @@ router.put('/:id/remove', auth, async (req, res) => {
       const equipmentIndex = workOrder.equipment.findIndex(
         eq => eq.toString() === equipmentId.toString()
       );
-      
+
       if (equipmentIndex !== -1) {
         workOrder.equipment.splice(equipmentIndex, 1);
       }
     }
-    
+
+    // Record to adminEditLog if admin action
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.role === 'supervisor')) {
+      if (!workOrder.adminEditLog) workOrder.adminEditLog = [];
+      const serialNum = (equipment.serialNumber || '').toLowerCase();
+      // If there's a previous 'added' entry for this equipment, just remove it (undo the add)
+      const addedIdx = workOrder.adminEditLog.findIndex(
+        log => log.action === 'added' && (log.equipmentSerialNumber || '').toLowerCase() === serialNum
+      );
+      if (addedIdx !== -1) {
+        workOrder.adminEditLog.splice(addedIdx, 1);
+      } else {
+        const tech = await Technician.findById(technicianId).select('name');
+        workOrder.adminEditLog.push({
+          action: 'removed',
+          equipmentCategory: equipment.category,
+          equipmentDescription: equipment.description,
+          equipmentSerialNumber: equipment.serialNumber,
+          technicianName: tech?.name || 'Nepoznat',
+          technicianId: technicianId,
+          adminName: req.user.name || req.user.username || 'Admin',
+          timestamp: new Date()
+        });
+      }
+    }
+
     await workOrder.save();
-    
+
     // Ažuriranje WorkOrderEvidence sa uklonjenim uređajem
     try {
       const evidence = await WorkOrderEvidence.findOne({ workOrderId });
