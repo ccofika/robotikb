@@ -53,7 +53,8 @@ const VALID_CATEGORIES = [
   'STB', 'Cam Modul', 'Hybrid', 'OTT tv po tvom', 'Smart Card',
   'HFC Modem', 'GPON Modem', 'ATV', 'PON',
   'M-Cam Modul', 'M-Smart Card', 'M-HFC Modem', 'M-GPON Modem',
-  'M-ATV', 'M-STB', 'M-OTT tv po tvom', 'M-Hybrid', 'M-PON'
+  'M-ATV', 'M-STB', 'M-OTT tv po tvom', 'M-Hybrid', 'M-PON',
+  'Astra Modem', 'Astra Stb', 'Astra Antena', 'Astra Ruter', 'Astra Poe napajanje'
 ];
 
 // Funkcija za normalizaciju kategorija - mapiranje starih naziva na nove standardizovane
@@ -161,7 +162,15 @@ const normalizeCategory = (category) => {
     'm-hibrid': 'M-Hybrid',
 
     'm pon': 'M-PON',
-    'm-pon': 'M-PON'
+    'm-pon': 'M-PON',
+
+    // Astra kategorije
+    'astra modem': 'Astra Modem',
+    'astra stb': 'Astra Stb',
+    'astra antena': 'Astra Antena',
+    'astra ruter': 'Astra Ruter',
+    'astra poe napajanje': 'Astra Poe napajanje',
+    'astra poe': 'Astra Poe napajanje'
   };
 
   // Direktno mapiranje
@@ -174,7 +183,8 @@ const normalizeCategory = (category) => {
     'STB', 'Cam Modul', 'Hybrid', 'OTT tv po tvom', 'Smart Card',
     'HFC Modem', 'GPON Modem', 'ATV', 'PON',
     'M-Cam Modul', 'M-Smart Card', 'M-HFC Modem', 'M-GPON Modem',
-    'M-ATV', 'M-STB', 'M-OTT tv po tvom', 'M-Hybrid', 'M-PON'
+    'M-ATV', 'M-STB', 'M-OTT tv po tvom', 'M-Hybrid', 'M-PON',
+    'Astra Modem', 'Astra Stb', 'Astra Antena', 'Astra Ruter', 'Astra Poe napajanje'
   ];
 
   const matchedCategory = validCategories.find(
