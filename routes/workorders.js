@@ -2211,6 +2211,11 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
     const oldStatus = workOrder.status;
     const oldComment = workOrder.comment;
     
+    // Sačuvaj email korisnika ako je poslat
+    if (customerEmail !== undefined) {
+      workOrder.customerEmail = customerEmail.trim();
+    }
+
     // Tehničar može da ažurira samo komentar, status i vreme odlaganja
     if (comment !== undefined && comment !== oldComment) {
       workOrder.comment = comment;

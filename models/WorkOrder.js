@@ -108,6 +108,9 @@ const WorkOrderSchema = new Schema({
   userPhone: {
     type: String
   },
+  customerEmail: {
+    type: String
+  },
   tisJobId: {
     type: String
   },
