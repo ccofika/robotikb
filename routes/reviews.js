@@ -48,8 +48,9 @@ router.post('/webhook', async (req, res) => {
       return res.status(400).json({ error: 'Nedostaju obavezna polja' });
     }
 
-    // Pronađi radni nalog po tisJobId (referentni broj)
-    const workOrder = await WorkOrder.findOne({ tisJobId: referentniBroj }).lean();
+    // Pronađi poslednji radni nalog po tisJobId (referentni broj)
+    // Sortiramo po updatedAt desc da dobijemo poslednji radni nalog ako ih ima više sa istim tisJobId
+    const workOrder = await WorkOrder.findOne({ tisJobId: referentniBroj }).sort({ updatedAt: -1 }).lean();
     if (!workOrder) {
       console.log('[Reviews Webhook] Radni nalog nije pronađen za referentni broj:', referentniBroj);
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
@@ -58,11 +59,11 @@ router.post('/webhook', async (req, res) => {
     const technicianId = workOrder.technicianId;
     const workOrderId = workOrder._id;
 
-    // Provera za duplikat
-    const existingReview = await Review.findOne({ workOrderId }).lean();
+    // Provera za duplikat po tisJobId (jer može biti više radnih naloga sa istim tisJobId)
+    const existingReview = await Review.findOne({ tisJobId: referentniBroj }).lean();
     if (existingReview) {
-      console.log('[Reviews Webhook] Review već postoji za radni nalog:', workOrderId);
-      return res.status(409).json({ error: 'Review za ovaj radni nalog već postoji' });
+      console.log('[Reviews Webhook] Review već postoji za tisJobId:', referentniBroj);
+      return res.status(409).json({ error: 'Review za ovaj referentni broj već postoji' });
     }
 
     // Dohvati ime korisnika iz WorkOrderEvidence
