@@ -732,27 +732,28 @@ router.post('/:id/equipment', auth, logActivity('technicians', 'equipment_assign
         // Send email asynchronously (non-blocking)
         setImmediate(async () => {
           try {
-            const emailResult = await emailService.sendEmailToTechnician(
-              id,
-              'equipmentAssignment',
-              {
-                technicianName: technician.name,
-                assignmentType: 'assign',
-                equipment: assignedEquipment.map(eq => ({
-                  category: eq.category,
-                  description: eq.description,
-                  serialNumber: eq.serialNumber,
-                  status: eq.status
-                })),
-                ...inventorySummaryData
-              }
-            );
-
-            if (emailResult.success) {
-              console.log(`✅ Email sent to technician ${technician.name} about equipment assignment`);
-            } else {
-              console.error('❌ Failed to send email notification:', emailResult.error);
-            }
+            // EMAIL DISABLED - komentarisano jer ne želimo slanje mejlova tehničarima
+            // const emailResult = await emailService.sendEmailToTechnician(
+            //   id,
+            //   'equipmentAssignment',
+            //   {
+            //     technicianName: technician.name,
+            //     assignmentType: 'assign',
+            //     equipment: assignedEquipment.map(eq => ({
+            //       category: eq.category,
+            //       description: eq.description,
+            //       serialNumber: eq.serialNumber,
+            //       status: eq.status
+            //     })),
+            //     ...inventorySummaryData
+            //   }
+            // );
+            //
+            // if (emailResult.success) {
+            //   console.log(`✅ Email sent to technician ${technician.name} about equipment assignment`);
+            // } else {
+            //   console.error('❌ Failed to send email notification:', emailResult.error);
+            // }
 
             // DODATO: Kreiranje Android notifikacije za dodjeljivanje opreme
             const androidNotificationService = require('../services/androidNotificationService');
@@ -892,26 +893,27 @@ router.post('/:id/equipment/return', auth, logActivity('technicians', 'equipment
         // Send email asynchronously (non-blocking)
         setImmediate(async () => {
           try {
-            const emailResult = await emailService.sendEmailToTechnician(
-              id,
-              'equipmentUnassignment',
-              {
-                technicianName: technician.name,
-                equipment: equipmentToReturn.map(item => ({
-                  category: item.category,
-                  description: item.description,
-                  serialNumber: item.serialNumber,
-                  status: item.status
-                })),
-                ...inventorySummaryData
-              }
-            );
-
-            if (emailResult.success) {
-              console.log(`✅ Unassignment email sent to technician ${technician.name} about ${equipmentToReturn.length} returned equipment items`);
-            } else {
-              console.error('❌ Failed to send unassignment email notification:', emailResult.error);
-            }
+            // EMAIL DISABLED - komentarisano jer ne želimo slanje mejlova tehničarima
+            // const emailResult = await emailService.sendEmailToTechnician(
+            //   id,
+            //   'equipmentUnassignment',
+            //   {
+            //     technicianName: technician.name,
+            //     equipment: equipmentToReturn.map(item => ({
+            //       category: item.category,
+            //       description: item.description,
+            //       serialNumber: item.serialNumber,
+            //       status: item.status
+            //     })),
+            //     ...inventorySummaryData
+            //   }
+            // );
+            //
+            // if (emailResult.success) {
+            //   console.log(`✅ Unassignment email sent to technician ${technician.name} about ${equipmentToReturn.length} returned equipment items`);
+            // } else {
+            //   console.error('❌ Failed to send unassignment email notification:', emailResult.error);
+            // }
 
             // DODATO: Kreiranje Android notifikacije za uklanjanje opreme
             const androidNotificationService = require('../services/androidNotificationService');

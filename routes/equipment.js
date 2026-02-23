@@ -869,27 +869,28 @@ router.put('/:id', auth, logActivity('equipment', 'equipment_edit', {
           // Send email asynchronously (non-blocking)
           setImmediate(async () => {
             try {
-              const emailResult = await emailService.sendEmailToTechnician(
-                technicianId,
-                'equipmentAssignment',
-                {
-                  technicianName: technician.name,
-                  assignmentType: 'edit',
-                  equipment: [{
-                    category: equipment.category,
-                    description: equipment.description,
-                    serialNumber: equipment.serialNumber,
-                    status: equipment.status
-                  }],
-                  ...inventorySummaryData
-                }
-              );
-
-              if (emailResult.success) {
-                console.log(`✅ Email sent to technician ${technician.name} about equipment location change`);
-              } else {
-                console.error('❌ Failed to send email notification:', emailResult.error);
-              }
+              // EMAIL DISABLED - komentarisano jer ne želimo slanje mejlova tehničarima
+              // const emailResult = await emailService.sendEmailToTechnician(
+              //   technicianId,
+              //   'equipmentAssignment',
+              //   {
+              //     technicianName: technician.name,
+              //     assignmentType: 'edit',
+              //     equipment: [{
+              //       category: equipment.category,
+              //       description: equipment.description,
+              //       serialNumber: equipment.serialNumber,
+              //       status: equipment.status
+              //     }],
+              //     ...inventorySummaryData
+              //   }
+              // );
+              //
+              // if (emailResult.success) {
+              //   console.log(`✅ Email sent to technician ${technician.name} about equipment location change`);
+              // } else {
+              //   console.error('❌ Failed to send email notification:', emailResult.error);
+              // }
 
               // DODATO: Kreiranje Android notifikacije za dodjeljivanje opreme (pojedinačno)
               const androidNotificationService = require('../services/androidNotificationService');
