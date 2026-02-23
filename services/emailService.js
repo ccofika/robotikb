@@ -124,6 +124,40 @@ class EmailService {
       };
     }
   }
+  // Slanje email-a direktno na email adresu (za korisničku anketu)
+  async sendEmailToAddress(email, emailType, data) {
+    try {
+      const template = createEmailTemplate(emailType, data);
+
+      if (!template) {
+        throw new Error('Nepoznat tip email template-a');
+      }
+
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject: template.subject,
+        html: template.html
+      };
+
+      const result = await transporter.sendMail(mailOptions);
+
+      console.log(`[ReviewEmail] Email ankete poslat na ${email}:`, result.messageId);
+
+      return {
+        success: true,
+        messageId: result.messageId,
+        recipient: email
+      };
+
+    } catch (error) {
+      console.error('[ReviewEmail] Greška pri slanju email-a ankete:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
 }
 
 module.exports = new EmailService();

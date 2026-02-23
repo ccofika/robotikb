@@ -449,6 +449,55 @@ const createEmailTemplate = (type, data) => {
           </div>
         </div>
       `
+    },
+
+    reviewSurvey: {
+      subject: 'Vaše mišljenje nam je važno – Ocena instalacije Robotik montaža',
+      html: `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 40px 30px; text-align: center; border-radius: 8px 8px 0 0;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">
+              Robotik montaža
+            </h1>
+            <p style="color: #bfdbfe; margin: 8px 0 0 0; font-size: 14px;">
+              Vaše mišljenje nam je važno
+            </p>
+          </div>
+
+          <!-- Body -->
+          <div style="padding: 30px; border: 1px solid #e5e7eb; border-top: none;">
+            <p style="font-size: 16px; color: #1f2937; margin: 0 0 16px 0;">
+              Poštovani/a <strong>${data.customerName || 'korisniče'}</strong>,
+            </p>
+            <p style="font-size: 14px; color: #4b5563; line-height: 1.6; margin: 0 0 16px 0;">
+              Hvala Vam što ste odabrali kablovske servise Telekoma Srbije. Naš cilj je da Vam pružimo vrhunsko iskustvo, pa bismo voleli da čujemo Vaše utiske o nedavnoj instalaciji koju su obavili naši tehničari.
+            </p>
+            <p style="font-size: 14px; color: #4b5563; line-height: 1.6; margin: 0 0 24px 0;">
+              Vaši odgovori nam pomažu da budemo još bolji.
+            </p>
+
+            <!-- CTA Button -->
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${data.surveyUrl}"
+                 style="display: inline-block; background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 700; letter-spacing: 0.5px;">
+                ZAPOČNI ANKETU
+              </a>
+            </div>
+
+            <p style="font-size: 13px; color: #9ca3af; text-align: center; margin: 0;">
+              Popunjavanje traje manje od 2 minuta.
+            </p>
+          </div>
+
+          <!-- Footer -->
+          <div style="padding: 20px 30px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; text-align: center;">
+            <p style="font-size: 12px; color: #9ca3af; margin: 0;">
+              Robotik montaža • Ovaj email je automatski generisan
+            </p>
+          </div>
+        </div>
+      `
     }
   };
 

@@ -50,6 +50,11 @@ const WorkOrderEvidenceSchema = new Schema({
     type: String
   },
 
+  // Email korisnika (za slanje ankete nakon verifikacije)
+  customerEmail: {
+    type: String
+  },
+
   // Podaci o lokaciji
   municipality: {
     type: String,

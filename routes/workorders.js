@@ -2181,7 +2181,7 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
 }), async (req, res) => {
   try {
     const { id } = req.params;
-    const { comment, status, postponeDate, postponeTime, postponeComment, cancelComment, technicianId } = req.body;
+    const { comment, status, postponeDate, postponeTime, postponeComment, cancelComment, technicianId, customerEmail } = req.body;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
@@ -2397,6 +2397,11 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
       // Dodeli ime tehničara ako postoji
       if (technician) {
         evidenceUpdateData.technician1 = technician.name;
+      }
+
+      // Sačuvaj email korisnika za anketu
+      if (customerEmail && customerEmail.trim() !== '') {
+        evidenceUpdateData.customerEmail = customerEmail.trim();
       }
 
       await updateWorkOrderEvidence(updatedWorkOrder._id, evidenceUpdateData);
@@ -2640,15 +2645,55 @@ router.put('/:id/verify', auth, logActivity('workorders', 'workorder_edit', {
       console.log('Work order not ready for financial calculation - Status:', updatedWorkOrder?.status, 'Verified:', updatedWorkOrder?.verified);
     }
 
-    // Get customer status from WorkOrderEvidence for logging
+    // Get customer status and email from WorkOrderEvidence for logging and review email
     let customerStatus = 'Nije naveden';
+    let customerEmail = null;
+    let customerName = null;
     try {
-      const evidence = await WorkOrderEvidence.findOne({ workOrderId: id }).select('customerStatus').lean();
-      if (evidence && evidence.customerStatus) {
-        customerStatus = evidence.customerStatus;
+      const evidence = await WorkOrderEvidence.findOne({ workOrderId: id }).select('customerStatus customerEmail customerName').lean();
+      if (evidence) {
+        if (evidence.customerStatus) {
+          customerStatus = evidence.customerStatus;
+        }
+        customerEmail = evidence.customerEmail;
+        customerName = evidence.customerName;
       }
     } catch (err) {
       console.error('Error fetching customer status:', err);
+    }
+
+    // Slanje ankete korisniku ako postoji email
+    if (customerEmail) {
+      try {
+        const emailService = require('../services/emailService');
+
+        // Napravi survey URL sa pre-filled parametrima
+        const surveyBaseUrl = process.env.REVIEW_SURVEY_URL || '';
+        const technicianId = updatedWorkOrder.technicianId;
+        let technicianName = '';
+        if (technicianId) {
+          const tech = await Technician.findById(technicianId).select('name').lean();
+          if (tech) technicianName = tech.name;
+        }
+
+        // Google Forms pre-fill format: entry.XXXXX=value
+        const surveyUrl = surveyBaseUrl
+          ? `${surveyBaseUrl}&entry.technicianId=${technicianId || ''}&entry.technicianName=${encodeURIComponent(technicianName)}&entry.workOrderId=${id}&entry.tisJobId=${updatedWorkOrder.tisJobId || ''}`
+          : '';
+
+        if (surveyUrl) {
+          const emailResult = await emailService.sendEmailToAddress(customerEmail, 'reviewSurvey', {
+            customerName: customerName || 'korisniče',
+            surveyUrl
+          });
+          console.log('[ReviewEmail] Rezultat slanja ankete:', emailResult.success ? 'Uspešno' : emailResult.error);
+        } else {
+          console.log('[ReviewEmail] REVIEW_SURVEY_URL nije konfigurisan - email ankete nije poslat');
+        }
+      } catch (emailError) {
+        console.error('[ReviewEmail] Greška pri slanju email-a ankete:', emailError);
+        // Ne prekidamo proces zbog greške u slanju email-a
+      }
     }
 
     res.json({

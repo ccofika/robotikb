@@ -80,7 +80,44 @@ const TechnicianSchema = new Schema({
   pushNotificationsEnabled: {
     type: Boolean,
     default: true
-  }
+  },
+  // Status aktivnosti tehničara
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  // Datum do kada je zaposlen (istek ugovora)
+  employedUntil: {
+    type: Date,
+    default: null
+  },
+  // Dokumentacija tehničara (ugovori, sertifikati, lekarsko uverenje, itd.)
+  documents: [{
+    name: {
+      type: String,
+      required: true
+    },
+    url: {
+      type: String,
+      required: true
+    },
+    publicId: {
+      type: String,
+      required: true
+    },
+    fileType: {
+      type: String,
+      default: ''
+    },
+    fileSize: {
+      type: Number,
+      default: 0
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }]
 }, { timestamps: true });
 
 module.exports = mongoose.model('Technician', TechnicianSchema); 

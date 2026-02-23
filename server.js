@@ -226,6 +226,7 @@ const aiTechnicianAnalysisRoutes = require('./routes/aiTechnicianAnalysis');
 const updatesRoutes = require('./routes/updates');
 const apkRoutes = require('./routes/apk');
 const gpsRoutes = require('./routes/gps');
+const reviewsRoutes = require('./routes/reviews');
 
 // Definisanje ruta
 app.use('/api/auth', authRoutes);
@@ -249,6 +250,7 @@ app.use('/api/ai-technician-analysis', aiTechnicianAnalysisRoutes);
 app.use('/api/updates', updatesRoutes);
 app.use('/api/apk', apkRoutes);
 app.use('/api/gps', gpsRoutes);
+app.use('/api/reviews', reviewsRoutes);
 
 // Error logging middleware - dodato za Backend Logs
 app.use(errorLogger);

@@ -234,6 +234,79 @@ async function checkVehicleRegistrations() {
   }
 }
 
+// Funkcija za proveru tehničara sa istekajućim ugovorom o zaposlenju
+async function checkTechnicianEmployments() {
+  try {
+    const currentTime = new Date();
+    const thirtyDaysFromNow = new Date(currentTime.getTime() + (30 * 24 * 60 * 60 * 1000));
+    const tenDaysFromNow = new Date(currentTime.getTime() + (10 * 24 * 60 * 60 * 1000));
+
+    // Pronađi aktivne tehničare sa ugovorom koji ističe u narednih 30 dana
+    const techsExpiringIn30Days = await Technician.find({
+      isActive: true,
+      employedUntil: {
+        $gte: currentTime,
+        $lte: thirtyDaysFromNow
+      }
+    });
+
+    // Pronađi aktivne tehničare sa ugovorom koji ističe u narednih 10 dana
+    const techsExpiringIn10Days = await Technician.find({
+      isActive: true,
+      employedUntil: {
+        $gte: currentTime,
+        $lte: tenDaysFromNow
+      }
+    });
+
+    if (techsExpiringIn30Days.length > 0 || techsExpiringIn10Days.length > 0) {
+      // Pronađi sve admin korisnike za slanje notifikacija
+      const adminUsers = await Technician.find({ isAdmin: true });
+
+      if (adminUsers.length > 0) {
+        // Kreiraj notifikacije za tehničare sa ugovorom koji ističe u narednih 10 dana (visoki prioritet)
+        for (const tech of techsExpiringIn10Days) {
+          for (const adminUser of adminUsers) {
+            try {
+              await createNotification('technician_employment_expiry', {
+                technicianId: tech._id,
+                technicianName: tech.name,
+                expiryDate: tech.employedUntil,
+                recipientId: adminUser._id
+              });
+            } catch (notificationError) {
+              console.error(`Greška pri kreiranju notifikacije za tehničara ${tech.name}:`, notificationError);
+            }
+          }
+        }
+
+        // Kreiraj notifikacije za tehničare sa ugovorom koji ističe u narednih 30 dana (srednji prioritet)
+        for (const tech of techsExpiringIn30Days) {
+          // Proveri da li tehničar nije već pokriven u 10-dnevnoj proveri
+          const isAlreadyCovered = techsExpiringIn10Days.some(t => t._id.toString() === tech._id.toString());
+
+          if (!isAlreadyCovered) {
+            for (const adminUser of adminUsers) {
+              try {
+                await createNotification('technician_employment_expiry', {
+                  technicianId: tech._id,
+                  technicianName: tech.name,
+                  expiryDate: tech.employedUntil,
+                  recipientId: adminUser._id
+                });
+              } catch (notificationError) {
+                console.error(`Greška pri kreiranju notifikacije za tehničara ${tech.name}:`, notificationError);
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Greška pri proveri ugovora tehničara:', error);
+  }
+}
+
 // Pokretanje scheduler-a
 function startWorkOrderScheduler() {
   console.log('Pokretanje Work Order Scheduler-a...');
@@ -244,9 +317,10 @@ function startWorkOrderScheduler() {
     await checkOverdueWorkOrders();
   });
   
-  // Proveri vozila sa istekajućom registracijom jednom dnevno u 9:00 ujutru
+  // Proveri vozila sa istekajućom registracijom i ugovore tehničara jednom dnevno u 9:00 ujutru
   cron.schedule('0 9 * * *', async () => {
     await checkVehicleRegistrations();
+    await checkTechnicianEmployments();
   });
   
   console.log('Work Order Scheduler je pokrenut - proverava odložene i overdue radne naloge svakog sata');

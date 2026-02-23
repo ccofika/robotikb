@@ -206,6 +206,77 @@ const deleteServiceInvoice = async (publicId) => {
   }
 };
 
+// Funkcija za upload dokumenata tehničara (PDF, Word, slike, itd.)
+const uploadTechnicianDocument = async (fileBuffer, technicianId, originalName) => {
+  try {
+    // Određivanje resource_type na osnovu ekstenzije
+    const ext = originalName.split('.').pop().toLowerCase();
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+    const isImage = imageExts.includes(ext);
+
+    // Čisti ime fajla ali ZADRŽAVA ekstenziju za raw fajlove
+    const cleanBaseName = originalName.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9-_]/g, '_');
+
+    return new Promise((resolve, reject) => {
+      const uploadOptions = {
+        folder: 'technician-documents',
+        // Za raw fajlove (PDF, Word, Excel) - zadrži ekstenziju u public_id
+        // jer Cloudinary koristi public_id za URL, bez ekstenzije browser ne zna tip fajla
+        public_id: isImage
+          ? `tech_${technicianId}_${Date.now()}_${cleanBaseName}`
+          : `tech_${technicianId}_${Date.now()}_${cleanBaseName}.${ext}`,
+        resource_type: isImage ? 'image' : 'raw',
+        access_mode: 'public'
+      };
+
+      // Dodaj transformacije samo za slike
+      if (isImage) {
+        uploadOptions.transformation = [
+          {
+            width: 1200,
+            height: 1200,
+            crop: 'limit',
+            quality: 'auto:good',
+            format: 'webp'
+          }
+        ];
+      }
+
+      const uploadStream = cloudinary.uploader.upload_stream(
+        uploadOptions,
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary document upload greška:', error);
+            reject(error);
+          } else {
+            console.log('Cloudinary document upload uspešan:', result.secure_url);
+            resolve(result);
+          }
+        }
+      );
+
+      uploadStream.end(fileBuffer);
+    });
+  } catch (error) {
+    console.error('Greška pri upload-u dokumenta na Cloudinary:', error);
+    throw error;
+  }
+};
+
+// Funkcija za brisanje dokumenta tehničara
+const deleteTechnicianDocument = async (publicId, resourceType = 'raw') => {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: resourceType
+    });
+    console.log('Cloudinary document delete result:', result);
+    return result;
+  } catch (error) {
+    console.error('Greška pri brisanju dokumenta sa Cloudinary:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   cloudinary,
   uploadImage,
@@ -215,5 +286,7 @@ module.exports = {
   uploadAPK,
   deleteAPK,
   uploadServiceInvoice,
-  deleteServiceInvoice
+  deleteServiceInvoice,
+  uploadTechnicianDocument,
+  deleteTechnicianDocument
 }; 

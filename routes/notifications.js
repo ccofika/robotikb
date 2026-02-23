@@ -14,6 +14,7 @@ router.get('/', auth, async (req, res) => {
     .populate('technicianId', 'name')
     .populate('workOrderId', 'tisJobId jobId')
     .populate('vehicleId', 'name licensePlate')
+    .populate('employmentTechnicianId', 'name')
     .sort({ createdAt: -1 })
     .limit(50); // Limit to latest 50 notifications
     
@@ -37,9 +38,9 @@ router.get('/', auth, async (req, res) => {
       
       // User info
       user: {
-        name: notification.technicianName || (notification.createdBy?.name) || 'System',
-        fallback: notification.technicianName ? 
-          notification.technicianName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) :
+        name: notification.technicianName || notification.employmentTechnicianName || (notification.createdBy?.name) || 'Sistem',
+        fallback: (notification.technicianName || notification.employmentTechnicianName) ?
+          (notification.technicianName || notification.employmentTechnicianName).split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) :
           'S'
       },
       
@@ -59,6 +60,15 @@ router.get('/', auth, async (req, res) => {
       material: notification.materialName ? {
         name: notification.materialName,
         anomalyType: notification.anomalyType
+      } : null,
+
+      technician: notification.employmentTechnicianId ? {
+        id: notification.employmentTechnicianId._id,
+        name: notification.employmentTechnicianId.name || notification.employmentTechnicianName,
+        expiryDate: notification.employmentExpiryDate
+      } : notification.employmentTechnicianName ? {
+        name: notification.employmentTechnicianName,
+        expiryDate: notification.employmentExpiryDate
       } : null
     }));
 
@@ -271,7 +281,16 @@ async function createNotification(type, data) {
           data.recipientId
         );
         break;
-        
+
+      case 'technician_employment_expiry':
+        notification = await Notification.createTechnicianEmploymentExpiry(
+          data.technicianId,
+          data.technicianName,
+          data.expiryDate,
+          data.recipientId
+        );
+        break;
+
       default:
         throw new Error('Nepoznat tip notifikacije');
     }

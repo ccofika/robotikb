@@ -13,9 +13,11 @@ const NotificationSchema = new mongoose.Schema({
   type: {
     type: String,
     enum: [
-      'work_order_verification',    // Novi radni nalog za verifikaciju
-      'material_anomaly',          // Nova anomalija za validaciju materijala  
-      'vehicle_registration_expiry' // Isticanje registracije vozila
+      'work_order_verification',       // Novi radni nalog za verifikaciju
+      'material_anomaly',              // Nova anomalija za validaciju materijala
+      'vehicle_registration_expiry',   // Isticanje registracije vozila
+      'technician_employment_expiry',  // Isticanje ugovora tehničara
+      'low_review_rating'              // Loša ocena korisnika
     ],
     required: true,
   },
@@ -92,7 +94,31 @@ const NotificationSchema = new mongoose.Schema({
   expiryDate: {
     type: Date,
   },
-  
+
+  // Technician Employment
+  employmentTechnicianId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Technician',
+  },
+  employmentTechnicianName: {
+    type: String,
+  },
+  employmentExpiryDate: {
+    type: Date,
+  },
+
+  // Review Rating
+  reviewId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Review',
+  },
+  reviewRating: {
+    type: Number,
+  },
+  customerName: {
+    type: String,
+  },
+
   // Metadata
   readAt: {
     type: Date,
@@ -174,6 +200,40 @@ NotificationSchema.statics.createVehicleRegistrationExpiry = function(vehicleId,
     vehicleName,
     licensePlate,
     expiryDate
+  });
+};
+
+// Static method to create technician employment expiry notification
+NotificationSchema.statics.createTechnicianEmploymentExpiry = function(technicianId, technicianName, expiryDate, recipientId) {
+  return this.create({
+    title: 'Isticanje ugovora tehničara',
+    message: `Ugovor tehničara "${technicianName}" ističe ${new Date(expiryDate).toLocaleDateString('sr-RS')}.`,
+    type: 'technician_employment_expiry',
+    priority: 'high',
+    recipientId,
+    targetPage: '/technicians',
+    targetId: technicianId.toString(),
+    employmentTechnicianId: technicianId,
+    employmentTechnicianName: technicianName,
+    employmentExpiryDate: expiryDate
+  });
+};
+
+// Static method to create low review rating notification
+NotificationSchema.statics.createLowReviewRating = function(reviewId, technicianId, technicianName, customerName, rating, recipientId) {
+  return this.create({
+    title: 'Loša ocena korisnika',
+    message: `Korisnik "${customerName}" je dao ocenu ${rating}/5 tehničaru ${technicianName}.`,
+    type: 'low_review_rating',
+    priority: 'high',
+    recipientId,
+    targetPage: '/technicians',
+    targetId: technicianId.toString(),
+    reviewId,
+    technicianId,
+    technicianName,
+    reviewRating: rating,
+    customerName
   });
 };
 

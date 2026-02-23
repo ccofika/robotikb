@@ -4,8 +4,9 @@ const bcrypt = require('bcrypt');
 const mongoose = require('mongoose');
 const multer = require('multer');
 const jwt = require('jsonwebtoken');
+const axios = require('axios');
 const { Technician, Equipment, Material, BasicEquipment, CallRecording } = require('../models');
-const { uploadImage } = require('../config/cloudinary');
+const { cloudinary, uploadImage, uploadTechnicianDocument, deleteTechnicianDocument } = require('../config/cloudinary');
 const emailService = require('../services/emailService');
 const { createInventorySummary } = require('../utils/emailTemplates');
 const { logActivity } = require('../middleware/activityLogger');
@@ -285,7 +286,7 @@ router.put('/:id', auth, logActivity('technicians', 'technician_edit', {
 }), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, password, gmail, profileImage, phoneNumber } = req.body;
+    const { name, password, gmail, profileImage, phoneNumber, isActive, employedUntil } = req.body;
 
     // Ako se pokušava ažurirati sa "admin" ID-om, pronađi pravog korisnika iz tokena
     let technician;
@@ -341,6 +342,16 @@ router.put('/:id', auth, logActivity('technicians', 'technician_edit', {
     // Ažuriraj profilnu sliku
     if (profileImage !== undefined) {
       technician.profileImage = profileImage;
+    }
+
+    // Ažuriraj status aktivnosti
+    if (isActive !== undefined) {
+      technician.isActive = isActive;
+    }
+
+    // Ažuriraj datum zaposlenja do
+    if (employedUntil !== undefined) {
+      technician.employedUntil = employedUntil;
     }
 
     const updatedTechnician = await technician.save();
@@ -1574,4 +1585,252 @@ router.get('/:id/recordings/dates', auth, async (req, res) => {
   }
 });
 
-module.exports = router; 
+// ============================================================
+// DOCUMENT MANAGEMENT ROUTES
+// ============================================================
+
+// Multer za upload dokumenata (memory storage)
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/gif'
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Nepodržan tip fajla. Dozvoljeni: PDF, Word, Excel, slike.'), false);
+    }
+  }
+});
+
+// POST - Upload dokumenta za tehničara
+router.post('/:id/documents', auth, documentUpload.single('document'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const technician = await Technician.findById(id);
+    if (!technician) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Fajl nije poslat' });
+    }
+
+    const result = await uploadTechnicianDocument(
+      req.file.buffer,
+      id,
+      req.file.originalname
+    );
+
+    const ext = req.file.originalname.split('.').pop().toLowerCase();
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+
+    const newDocument = {
+      name: req.body.documentName || req.file.originalname,
+      url: result.secure_url,
+      publicId: result.public_id,
+      fileType: req.file.mimetype,
+      fileSize: req.file.size,
+      resourceType: imageExts.includes(ext) ? 'image' : 'raw',
+      uploadedAt: new Date()
+    };
+
+    technician.documents.push(newDocument);
+    await technician.save();
+
+    const savedDoc = technician.documents[technician.documents.length - 1];
+
+    res.json({
+      message: 'Dokument uspešno otpremljen',
+      document: savedDoc
+    });
+  } catch (error) {
+    console.error('Greška pri upload-u dokumenta:', error);
+    res.status(500).json({ error: 'Greška pri upload-u dokumenta', details: error.message });
+  }
+});
+
+// GET - Dohvati dokumente tehničara
+router.get('/:id/documents', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const technician = await Technician.findById(id).select('documents name');
+    if (!technician) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    res.json({
+      technicianName: technician.name,
+      documents: technician.documents || []
+    });
+  } catch (error) {
+    console.error('Greška pri dohvatanju dokumenata:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju dokumenata' });
+  }
+});
+
+// DELETE - Obriši dokument tehničara
+router.delete('/:id/documents/:documentId', auth, async (req, res) => {
+  try {
+    const { id, documentId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const technician = await Technician.findById(id);
+    if (!technician) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    const docIndex = technician.documents.findIndex(d => d._id.toString() === documentId);
+    if (docIndex === -1) {
+      return res.status(404).json({ error: 'Dokument nije pronađen' });
+    }
+
+    const doc = technician.documents[docIndex];
+
+    // Obriši sa Cloudinary
+    try {
+      const ext = doc.url.split('.').pop().toLowerCase();
+      const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+      const resourceType = imageExts.includes(ext) ? 'image' : 'raw';
+      await deleteTechnicianDocument(doc.publicId, resourceType);
+    } catch (cloudinaryError) {
+      console.error('Greška pri brisanju sa Cloudinary (nastavlja se):', cloudinaryError);
+    }
+
+    technician.documents.splice(docIndex, 1);
+    await technician.save();
+
+    res.json({ message: 'Dokument uspešno obrisan' });
+  } catch (error) {
+    console.error('Greška pri brisanju dokumenta:', error);
+    res.status(500).json({ error: 'Greška pri brisanju dokumenta' });
+  }
+});
+
+// PUT - Toggle status aktivnosti tehničara
+router.put('/:id/toggle-status', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const technician = await Technician.findById(id);
+    if (!technician) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    technician.isActive = !technician.isActive;
+    await technician.save();
+
+    const technicianResponse = technician.toObject();
+    delete technicianResponse.password;
+
+    res.json(technicianResponse);
+  } catch (error) {
+    console.error('Greška pri promeni statusa tehničara:', error);
+    res.status(500).json({ error: 'Greška pri promeni statusa tehničara' });
+  }
+});
+
+// GET - Proxy za preuzimanje/pregled dokumenta
+// Koristi cloudinary.utils.private_download_url() koji generiše API-autentifikovane URL-ove
+// umesto delivery URL-ova (res.cloudinary.com) koji su blokirani za "untrusted" naloge
+router.get('/:id/documents/:documentId/view', async (req, res) => {
+  try {
+    const { id, documentId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const technician = await Technician.findById(id).select('documents');
+    if (!technician) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    const doc = technician.documents.find(d => d._id.toString() === documentId);
+    if (!doc) {
+      return res.status(404).json({ error: 'Dokument nije pronađen' });
+    }
+
+    // Odredi resource_type na osnovu fajl tipa
+    const ext = doc.name.split('.').pop().toLowerCase();
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+    const isImage = imageExts.includes(ext);
+    const resourceType = isImage ? 'image' : 'raw';
+
+    // Generiši API-autentifikovan download URL
+    // BITNO: type mora biti 'upload' jer su fajlovi uploadovani sa tim tipom
+    const downloadUrl = cloudinary.utils.private_download_url(
+      doc.publicId,
+      isImage ? 'webp' : '',
+      {
+        resource_type: resourceType,
+        type: 'upload',
+        expires_at: Math.floor(Date.now() / 1000) + 3600
+      }
+    );
+
+    // Fetch fajl sa API-autentifikovanog URL-a
+    const fileResponse = await axios.get(downloadUrl, {
+      responseType: 'stream',
+      maxRedirects: 5
+    });
+
+    // Postavi MIME type i Content-Disposition
+    const mimeTypes = {
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      'svg': 'image/svg+xml'
+    };
+
+    res.setHeader('Content-Type', mimeTypes[isImage ? 'webp' : ext] || 'application/octet-stream');
+    if (req.query.download === 'true') {
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(doc.name)}"`);
+    } else {
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.name)}"`);
+    }
+
+    fileResponse.data.pipe(res);
+
+  } catch (error) {
+    console.error('Greška pri proxy-ovanju dokumenta:', error.message);
+    const status = error.response?.status || 500;
+    res.status(status).json({ error: 'Greška pri dohvatanju dokumenta' });
+  }
+});
+
+module.exports = router;
