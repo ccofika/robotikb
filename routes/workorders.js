@@ -2672,18 +2672,10 @@ router.put('/:id/verify', auth, logActivity('workorders', 'workorder_edit', {
       try {
         const emailService = require('../services/emailService');
 
-        // Napravi survey URL sa pre-filled parametrima
+        // Napravi survey URL sa pre-filled tisJobId
         const surveyBaseUrl = process.env.REVIEW_SURVEY_URL || '';
-        const technicianId = updatedWorkOrder.technicianId;
-        let technicianName = '';
-        if (technicianId) {
-          const tech = await Technician.findById(technicianId).select('name').lean();
-          if (tech) technicianName = tech.name;
-        }
-
-        // Google Forms pre-fill format: entry.XXXXX=value
         const surveyUrl = surveyBaseUrl
-          ? `${surveyBaseUrl}&entry.technicianId=${technicianId || ''}&entry.technicianName=${encodeURIComponent(technicianName)}&entry.workOrderId=${id}&entry.tisJobId=${updatedWorkOrder.tisJobId || ''}`
+          ? surveyBaseUrl.replace('PLACEHOLDER_REF', updatedWorkOrder.tisJobId || '')
           : '';
 
         if (surveyUrl) {

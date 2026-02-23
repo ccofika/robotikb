@@ -23,10 +23,7 @@ router.post('/webhook', async (req, res) => {
     }
 
     const {
-      technicianId,
-      workOrderId,
-      tisJobId,
-      customerName,
+      referentniBroj,
       onTime,
       professionalism,
       cleanInstallation,
@@ -38,9 +35,9 @@ router.post('/webhook', async (req, res) => {
     } = req.body;
 
     // Validacija obaveznih polja
-    if (!technicianId || !onTime || !professionalism || !cleanInstallation || !explanation || !serviceQuality || npsScore === undefined) {
+    if (!referentniBroj || !onTime || !professionalism || !cleanInstallation || !explanation || !serviceQuality || npsScore === undefined) {
       console.log('[Reviews Webhook] Nedostaju obavezna polja:', {
-        technicianId: !!technicianId,
+        referentniBroj: !!referentniBroj,
         onTime: !!onTime,
         professionalism: !!professionalism,
         cleanInstallation: !!cleanInstallation,
@@ -51,31 +48,36 @@ router.post('/webhook', async (req, res) => {
       return res.status(400).json({ error: 'Nedostaju obavezna polja' });
     }
 
-    // Provera da li tehničar postoji
-    let techId = technicianId;
-    if (mongoose.Types.ObjectId.isValid(technicianId)) {
-      const techExists = await Technician.findById(technicianId).select('_id').lean();
-      if (!techExists) {
-        console.log('[Reviews Webhook] Tehničar nije pronađen:', technicianId);
-        return res.status(404).json({ error: 'Tehničar nije pronađen' });
-      }
-    } else {
-      console.log('[Reviews Webhook] Nevažeći technicianId format:', technicianId);
-      return res.status(400).json({ error: 'Nevažeći technicianId format' });
+    // Pronađi radni nalog po tisJobId (referentni broj)
+    const workOrder = await WorkOrder.findOne({ tisJobId: referentniBroj }).lean();
+    if (!workOrder) {
+      console.log('[Reviews Webhook] Radni nalog nije pronađen za referentni broj:', referentniBroj);
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
 
-    // Provera za duplikat (po workOrderId)
-    if (workOrderId && mongoose.Types.ObjectId.isValid(workOrderId)) {
-      const existingReview = await Review.findOne({ workOrderId }).lean();
-      if (existingReview) {
-        console.log('[Reviews Webhook] Review već postoji za radni nalog:', workOrderId);
-        return res.status(409).json({ error: 'Review za ovaj radni nalog već postoji' });
-      }
+    const technicianId = workOrder.technicianId;
+    const workOrderId = workOrder._id;
+
+    // Provera za duplikat
+    const existingReview = await Review.findOne({ workOrderId }).lean();
+    if (existingReview) {
+      console.log('[Reviews Webhook] Review već postoji za radni nalog:', workOrderId);
+      return res.status(409).json({ error: 'Review za ovaj radni nalog već postoji' });
+    }
+
+    // Dohvati ime korisnika iz WorkOrderEvidence
+    let customerName = workOrder.userName || '';
+    const evidence = await WorkOrderEvidence.findOne({ workOrderId }).select('customerName').lean();
+    if (evidence && evidence.customerName) {
+      customerName = evidence.customerName;
     }
 
     // Kreiranje review-a
-    const reviewData = {
-      technicianId: techId,
+    const review = await Review.create({
+      workOrderId,
+      technicianId,
+      tisJobId: referentniBroj,
+      customerName,
       onTime,
       professionalism: Number(professionalism),
       cleanInstallation,
@@ -84,19 +86,8 @@ router.post('/webhook', async (req, res) => {
       serviceQuality: Number(serviceQuality),
       npsScore: Number(npsScore),
       comment: comment || ''
-    };
+    });
 
-    if (workOrderId && mongoose.Types.ObjectId.isValid(workOrderId)) {
-      reviewData.workOrderId = workOrderId;
-    }
-    if (tisJobId) {
-      reviewData.tisJobId = tisJobId;
-    }
-    if (customerName) {
-      reviewData.customerName = customerName;
-    }
-
-    const review = await Review.create(reviewData);
     console.log('[Reviews Webhook] Review kreiran:', review._id, 'za tehničara:', technicianId);
 
     // Notifikacija za loše ocene
