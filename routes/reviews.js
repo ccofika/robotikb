@@ -269,6 +269,69 @@ router.get('/stats/all', auth, async (req, res) => {
 });
 
 // ============================================================
+// GET /api/reviews/dashboard-summary - Sumarni podaci za dashboard
+// ============================================================
+router.get('/dashboard-summary', auth, async (req, res) => {
+  try {
+    const [summaryStats, recentReviews] = await Promise.all([
+      Review.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalReviews: { $sum: 1 },
+            avgProfessionalism: { $avg: '$professionalism' },
+            avgServiceQuality: { $avg: '$serviceQuality' },
+            avgNps: { $avg: '$npsScore' },
+            onTimeCount: {
+              $sum: { $cond: [{ $eq: ['$onTime', 'Da, tačno na vreme'] }, 1, 0] }
+            }
+          }
+        }
+      ]),
+      Review.find()
+        .sort({ createdAt: -1 })
+        .limit(3)
+        .populate('technicianId', 'name')
+        .lean()
+    ]);
+
+    const s = summaryStats[0] || {
+      totalReviews: 0,
+      avgProfessionalism: 0,
+      avgServiceQuality: 0,
+      avgNps: 0,
+      onTimeCount: 0
+    };
+
+    const overallRating = s.totalReviews > 0
+      ? Math.round(((s.avgProfessionalism + s.avgServiceQuality) / 2) * 10) / 10
+      : 0;
+
+    res.json({
+      totalReviews: s.totalReviews,
+      overallRating,
+      avgProfessionalism: Math.round(s.avgProfessionalism * 10) / 10,
+      avgServiceQuality: Math.round(s.avgServiceQuality * 10) / 10,
+      avgNps: Math.round((s.avgNps || 0) * 10) / 10,
+      onTimePercent: s.totalReviews > 0 ? Math.round((s.onTimeCount / s.totalReviews) * 100) : 0,
+      recentReviews: recentReviews.map(r => ({
+        _id: r._id,
+        technicianName: r.technicianId?.name || 'Nepoznat',
+        professionalism: r.professionalism,
+        serviceQuality: r.serviceQuality,
+        npsScore: r.npsScore,
+        comment: r.comment || '',
+        createdAt: r.createdAt
+      }))
+    });
+
+  } catch (error) {
+    console.error('[Reviews Dashboard] Greška:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju dashboard podataka' });
+  }
+});
+
+// ============================================================
 // DELETE /api/reviews/:id - Brisanje review-a (admin only)
 // ============================================================
 router.delete('/:id', auth, async (req, res) => {

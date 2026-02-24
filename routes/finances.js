@@ -685,7 +685,7 @@ router.get('/reports', auth, isSupervisorOrSuperAdmin, async (req, res) => {
 // GET /api/finances/failed-transactions - Lista neuspešnih finansijskih obračuna
 router.get('/failed-transactions', auth, isSupervisorOrSuperAdmin, async (req, res) => {
   try {
-    const failedTransactions = await FailedFinancialTransaction.find({ resolved: false })
+    const failedTransactions = await FailedFinancialTransaction.find({ resolved: false, excludedFromFinances: { $ne: true } })
       .populate('workOrderId', 'tisJobId address municipality status verified date')
       .sort({ createdAt: -1 });
 

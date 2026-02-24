@@ -227,6 +227,7 @@ const updatesRoutes = require('./routes/updates');
 const apkRoutes = require('./routes/apk');
 const gpsRoutes = require('./routes/gps');
 const reviewsRoutes = require('./routes/reviews');
+const searchRoutes = require('./routes/search');
 
 // Definisanje ruta
 app.use('/api/auth', authRoutes);
@@ -251,6 +252,7 @@ app.use('/api/updates', updatesRoutes);
 app.use('/api/apk', apkRoutes);
 app.use('/api/gps', gpsRoutes);
 app.use('/api/reviews', reviewsRoutes);
+app.use('/api/search', searchRoutes);
 
 // Error logging middleware - dodato za Backend Logs
 app.use(errorLogger);
