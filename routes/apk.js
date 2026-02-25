@@ -270,7 +270,7 @@ router.get('/latest', async (req, res) => {
  * @route   GET /api/apk/list
  * @desc    List all APK versions (admin)
  */
-router.get('/list', async (req, res) => {
+router.get('/list', auth, async (req, res) => {
   try {
     const versions = await ApkVersion.find()
       .sort({ versionCode: -1 })
@@ -289,7 +289,7 @@ router.get('/list', async (req, res) => {
  * @desc    Create new APK version entry (admin)
  * @body    version, versionCode, fileName, filePath, fileSize, changelog, isMandatory
  */
-router.post('/create', async (req, res) => {
+router.post('/create', auth, async (req, res) => {
   try {
     const {
       version,
@@ -350,7 +350,7 @@ router.post('/create', async (req, res) => {
  * @route   PUT /api/apk/:id/deactivate
  * @desc    Deactivate an APK version (admin)
  */
-router.put('/:id/deactivate', async (req, res) => {
+router.put('/:id/deactivate', auth, async (req, res) => {
   try {
     const apkVersion = await ApkVersion.findByIdAndUpdate(
       req.params.id,
