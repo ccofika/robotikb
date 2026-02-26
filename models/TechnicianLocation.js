@@ -39,7 +39,7 @@ const TechnicianLocationSchema = new Schema({
   // Da li je ovo odgovor na zahtev admina ili automatska sinhronizacija
   requestType: {
     type: String,
-    enum: ['admin_request', 'auto_sync', 'manual'],
+    enum: ['admin_request', 'auto_sync', 'manual', 'background_tracking'],
     default: 'admin_request'
   },
   // ID zahteva ako je admin tražio lokaciju
