@@ -856,62 +856,24 @@ router.put('/:id', auth, logActivity('equipment', 'equipment_edit', {
         const technicianId = updateData.location.replace('tehnicar-', '');
         const technician = await Technician.findById(technicianId);
         
-        if (technician && technician.gmail) {
-          // Get technician's current inventory (all equipment assigned to them, excluding installed equipment)
-          const currentInventory = await Equipment.find({
-            assignedTo: technicianId,
-            status: { $ne: 'installed' }
-          });
-
-          // Kreiranje sumirane tabele inventara
-          const inventorySummaryData = createInventorySummary(currentInventory);
-
-          // Send email asynchronously (non-blocking)
+        if (technician) {
+          // Kreiranje Android notifikacije za dodjeljivanje opreme (nezavisno od email-a)
           setImmediate(async () => {
             try {
-              // EMAIL DISABLED - komentarisano jer ne želimo slanje mejlova tehničarima
-              // const emailResult = await emailService.sendEmailToTechnician(
-              //   technicianId,
-              //   'equipmentAssignment',
-              //   {
-              //     technicianName: technician.name,
-              //     assignmentType: 'edit',
-              //     equipment: [{
-              //       category: equipment.category,
-              //       description: equipment.description,
-              //       serialNumber: equipment.serialNumber,
-              //       status: equipment.status
-              //     }],
-              //     ...inventorySummaryData
-              //   }
-              // );
-              //
-              // if (emailResult.success) {
-              //   console.log(`✅ Email sent to technician ${technician.name} about equipment location change`);
-              // } else {
-              //   console.error('❌ Failed to send email notification:', emailResult.error);
-              // }
-
-              // DODATO: Kreiranje Android notifikacije za dodjeljivanje opreme (pojedinačno)
               const androidNotificationService = require('../services/androidNotificationService');
-              try {
-                // Pripremi detalje pojedinačne opreme
-                const equipmentDetails = [{
-                  _id: equipment._id,
-                  name: equipment.description || equipment.category || 'Nepoznato',
-                  serialNumber: equipment.serialNumber,
-                  serial: equipment.serialNumber,
-                  category: equipment.category,
-                  equipmentName: equipment.description,
-                  equipmentCategory: equipment.category
-                }];
+              const equipmentDetails = [{
+                _id: equipment._id,
+                name: equipment.description || equipment.category || 'Nepoznato',
+                serialNumber: equipment.serialNumber,
+                serial: equipment.serialNumber,
+                category: equipment.category,
+                equipmentName: equipment.description,
+                equipmentCategory: equipment.category
+              }];
 
-                await androidNotificationService.createEquipmentAddNotification(technicianId, equipmentDetails);
-              } catch (notifError) {
-                console.error(`❌ Error creating Android notification for equipment assignment:`, notifError.message);
-              }
-            } catch (emailError) {
-              console.error('❌ Error sending equipment assignment email:', emailError.message);
+              await androidNotificationService.createEquipmentAddNotification(technicianId, equipmentDetails);
+            } catch (notifError) {
+              console.error(`❌ Error creating Android notification for equipment assignment:`, notifError.message);
             }
           });
         }

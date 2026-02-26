@@ -158,6 +158,39 @@ router.put('/mark-all-read', auth, async (req, res) => {
   }
 });
 
+// DELETE /api/android-notifications/unregister-token - Odjavi push notification token
+// MORA biti IZNAD /:id rute, inače Express matchuje "unregister-token" kao :id parametar
+router.delete('/unregister-token', auth, async (req, res) => {
+  try {
+    const technician = await Technician.findById(req.user.id);
+    if (!technician) {
+      return res.status(403).json({
+        success: false,
+        message: 'Tehničar nije pronađen'
+      });
+    }
+
+    technician.pushNotificationToken = null;
+    technician.pushNotificationsEnabled = false;
+    await technician.save();
+
+    console.log(`🔕 Push token odjavljen za tehničara ${technician.name}`);
+
+    res.json({
+      success: true,
+      message: 'Push token uspešno odjavljen'
+    });
+
+  } catch (error) {
+    console.error('Greška pri odjavi push tokena:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Greška pri odjavi push tokena',
+      error: error.message
+    });
+  }
+});
+
 // DELETE /api/android-notifications/:id - Obriši notifikaciju
 router.delete('/:id', auth, async (req, res) => {
   try {
@@ -271,38 +304,6 @@ router.post('/register-token', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Greška pri registrovanju push tokena',
-      error: error.message
-    });
-  }
-});
-
-// DELETE /api/android-notifications/unregister-token - Odjavi push notification token
-router.delete('/unregister-token', auth, async (req, res) => {
-  try {
-    const technician = await Technician.findById(req.user.id);
-    if (!technician) {
-      return res.status(403).json({
-        success: false,
-        message: 'Tehničar nije pronađen'
-      });
-    }
-
-    technician.pushNotificationToken = null;
-    technician.pushNotificationsEnabled = false;
-    await technician.save();
-
-    console.log(`🔕 Push token odjav ljen za tehničara ${technician.name}`);
-
-    res.json({
-      success: true,
-      message: 'Push token uspešno odjavljen'
-    });
-
-  } catch (error) {
-    console.error('Greška pri odjavi push tokena:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Greška pri odjavi push tokena',
       error: error.message
     });
   }
