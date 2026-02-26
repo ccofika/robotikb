@@ -373,4 +373,145 @@ router.delete('/locations/old', auth, async (req, res) => {
   }
 });
 
+// ============================================
+// GPS Watchdog - Detektuje tehničare čiji je tracking prestao
+// ============================================
+
+/**
+ * GET /api/gps/stale-trackers
+ * Vraća tehničare koji su trebali slati lokaciju ali su prestali (tracking ubijen od OS-a)
+ * Admin može ovo koristiti da vidi ko ima problem
+ */
+router.get('/stale-trackers', auth, async (req, res) => {
+  try {
+    if (!['admin', 'superadmin', 'supervisor'].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Nemate dozvolu' });
+    }
+
+    const staleMinutes = parseInt(req.query.minutes) || 15;
+    const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
+
+    // Nađi sve tehničare koji su slali background_tracking podatke
+    // ali poslednji put pre više od staleMinutes minuta
+    const latestLocations = await TechnicianLocation.aggregate([
+      { $match: { requestType: 'background_tracking' } },
+      { $sort: { createdAt: -1 } },
+      { $group: {
+        _id: '$technicianId',
+        lastLocation: { $first: '$$ROOT' }
+      }},
+      { $match: { 'lastLocation.createdAt': { $lt: cutoff } } },
+      { $lookup: {
+        from: 'technicians',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'technician'
+      }},
+      { $unwind: '$technician' },
+      { $project: {
+        technicianId: '$_id',
+        'technician.name': 1,
+        'technician.phoneNumber': 1,
+        'technician.pushNotificationToken': 1,
+        lastLocationTime: '$lastLocation.createdAt',
+        minutesSinceUpdate: {
+          $divide: [
+            { $subtract: [new Date(), '$lastLocation.createdAt'] },
+            60000
+          ]
+        }
+      }}
+    ]);
+
+    res.json({
+      success: true,
+      staleMinutes,
+      staleTechnicians: latestLocations,
+      count: latestLocations.length
+    });
+
+  } catch (error) {
+    console.error('GPS stale trackers error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /api/gps/nudge-stale
+ * Pošalji push notifikaciju tehničarima čiji je tracking prestao
+ * da ponovo otvore app (self-heal trigger)
+ */
+router.post('/nudge-stale', auth, async (req, res) => {
+  try {
+    if (!['admin', 'superadmin', 'supervisor'].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: 'Nemate dozvolu' });
+    }
+
+    const staleMinutes = parseInt(req.body.minutes) || 15;
+    const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
+
+    const staleTechnicians = await TechnicianLocation.aggregate([
+      { $match: { requestType: 'background_tracking' } },
+      { $sort: { createdAt: -1 } },
+      { $group: {
+        _id: '$technicianId',
+        lastLocation: { $first: '$$ROOT' }
+      }},
+      { $match: { 'lastLocation.createdAt': { $lt: cutoff } } },
+      { $lookup: {
+        from: 'technicians',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'technician'
+      }},
+      { $unwind: '$technician' }
+    ]);
+
+    let nudged = 0;
+    let failed = 0;
+
+    for (const entry of staleTechnicians) {
+      const token = entry.technician.pushNotificationToken;
+      if (!token || !token.startsWith('ExponentPushToken[')) continue;
+
+      try {
+        await axios.post('https://exp.host/--/api/v2/push/send', {
+          to: token,
+          title: 'Praćenje lokacije',
+          body: 'Otvorite aplikaciju da se praćenje lokacije nastavi.',
+          data: {
+            type: 'gps_tracking_nudge',
+            action: 'reopen_app'
+          },
+          priority: 'high',
+          sound: 'default',
+          channelId: 'default',
+        }, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 10000
+        });
+        nudged++;
+        console.log(`📍 GPS nudge sent to ${entry.technician.name}`);
+      } catch (e) {
+        failed++;
+        console.error(`GPS nudge failed for ${entry.technician.name}:`, e.message);
+      }
+    }
+
+    console.log(`📍 GPS nudge: ${nudged} sent, ${failed} failed out of ${staleTechnicians.length} stale`);
+
+    res.json({
+      success: true,
+      message: `Nudge poslan za ${nudged} tehničara`,
+      nudged,
+      failed,
+      totalStale: staleTechnicians.length
+    });
+
+  } catch (error) {
+    console.error('GPS nudge error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;
