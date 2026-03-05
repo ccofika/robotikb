@@ -897,7 +897,7 @@ router.get('/', async (req, res) => {
 router.get('/technician/:technicianId', async (req, res) => {
   try {
     const { technicianId } = req.params;
-    const { page, limit, status, all } = req.query;
+    const { page, limit, status, all, search } = req.query;
 
     if (!mongoose.Types.ObjectId.isValid(technicianId)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
@@ -912,7 +912,22 @@ router.get('/technician/:technicianId', async (req, res) => {
 
     let baseQuery;
 
-    if (all === 'true' || status) {
+    if (search) {
+      // Search mode: search ALL orders for this technician (no date limit)
+      baseQuery = {
+        ...techFilter,
+        $and: [{
+          $or: [
+            { tisId: { $regex: search, $options: 'i' } },
+            { userName: { $regex: search, $options: 'i' } },
+            { address: { $regex: search, $options: 'i' } },
+            { municipality: { $regex: search, $options: 'i' } },
+            { description: { $regex: search, $options: 'i' } }
+          ]
+        }]
+      };
+      if (status) baseQuery.status = status;
+    } else if (all === 'true' || status) {
       // If ?all=true or specific status filter, return all matching
       baseQuery = { ...techFilter };
       if (status) baseQuery.status = status;
