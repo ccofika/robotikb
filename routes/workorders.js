@@ -753,7 +753,7 @@ router.get('/edit-filters', async (req, res) => {
 // GET - Dohvati sve radne naloge
 router.get('/', async (req, res) => {
   try {
-    const { recent, page, limit, search, status, municipality, technician } = req.query;
+    const { recent, olderThan, page, limit, search, status, municipality, technician } = req.query;
     const startTime = Date.now();
 
     // Server-side pagination support
@@ -763,15 +763,18 @@ router.get('/', async (req, res) => {
       const skip = (pageNum - 1) * limitNum;
 
       let query = {};
+      const andConditions = [];
 
       // Search filter
       if (search) {
-        query.$or = [
-          { tisId: { $regex: search, $options: 'i' } },
-          { userName: { $regex: search, $options: 'i' } },
-          { address: { $regex: search, $options: 'i' } },
-          { municipality: { $regex: search, $options: 'i' } }
-        ];
+        andConditions.push({
+          $or: [
+            { tisId: { $regex: search, $options: 'i' } },
+            { userName: { $regex: search, $options: 'i' } },
+            { address: { $regex: search, $options: 'i' } },
+            { municipality: { $regex: search, $options: 'i' } }
+          ]
+        });
       }
 
       // Status filter
@@ -786,14 +789,36 @@ router.get('/', async (req, res) => {
 
       // Technician filter
       if (technician) {
-        query.$or = [
-          { technicianId: technician },
-          { technician2Id: technician }
-        ];
+        andConditions.push({
+          $or: [
+            { technicianId: technician },
+            { technician2Id: technician }
+          ]
+        });
       }
 
-      // Get total count
-      const totalCount = await WorkOrder.countDocuments(query);
+      // Date filters
+      if (olderThan) {
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - parseInt(olderThan));
+        query.date = { ...(query.date || {}), $lt: daysAgo };
+      }
+
+      if (andConditions.length > 0) {
+        query.$and = andConditions;
+      }
+
+      // Get total count and status counts in parallel
+      const [totalCount, statusCounts] = await Promise.all([
+        WorkOrder.countDocuments(query),
+        WorkOrder.aggregate([
+          { $match: query },
+          { $group: { _id: '$status', count: { $sum: 1 } } }
+        ])
+      ]);
+
+      const statusCountsObj = { zavrsen: 0, nezavrsen: 0, odlozen: 0 };
+      statusCounts.forEach(s => { statusCountsObj[s._id] = s.count; });
 
       // Get paginated results
       const workOrders = await WorkOrder.find(query)
@@ -820,15 +845,17 @@ router.get('/', async (req, res) => {
           hasNextPage: pageNum < totalPages,
           hasPreviousPage: pageNum > 1
         },
+        statusCounts: statusCountsObj,
         performance: {
           queryTime: duration,
           resultsPerPage: workOrders.length
         }
       });
     } else {
-      // Original behavior for backward compatibility
+      // Backward compatibility - apply default limit to prevent massive responses
       let query = {};
       let sort = { date: -1 };
+      const defaultLimit = 200;
 
       if (recent) {
         const daysAgo = new Date();
@@ -836,12 +863,22 @@ router.get('/', async (req, res) => {
         query.date = { $gte: daysAgo };
       }
 
+      if (olderThan) {
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - parseInt(olderThan));
+        query.date = { ...(query.date || {}), $lt: daysAgo };
+      }
+
+      // Apply limit: no limit for recent (bounded by date), default limit otherwise
+      const effectiveLimit = recent ? 0 : defaultLimit;
+
       const workOrders = await WorkOrder.find(query)
         .populate('technicianId', 'name _id')
         .populate('technician2Id', 'name _id')
         .populate('statusChangedBy', 'name _id')
         .populate('materials.material', 'type')
         .sort(sort)
+        .limit(effectiveLimit)
         .lean()
         .exec();
 
@@ -860,24 +897,88 @@ router.get('/', async (req, res) => {
 router.get('/technician/:technicianId', async (req, res) => {
   try {
     const { technicianId } = req.params;
-    
+    const { page, limit, status, all } = req.query;
+
     if (!mongoose.Types.ObjectId.isValid(technicianId)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
     }
-    
-    const technicianOrders = await WorkOrder.find({ 
+
+    const techFilter = {
       $or: [
         { technicianId },
         { technician2Id: technicianId }
       ]
-    })
-      .populate('materials.material', 'type')
-      .populate('technicianId', 'name')
-      .populate('technician2Id', 'name')
-      .populate('statusChangedBy', 'name')
-      .lean()
-      .exec();
-    res.json(technicianOrders);
+    };
+
+    let baseQuery;
+
+    if (all === 'true' || status) {
+      // If ?all=true or specific status filter, return all matching
+      baseQuery = { ...techFilter };
+      if (status) baseQuery.status = status;
+    } else {
+      // Default: active (nezavrsen/odlozen) + completed in last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      baseQuery = {
+        ...techFilter,
+        $and: [{
+          $or: [
+            { status: { $in: ['nezavrsen', 'odlozen'] } },
+            { status: 'zavrsen', date: { $gte: thirtyDaysAgo } }
+          ]
+        }]
+      };
+    }
+
+    // Light field selection for list views - exclude heavy fields
+    const listSelect = '-photos -evidence.photos -evidence.signature -usedEquipment -usedMaterials';
+
+    if (page && limit) {
+      const pageNum = parseInt(page) || 1;
+      const limitNum = parseInt(limit) || 50;
+      const skip = (pageNum - 1) * limitNum;
+
+      const [totalCount, technicianOrders] = await Promise.all([
+        WorkOrder.countDocuments(baseQuery),
+        WorkOrder.find(baseQuery)
+          .select(listSelect)
+          .populate('materials.material', 'type')
+          .populate('technicianId', 'name')
+          .populate('technician2Id', 'name')
+          .populate('statusChangedBy', 'name')
+          .sort({ date: -1 })
+          .skip(skip)
+          .limit(limitNum)
+          .lean()
+          .exec()
+      ]);
+
+      const totalPages = Math.ceil(totalCount / limitNum);
+      res.json({
+        workOrders: technicianOrders,
+        pagination: {
+          currentPage: pageNum,
+          totalPages,
+          totalCount,
+          limit: limitNum,
+          hasNextPage: pageNum < totalPages,
+          hasPreviousPage: pageNum > 1
+        }
+      });
+    } else {
+      // Default: return array (active + 30 days completed, bounded by baseQuery)
+      const technicianOrders = await WorkOrder.find(baseQuery)
+        .select(listSelect)
+        .populate('materials.material', 'type')
+        .populate('technicianId', 'name')
+        .populate('technician2Id', 'name')
+        .populate('statusChangedBy', 'name')
+        .sort({ date: -1 })
+        .lean()
+        .exec();
+      res.json(technicianOrders);
+    }
   } catch (error) {
     console.error('Greška pri dohvatanju radnih naloga tehničara:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju radnih naloga tehničara' });
