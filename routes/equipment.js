@@ -565,7 +565,7 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
     return {
       action: 'bulk_created',
       summary: {
-        totalProcessed: responseData?.addedCount + responseData?.duplicates?.length + responseData?.errors?.length || 0,
+        totalProcessed: responseData?.totalProcessed || 0,
         addedCount: responseData?.addedCount || 0,
         duplicatesCount: responseData?.duplicates?.length || 0,
         errorsCount: responseData?.errors?.length || 0
@@ -623,12 +623,16 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
       });
     }
 
-    const newEquipmentItems = data.map(item => ({
+    const newEquipmentItems = data.map((item, index) => ({
       category: normalizeCategory(item.Kategorija || item.kategorija || ''),
       description: item.MODEL || item.Opis || '',
       serialNumber: String(item.SN || item["Fabrički broj"] || '').toLowerCase(),
       location: 'magacin',
-      status: 'available'
+      status: 'available',
+      _rowNumber: index + 2, // Excel red (1-based + header)
+      _rawCategory: item.Kategorija || item.kategorija || '',
+      _rawModel: item.MODEL || item.Opis || '',
+      _rawSN: item.SN || item["Fabrički broj"] || ''
     }));
 
     // Provera duplikata i kreiranje liste za dodavanje
@@ -639,8 +643,22 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
 
     for (const newItem of newEquipmentItems) {
       try {
-        if (!newItem.serialNumber || !newItem.category || !newItem.description) {
-          errors.push(`Nedostaju obavezni podaci: ${JSON.stringify(newItem)}`);
+        const missingFields = [];
+        if (!newItem.serialNumber) missingFields.push('SN (serijski broj)');
+        if (!newItem.category) missingFields.push(`Kategorija${newItem._rawCategory ? ` ("${newItem._rawCategory}" nije prepoznata)` : ''}`);
+        if (!newItem.description) missingFields.push('MODEL');
+
+        if (missingFields.length > 0) {
+          errors.push({
+            row: newItem._rowNumber,
+            message: `Nedostaju podaci: ${missingFields.join(', ')}`,
+            missingFields,
+            rawData: {
+              kategorija: newItem._rawCategory || '(prazno)',
+              model: newItem._rawModel || '(prazno)',
+              sn: newItem._rawSN || '(prazno)'
+            }
+          });
           continue;
         }
 
@@ -681,9 +699,26 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
           filteredNewEquipment.push(newItem);
         }
       } catch (error) {
-        errors.push(`Greška pri obradi: ${error.message}`);
+        errors.push({
+          row: newItem._rowNumber,
+          message: `Greška pri obradi: ${error.message}`,
+          missingFields: [],
+          rawData: {
+            kategorija: newItem._rawCategory || '(prazno)',
+            model: newItem._rawModel || '(prazno)',
+            sn: newItem._rawSN || '(prazno)'
+          }
+        });
       }
     }
+
+    // Ukloni helper polja pre insertovanja u bazu
+    filteredNewEquipment.forEach(item => {
+      delete item._rowNumber;
+      delete item._rawCategory;
+      delete item._rawModel;
+      delete item._rawSN;
+    });
 
     // Dodavanje nove opreme u bazu sa ordered: false za bolje rukovanje greškama
     let insertedEquipment = [];
@@ -701,7 +736,16 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
           if (error.writeErrors) {
             error.writeErrors.forEach(writeError => {
               const failedItem = filteredNewEquipment[writeError.index];
-              errors.push(`Greška pri dodavanju ${failedItem?.serialNumber}: ${writeError.errmsg || writeError.err?.errmsg || 'Nepoznata greška'}`);
+              errors.push({
+                row: null,
+                message: `Greška pri unosu u bazu za SN ${failedItem?.serialNumber}: ${writeError.errmsg || writeError.err?.errmsg || 'Nepoznata greška'}`,
+                missingFields: [],
+                rawData: {
+                  kategorija: failedItem?.category || 'N/A',
+                  model: failedItem?.description || 'N/A',
+                  sn: failedItem?.serialNumber || 'N/A'
+                }
+              });
             });
           }
         } else {
@@ -713,9 +757,13 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
     // Brisanje privremenog fajla
     fs.unlinkSync(req.file.path);
 
+    const totalProcessed = data.length;
+    const actualInserted = insertedEquipment.length;
+
     res.status(201).json({
-      message: `Uspešno dodato ${filteredNewEquipment.length} komada opreme`,
-      addedCount: filteredNewEquipment.length,
+      message: `Uspešno dodato ${actualInserted} komada opreme`,
+      totalProcessed,
+      addedCount: actualInserted,
       addedItems: insertedEquipment.map(item => ({
         category: item.category,
         description: item.description,
