@@ -2,196 +2,174 @@ const express = require('express');
      const router = express.Router();
      const { Equipment, Log, WorkOrder, Technician } = require('../models');
 
-     // Cache for defective equipment (5 minute TTL)
-     let defectiveEquipmentCache = null;
-     let defectiveEquipmentCacheTimestamp = 0;
-     const DEFECTIVE_EQUIPMENT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+     // Cache for stats (1 minute TTL)
+     let statsCache = null;
+     let statsCacheTimestamp = 0;
+     const STATS_CACHE_TTL = 60 * 1000;
 
      // Function to invalidate defective equipment cache
      const invalidateDefectiveEquipmentCache = () => {
-       console.log('🗑️ Invalidating defective equipment cache due to equipment change');
-       defectiveEquipmentCache = null;
-       defectiveEquipmentCacheTimestamp = 0;
+       statsCache = null;
+       statsCacheTimestamp = 0;
      };
 
-     // GET /api/defective-equipment - Dobijanje neispravne opreme (optimized)
+     // Base filter for defective equipment
+     const DEFECTIVE_FILTER = {
+       $or: [
+         { status: 'defective' },
+         { location: 'defective' }
+       ]
+     };
+
+     // GET /api/defective-equipment - Server-side paginated defective equipment
      router.get('/', async (req, res) => {
        try {
-         const { statsOnly } = req.query;
-         const now = Date.now();
-         console.log('📊 Fetching defective equipment...');
+         const { statsOnly, page = '1', limit = '50', search = '', category = '' } = req.query;
+         const startTime = Date.now();
 
-         // Check cache first (for full data requests)
-         if (!statsOnly && defectiveEquipmentCache && (now - defectiveEquipmentCacheTimestamp) < DEFECTIVE_EQUIPMENT_CACHE_TTL) {
-           console.log('📦 Returning cached defective equipment data');
-           return res.json(defectiveEquipmentCache);
-         }
-
-         // Za dashboard, vraćaj samo osnovne statistike
+         // Stats-only mode for dashboard
          if (statsOnly === 'true') {
-           console.log('📊 Fetching defective equipment stats only...');
-           const startTime = Date.now();
-
-           const stats = await Equipment.aggregate([
-             {
-               $match: {
-                 $or: [
-                   { status: 'defective' },
-                   { location: 'defective' }
-                 ]
-               }
-             },
-             {
-               $group: {
-                 _id: null,
-                 total: { $sum: 1 },
-                 byCategory: {
-                   $push: {
-                     category: '$category',
-                     count: 1
-                   }
-                 }
-               }
-             }
-           ]);
-
-           const result = {
-             total: stats[0]?.total || 0,
-             byCategory: {}
-           };
-
-           // Group by category
-           if (stats[0]?.byCategory) {
-             stats[0].byCategory.forEach(item => {
-               if (!result.byCategory[item.category]) {
-                 result.byCategory[item.category] = 0;
-               }
-               result.byCategory[item.category]++;
-             });
+           const now = Date.now();
+           if (statsCache && (now - statsCacheTimestamp) < STATS_CACHE_TTL) {
+             return res.json({ success: true, stats: statsCache });
            }
 
-           const endTime = Date.now();
-           console.log(`📊 Defective equipment stats fetched in ${endTime - startTime}ms`);
+           const [total, categoryStats] = await Promise.all([
+             Equipment.countDocuments(DEFECTIVE_FILTER),
+             Equipment.aggregate([
+               { $match: DEFECTIVE_FILTER },
+               { $group: { _id: '$category', count: { $sum: 1 } } },
+               { $sort: { count: -1 } }
+             ])
+           ]);
 
-           return res.json({
-             success: true,
-             stats: result
+           const byCategory = {};
+           categoryStats.forEach(item => { byCategory[item._id] = item.count; });
+
+           const result = { total, byCategory };
+           statsCache = result;
+           statsCacheTimestamp = now;
+
+           return res.json({ success: true, stats: result });
+         }
+
+         // Build filter
+         const filter = { ...DEFECTIVE_FILTER };
+         const conditions = [DEFECTIVE_FILTER];
+
+         if (search) {
+           const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+           conditions.push({
+             $or: [
+               { serialNumber: searchRegex },
+               { description: searchRegex },
+               { category: searchRegex }
+             ]
            });
          }
 
-         // Dobijamo svu opremu sa statusom ili lokacijom "defective"
-         const defectiveEquipment = await Equipment.find({
-           $or: [
-             { status: 'defective' },
-             { location: 'defective' }
-           ]
+         if (category) {
+           conditions.push({ category });
+         }
+
+         const finalFilter = conditions.length > 1 ? { $and: conditions } : DEFECTIVE_FILTER;
+
+         // Pagination
+         const pageNum = parseInt(page, 10) || 1;
+         const limitNum = Math.min(parseInt(limit, 10) || 50, 100);
+         const skip = (pageNum - 1) * limitNum;
+
+         // Execute count + paginated query in parallel
+         const [totalCount, equipment] = await Promise.all([
+           Equipment.countDocuments(finalFilter),
+           Equipment.find(finalFilter)
+             .select('category description serialNumber location status assignedTo removedAt createdAt updatedAt')
+             .populate('assignedTo', 'name')
+             .sort({ removedAt: -1, updatedAt: -1 })
+             .skip(skip)
+             .limit(limitNum)
+             .lean()
+         ]);
+
+         // Batch fetch logs for this page only (much faster than N+1 queries)
+         const equipmentIds = equipment.map(eq => eq._id);
+         const logs = await Log.find({
+           'equipmentDetails.equipmentId': { $in: equipmentIds },
+           action: { $in: ['equipment_removed', 'equipment_marked_defective'] }
          })
-         .populate('assignedTo', 'name')
-         .sort({ removedAt: -1, updatedAt: -1 })
-         .lean(); // Performance optimization
+         .populate('performedBy', 'name')
+         .populate('workOrderId', 'tisId userName address municipality type')
+         .sort({ timestamp: -1 })
+         .lean();
 
-         console.log(`📋 Found ${defectiveEquipment.length} defective equipment items`);
-
-         // Za svaku opremu, pronađemo log koji pokazuje ko ju je uklonio
-         const enrichedEquipment = await Promise.all(
-           defectiveEquipment.map(async (equipment) => {
-             try {
-               // Tražimo log kada je oprema uklonjena
-               const removalLog = await Log.findOne({
-                 'equipmentDetails.equipmentId': equipment._id,
-                 action: 'equipment_removed'
-               })
-               .populate('performedBy', 'name')
-               .populate('workOrderId', 'tisId userName address municipality type')
-               .sort({ timestamp: -1 });
-
-               // Ako nema log, možda je oprema označena kao defective direktno
-               let defectiveLog = null;
-               if (!removalLog) {
-                 // Tražimo bilo koji log koji spominje ovu opremu
-                 defectiveLog = await Log.findOne({
-                   'equipmentDetails.equipmentId': equipment._id
-                 })
-                 .populate('performedBy', 'name')
-                 .populate('workOrderId', 'tisId userName address municipality type')
-                 .sort({ timestamp: -1 });
-               }
-
-               const relevantLog = removalLog || defectiveLog;
-
-               return {
-                 _id: equipment._id,
-                 category: equipment.category,
-                 description: equipment.description,
-                 serialNumber: equipment.serialNumber,
-                 location: equipment.location,
-                 status: equipment.status,
-                 assignedTo: equipment.assignedTo,
-                 removedAt: equipment.removedAt,
-                 createdAt: equipment.createdAt,
-                 updatedAt: equipment.updatedAt,
-                 // Informacije o uklanjanju/označavanju kao defective
-                 removalInfo: relevantLog ? {
-                   removedBy: relevantLog.performedBy,
-                   removedByName: relevantLog.performedByName,
-                   removalDate: relevantLog.timestamp,
-                   workOrder: relevantLog.workOrderId,
-                   reason: relevantLog.equipmentDetails?.removalReason || 'Neispravno',
-                   isWorking: relevantLog.equipmentDetails?.isWorking || false,
-                   action: relevantLog.action
-                 } : null
-               };
-             } catch (error) {
-               console.error(`❌ Error processing equipment ${equipment._id}:`, error);
-               return {
-                 _id: equipment._id,
-                 category: equipment.category,
-                 description: equipment.description,
-                 serialNumber: equipment.serialNumber,
-                 location: equipment.location,
-                 status: equipment.status,
-                 assignedTo: equipment.assignedTo,
-                 removedAt: equipment.removedAt,
-                 createdAt: equipment.createdAt,
-                 updatedAt: equipment.updatedAt,
-                 removalInfo: null
-               };
-             }
-           })
-         );
-
-         // Statistike
-         const stats = {
-           total: enrichedEquipment.length,
-           withRemovalInfo: enrichedEquipment.filter(eq => eq.removalInfo).length,
-           withoutRemovalInfo: enrichedEquipment.filter(eq => !eq.removalInfo).length,
-           byCategory: {}
-         };
-
-         // Grupišemo po kategorijama
-         enrichedEquipment.forEach(eq => {
-           if (!stats.byCategory[eq.category]) {
-             stats.byCategory[eq.category] = 0;
+         // Build log map (latest log per equipment)
+         const logMap = {};
+         for (const log of logs) {
+           const eqId = log.equipmentDetails?.equipmentId?.toString();
+           if (eqId && !logMap[eqId]) {
+             logMap[eqId] = log;
            }
-           stats.byCategory[eq.category]++;
+         }
+
+         // If some equipment didn't have removal logs, try any log
+         const missingIds = equipmentIds.filter(id => !logMap[id.toString()]);
+         if (missingIds.length > 0) {
+           const fallbackLogs = await Log.find({
+             'equipmentDetails.equipmentId': { $in: missingIds }
+           })
+           .populate('performedBy', 'name')
+           .populate('workOrderId', 'tisId userName address municipality type')
+           .sort({ timestamp: -1 })
+           .lean();
+
+           for (const log of fallbackLogs) {
+             const eqId = log.equipmentDetails?.equipmentId?.toString();
+             if (eqId && !logMap[eqId]) {
+               logMap[eqId] = log;
+             }
+           }
+         }
+
+         // Enrich equipment with log data
+         const enrichedEquipment = equipment.map(eq => {
+           const relevantLog = logMap[eq._id.toString()];
+           return {
+             ...eq,
+             removalInfo: relevantLog ? {
+               removedBy: relevantLog.performedBy,
+               removedByName: relevantLog.performedByName,
+               removalDate: relevantLog.timestamp,
+               workOrder: relevantLog.workOrderId,
+               reason: relevantLog.equipmentDetails?.removalReason || 'Neispravno',
+               isWorking: relevantLog.equipmentDetails?.isWorking || false,
+               action: relevantLog.action
+             } : null
+           };
          });
 
-         console.log('📈 Defective equipment stats:', stats);
+         // Also fetch category list for filter dropdown
+         const categories = await Equipment.distinct('category', DEFECTIVE_FILTER);
 
-         const result = {
+         const totalPages = Math.ceil(totalCount / limitNum);
+         const queryTime = Date.now() - startTime;
+
+         res.json({
            success: true,
            data: enrichedEquipment,
-           stats: stats
-         };
-
-         // Cache the result for future requests
-         defectiveEquipmentCache = result;
-         defectiveEquipmentCacheTimestamp = now;
-
-         res.json(result);
+           categories: categories.sort(),
+           pagination: {
+             currentPage: pageNum,
+             totalPages,
+             totalCount,
+             limit: limitNum,
+             hasNextPage: pageNum < totalPages,
+             hasPreviousPage: pageNum > 1
+           },
+           performance: { queryTime, resultsPerPage: enrichedEquipment.length }
+         });
 
        } catch (error) {
-         console.error('❌ Error fetching defective equipment:', error);
+         console.error('Error fetching defective equipment:', error);
          res.status(500).json({
            success: false,
            message: 'Greška pri dobijanju neispravne opreme',

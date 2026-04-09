@@ -79,7 +79,12 @@ router.get('/', auth, async (req, res) => {
       let navigateTo = '/equipment';
       let searchParam = eq.serialNumber;
 
-      if (eq.assignedToUser) {
+      if (eq.status === 'defective' || eq.location === 'defective') {
+        locationLabel = 'Neispravno';
+        locationtype = 'defective';
+        navigateTo = '/defective-equipment';
+        searchParam = eq.serialNumber;
+      } else if (eq.assignedToUser) {
         // Equipment is with a user/customer
         const user = await User.findOne({ tisId: eq.assignedToUser }).select('name tisId').lean();
         locationLabel = user ? `Kod korisnika: ${user.name}` : `Kod korisnika (TIS: ${eq.assignedToUser})`;
