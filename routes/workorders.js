@@ -1310,7 +1310,10 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
         const technicianName2 = row["Tehnicar 2"] || '';
         const area = row["Područje"] || '';
         const installDateTime = row["Početak instalacije"] || '';
-        const technology = row["Tehnologija"] || '';
+        const technologyRaw = (row["Tehnologija"] || '').toString().trim();
+        const technologyAllowed = ['HFC', 'GPON', 'VDSL'];
+        const technologyMatch = technologyAllowed.find(t => t.toLowerCase() === technologyRaw.toLowerCase());
+        const technology = technologyMatch || 'other';
         const tisId = row["TIS ID korisnika"]?.toString() || '';
         const address = row["Adresa korisnika"] || '';
         const userName = row["Ime korisnika"] || '';
