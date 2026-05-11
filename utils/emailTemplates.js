@@ -453,51 +453,178 @@ const createEmailTemplate = (type, data) => {
 
     reviewSurvey: {
       subject: 'Vaše mišljenje nam je važno – Ocena instalacije Robotik montaža',
-      html: `
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
-          <!-- Header -->
-          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 40px 30px; text-align: center; border-radius: 8px 8px 0 0;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">
-              Robotik montaža
-            </h1>
-            <p style="color: #bfdbfe; margin: 8px 0 0 0; font-size: 14px;">
-              Vaše mišljenje nam je važno
-            </p>
-          </div>
+      html: `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html lang="sr" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no, url=no" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
+  <title>Vaše mišljenje nam je važno</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <style>
+    table, td, div, h1, h2, p, a { font-family: Arial, Helvetica, sans-serif !important; }
+  </style>
+  <![endif]-->
+  <style>
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }
+    img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; display: block; }
+    body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
+    a { text-decoration: none; }
 
-          <!-- Body -->
-          <div style="padding: 30px; border: 1px solid #e5e7eb; border-top: none;">
-            <p style="font-size: 16px; color: #1f2937; margin: 0 0 16px 0;">
-              Poštovani/a <strong>${data.customerName || 'korisniče'}</strong>,
-            </p>
-            <p style="font-size: 14px; color: #4b5563; line-height: 1.6; margin: 0 0 16px 0;">
-              Hvala Vam što ste odabrali kablovske servise Telekoma Srbije. Naš cilj je da Vam pružimo vrhunsko iskustvo, pa bismo voleli da čujemo Vaše utiske o nedavnoj instalaciji koju su obavili naši tehničari.
-            </p>
-            <p style="font-size: 14px; color: #4b5563; line-height: 1.6; margin: 0 0 24px 0;">
-              Vaši odgovori nam pomažu da budemo još bolji.
-            </p>
+    @media screen and (max-width: 620px) {
+      .container { width: 100% !important; max-width: 100% !important; }
+      .px-mobile { padding-left: 20px !important; padding-right: 20px !important; }
+      .btn-cell { width: 100% !important; }
+      .btn-fallback { width: 100% !important; box-sizing: border-box; }
+      .header-pad { padding: 28px 20px !important; }
+    }
 
-            <!-- CTA Button -->
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${data.surveyUrl}"
-                 style="display: inline-block; background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 700; letter-spacing: 0.5px;">
-                ZAPOČNI ANKETU
-              </a>
-            </div>
+    @media (prefers-color-scheme: dark) {
+      .body-bg { background-color: #0f1115 !important; }
+      .card-bg { background-color: #1a1d23 !important; }
+      .header-bg { background-color: #1e3a8a !important; }
+      .footer-bg { background-color: #15181d !important; }
+      .text-primary { color: #f5f5f5 !important; }
+      .text-secondary { color: #cdd0d4 !important; }
+      .text-muted { color: #9097a0 !important; }
+      .header-sub { color: #bfdbfe !important; }
+      .border-row td { border-color: #2a2e36 !important; }
+      .btn-fallback {
+        background-color: #2563eb !important;
+        border-color: #2563eb !important;
+        color: #ffffff !important;
+      }
+    }
 
-            <p style="font-size: 13px; color: #9ca3af; text-align: center; margin: 0;">
-              Popunjavanje traje manje od 2 minuta.
-            </p>
-          </div>
+    [data-ogsc] .body-bg { background-color: #0f1115 !important; }
+    [data-ogsc] .card-bg { background-color: #1a1d23 !important; }
+    [data-ogsc] .header-bg { background-color: #1e3a8a !important; }
+    [data-ogsc] .footer-bg { background-color: #15181d !important; }
+    [data-ogsc] .text-primary { color: #f5f5f5 !important; }
+    [data-ogsc] .text-secondary { color: #cdd0d4 !important; }
+    [data-ogsc] .text-muted { color: #9097a0 !important; }
+    [data-ogsc] .header-sub { color: #bfdbfe !important; }
+    [data-ogsc] .border-row td { border-color: #2a2e36 !important; }
+    [data-ogsc] .btn-fallback {
+      background-color: #2563eb !important;
+      border-color: #2563eb !important;
+      color: #ffffff !important;
+    }
+  </style>
+</head>
+<body class="body-bg" style="margin:0;padding:0;width:100%;background-color:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">
+  <div style="display:none;font-size:1px;color:#f3f4f6;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">
+    Hvala što ste odabrali Robotik montažu &ndash; vaše mišljenje nam mnogo znači. Anketa traje manje od 2 minuta.
+  </div>
 
-          <!-- Footer -->
-          <div style="padding: 20px 30px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; text-align: center;">
-            <p style="font-size: 12px; color: #9ca3af; margin: 0;">
-              Robotik montaža • Ovaj email je automatski generisan
-            </p>
-          </div>
-        </div>
-      `
+  <table role="presentation" class="body-bg" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+
+        <!--[if mso | IE]>
+        <table role="presentation" align="center" border="0" cellspacing="0" cellpadding="0" width="600" style="width:600px;"><tr><td>
+        <![endif]-->
+
+        <table role="presentation" class="container card-bg" cellpadding="0" cellspacing="0" border="0" width="600" bgcolor="#ffffff" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;">
+
+          <tr>
+            <td class="header-bg header-pad" align="center" bgcolor="#1e40af" style="background-color:#1e40af;padding:40px 30px;">
+              <h1 style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:24px;line-height:1.3;font-weight:700;color:#ffffff;">
+                Robotik monta&#382;a
+              </h1>
+              <p class="header-sub" style="margin:8px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.4;color:#dbeafe;">
+                Va&#353;e mi&#353;ljenje nam je va&#382;no
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="card-bg px-mobile" bgcolor="#ffffff" style="background-color:#ffffff;padding:36px 40px 8px 40px;">
+              <p class="text-primary" style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#111827;">
+                Po&#353;tovani/a <strong>${data.customerName || 'korisniče'}</strong>,
+              </p>
+              <p class="text-secondary" style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#4b5563;">
+                Hvala Vam &#353;to ste odabrali kablovske servise Telekoma Srbije. Na&#353; cilj je da Vam pru&#382;imo vrhunsko iskustvo, pa bismo voleli da &#269;ujemo Va&#353;e utiske o nedavnoj instalaciji koju su obavili na&#353;i tehni&#269;ari.
+              </p>
+              <p class="text-secondary" style="margin:0 0 28px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#4b5563;">
+                Va&#353;i odgovori nam poma&#382;u da budemo jo&#353; bolji.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="card-bg" bgcolor="#ffffff" align="center" style="background-color:#ffffff;padding:0 40px 8px 40px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;">
+                <tr>
+                  <td class="btn-cell" align="center">
+                    <!--[if mso]>
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"
+                      href="${data.surveyUrl}"
+                      style="height:52px;v-text-anchor:middle;width:260px;"
+                      arcsize="15%"
+                      fillcolor="#1e40af"
+                      strokecolor="#1e40af">
+                      <w:anchorlock/>
+                      <center style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;letter-spacing:0.5px;">
+                        ZAPO&#268;NI ANKETU
+                      </center>
+                    </v:roundrect>
+                    <![endif]-->
+                    <!--[if !mso]><!-- -->
+                    <a href="${data.surveyUrl}" target="_blank" rel="noopener" class="btn-fallback" style="background-color:#1e40af;border:1px solid #1e40af;border-radius:8px;color:#ffffff;display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;letter-spacing:0.5px;line-height:52px;text-align:center;text-decoration:none;width:260px;">
+                      ZAPO&#268;NI ANKETU
+                    </a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="card-bg" bgcolor="#ffffff" align="center" style="background-color:#ffffff;padding:12px 40px 32px 40px;">
+              <p class="text-muted" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#9ca3af;text-align:center;">
+                Popunjavanje traje manje od 2 minuta.
+              </p>
+            </td>
+          </tr>
+
+          <tr class="border-row">
+            <td class="card-bg" bgcolor="#ffffff" style="background-color:#ffffff;padding:0 40px;border-top:1px solid #e5e7eb;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+
+          <tr>
+            <td class="card-bg footer-bg" bgcolor="#ffffff" align="center" style="background-color:#ffffff;padding:20px 30px 28px 30px;">
+              <p class="text-muted" style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#9ca3af;text-align:center;">
+                Robotik monta&#382;a &middot; Kontrola kvaliteta<br />
+                Ovaj email je automatski generisan, molimo Vas ne odgovarajte na njega.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+        <!--[if mso | IE]>
+        </td></tr></table>
+        <![endif]-->
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
     }
   };
 
