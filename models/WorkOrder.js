@@ -142,6 +142,10 @@ const WorkOrderSchema = new Schema({
   verifiedAt: {
     type: Date
   },
+  reviewEmailSentAt: {
+    type: Date,
+    default: null
+  },
   adminComment: {
     type: String
   },

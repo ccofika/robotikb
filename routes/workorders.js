@@ -2788,29 +2788,44 @@ router.put('/:id/verify', auth, logActivity('workorders', 'workorder_edit', {
       console.error('Error fetching customer status:', err);
     }
 
-    // Slanje ankete korisniku ako postoji email
+    // Slanje ankete korisniku ako postoji email (jednom po radnom nalogu, atomic lock)
     if (customerEmail) {
-      try {
-        const emailService = require('../services/emailService');
+      const claimed = await WorkOrder.findOneAndUpdate(
+        { _id: id, reviewEmailSentAt: null },
+        { $set: { reviewEmailSentAt: new Date() } },
+        { new: false }
+      );
 
-        // Napravi survey URL sa pre-filled tisJobId
-        const surveyBaseUrl = process.env.REVIEW_SURVEY_URL || '';
-        const surveyUrl = surveyBaseUrl
-          ? surveyBaseUrl.replace('PLACEHOLDER_REF', updatedWorkOrder.tisJobId || '')
-          : '';
+      if (!claimed) {
+        console.log('[ReviewEmail] Email ankete je već poslat za ovaj radni nalog - preskačem.');
+      } else {
+        try {
+          const emailService = require('../services/emailService');
 
-        if (surveyUrl) {
-          const emailResult = await emailService.sendEmailToAddress(customerEmail, 'reviewSurvey', {
-            customerName: customerName || 'korisniče',
-            surveyUrl
-          });
-          console.log('[ReviewEmail] Rezultat slanja ankete:', emailResult.success ? 'Uspešno' : emailResult.error);
-        } else {
-          console.log('[ReviewEmail] REVIEW_SURVEY_URL nije konfigurisan - email ankete nije poslat');
+          const surveyBaseUrl = process.env.REVIEW_SURVEY_URL || '';
+          const surveyUrl = surveyBaseUrl
+            ? surveyBaseUrl.replace('PLACEHOLDER_REF', updatedWorkOrder.tisJobId || '')
+            : '';
+
+          if (surveyUrl) {
+            const emailResult = await emailService.sendEmailToAddress(customerEmail, 'reviewSurvey', {
+              customerName: customerName || 'korisniče',
+              surveyUrl
+            });
+            console.log('[ReviewEmail] Rezultat slanja ankete:', emailResult.success ? 'Uspešno' : emailResult.error);
+
+            if (!emailResult.success) {
+              await WorkOrder.updateOne({ _id: id }, { $set: { reviewEmailSentAt: null } });
+              console.log('[ReviewEmail] Slanje neuspešno - lock oslobođen za retry.');
+            }
+          } else {
+            await WorkOrder.updateOne({ _id: id }, { $set: { reviewEmailSentAt: null } });
+            console.log('[ReviewEmail] REVIEW_SURVEY_URL nije konfigurisan - email ankete nije poslat, lock oslobođen.');
+          }
+        } catch (emailError) {
+          await WorkOrder.updateOne({ _id: id }, { $set: { reviewEmailSentAt: null } });
+          console.error('[ReviewEmail] Greška pri slanju email-a ankete (lock oslobođen):', emailError);
         }
-      } catch (emailError) {
-        console.error('[ReviewEmail] Greška pri slanju email-a ankete:', emailError);
-        // Ne prekidamo proces zbog greške u slanju email-a
       }
     }
 
