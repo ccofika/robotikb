@@ -6,6 +6,26 @@ const path = require('path');
 const xlsx = require('xlsx');
 const mongoose = require('mongoose');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
+const WorkOrder = require('../models/WorkOrder');
+
+// Merge technician comment with the most recent cancel/postpone history entry.
+// `comment` empty + history empty -> ''
+// `comment` empty + history has text -> history text
+// `comment` has text + history empty -> comment
+// both equal -> comment (avoid duplicate)
+// both differ -> "comment | label: history text"
+const mergeStatusNote = (comment, historyArray, label) => {
+  const c = (comment || '').trim();
+  const arr = Array.isArray(historyArray) ? historyArray : [];
+  const last = arr.length > 0 ? arr[arr.length - 1] : null;
+  const h = last ? (last.comment || '').trim() : '';
+
+  if (!c && !h) return '';
+  if (c && !h) return c;
+  if (!c && h) return h;
+  if (c === h) return c;
+  return `${c} | ${label}: ${h}`;
+};
 
 // Cache for evidence preview (5 minute TTL)
 let evidencePreviewCache = new Map();
@@ -1008,6 +1028,29 @@ router.post('/evidencija-new', async (req, res) => {
       return res.status(400).json({ error: 'Nema radnih naloga u izabranom periodu' });
     }
 
+    // For cancelled/postponed orders, the technician's reason lives in
+    // cancelHistory/postponeHistory on the source WorkOrder — not in
+    // evidence.notes. Pull those arrays so we can merge them into Napomena.
+    const cancelledOrPostponedIds = evidenceRecords
+      .filter(ev => ev.status === 'OTKAZANO' || ev.status === 'ODLOŽENO')
+      .map(ev => ev.workOrderId)
+      .filter(Boolean);
+
+    const historyByWorkOrderId = new Map();
+    if (cancelledOrPostponedIds.length > 0) {
+      const sourceWorkOrders = await WorkOrder.find({
+        _id: { $in: cancelledOrPostponedIds }
+      })
+      .select('cancelHistory postponeHistory')
+      .lean();
+      for (const wo of sourceWorkOrders) {
+        historyByWorkOrderId.set(wo._id.toString(), {
+          cancelHistory: wo.cancelHistory || [],
+          postponeHistory: wo.postponeHistory || []
+        });
+      }
+    }
+
     // Kreiramo novi workbook
     const workbook = xlsx.utils.book_new();
 
@@ -1061,11 +1104,25 @@ router.post('/evidencija-new', async (req, res) => {
       const execDate = new Date(evidence.executionDate);
       const formattedDate = `${execDate.getDate().toString().padStart(2, '0')}.${(execDate.getMonth() + 1).toString().padStart(2, '0')}.${execDate.getFullYear()}`;
 
+      let napomenaValue = evidence.notes || '';
+      if (evidence.status === 'OTKAZANO' || evidence.status === 'ODLOŽENO') {
+        const history = evidence.workOrderId
+          ? historyByWorkOrderId.get(evidence.workOrderId.toString())
+          : null;
+        if (history) {
+          if (evidence.status === 'OTKAZANO') {
+            napomenaValue = mergeStatusNote(evidence.notes, history.cancelHistory, 'Otkazano');
+          } else {
+            napomenaValue = mergeStatusNote(evidence.notes, history.postponeHistory, 'Odloženo');
+          }
+        }
+      }
+
       // Osnovni podaci
       const row = [
         formattedDate,                                // Datum
         evidence.status || 'U TOKU',                  // STATUS
-        evidence.notes || '',                         // Napomena
+        napomenaValue,                                // Napomena
         evidence.tisJobId || '',                      // ID zahteva
         evidence.tisId || '',                         // ID korisnika
         evidence.userPhone || '',                     // Telefon
