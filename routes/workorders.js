@@ -516,7 +516,7 @@ async function createWorkOrderEvidence(workOrder) {
       tisJobId: workOrder.tisJobId || `generated-${Date.now()}`,
       tisId: workOrder.tisId || `tisid-${Date.now()}`,
       customerName: workOrder.userName || 'Nepoznat korisnik',
-      customerStatus: 'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme)',
+      customerStatus: 'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala',
       userPhone: workOrder.userPhone || '',
       municipality: workOrder.municipality || 'Nepoznata opština',
       address: workOrder.address || 'Nepoznata adresa',

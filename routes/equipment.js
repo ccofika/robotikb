@@ -240,7 +240,8 @@ router.get('/display', async (req, res) => {
       limit = 50,
       search = '',
       category = '',
-      location = ''
+      location = '',
+      all = ''
     } = req.query;
 
     // Za dashboard/stats, vrati samo brojeve
@@ -302,6 +303,32 @@ router.get('/display', async (req, res) => {
     // Add location filter
     if (location) {
       filterObj.location = location;
+    }
+
+    // Export mode - return all results without pagination (used for Excel export)
+    if (all === 'true') {
+      const equipment = await Equipment.find(filterObj)
+        .sort({ createdAt: -1 })
+        .lean();
+
+      const endTime = Date.now();
+      const queryTime = endTime - startTime;
+
+      return res.json({
+        data: equipment,
+        pagination: {
+          currentPage: 1,
+          totalPages: 1,
+          totalCount: equipment.length,
+          limit: equipment.length,
+          hasNextPage: false,
+          hasPreviousPage: false
+        },
+        performance: {
+          queryTime,
+          resultsPerPage: equipment.length
+        }
+      });
     }
 
     // Server-side pagination setup

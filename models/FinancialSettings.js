@@ -4,6 +4,7 @@ const Schema = mongoose.Schema;
 const FinancialSettingsSchema = new Schema({
   // Cene po customerStatus opcijama iz WorkOrderEvidence
   pricesByCustomerStatus: {
+    // Stari statusi (zadržani za backward compatibility)
     'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme)': {
       type: Number,
       default: 0,
@@ -30,6 +31,37 @@ const FinancialSettingsSchema = new Schema({
       min: 0
     },
     'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji bez montažnih radova': {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    // Novi statusi sa "sa isporukom materijala"
+    'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala': {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    'Priključenje korisnika na HFC KDS mreža u privatnim kućama sa instalacijom CPE opreme (izrada instalacije od PM-a do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala': {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    'Priključenje korisnika na GPON mrežu u privatnim kućama (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala': {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    'Priključenje korisnika na GPON mrežu u zgradi (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala': {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji sa montažnim radovima sa isporukom materijala': {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji bez montažnih radova sa isporukom materijala': {
       type: Number,
       default: 0,
       min: 0
@@ -89,6 +121,7 @@ const FinancialSettingsSchema = new Schema({
       required: true
     },
     pricesByCustomerStatus: {
+      // Stari statusi (zadržani za backward compatibility)
       'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme)': {
         type: Number,
         default: 0,
@@ -115,6 +148,37 @@ const FinancialSettingsSchema = new Schema({
         min: 0
       },
       'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji bez montažnih radova': {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      // Novi statusi sa "sa isporukom materijala"
+      'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala': {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      'Priključenje korisnika na HFC KDS mreža u privatnim kućama sa instalacijom CPE opreme (izrada instalacije od PM-a do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala': {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      'Priključenje korisnika na GPON mrežu u privatnim kućama (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala': {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      'Priključenje korisnika na GPON mrežu u zgradi (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala': {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji sa montažnim radovima sa isporukom materijala': {
+        type: Number,
+        default: 0,
+        min: 0
+      },
+      'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji bez montažnih radova sa isporukom materijala': {
         type: Number,
         default: 0,
         min: 0
