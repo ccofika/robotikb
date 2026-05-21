@@ -165,16 +165,8 @@ router.get('/customer-status-options', auth, isSupervisorOrSuperAdmin, async (re
       'Priključenje korisnika GPON tehnologijom (povezivanje svih uređaja u okviru paketa) - ASTRA TELEKOM'
     ];
 
-    // Kratki nazivi za UI - i stari i novi statusi mapiraju se na iste kratke nazive
+    // Kratki nazivi za UI
     const shortNames = {
-      // Stari statusi (za backward compat sa postojećim transakcijama)
-      'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme)': 'HFC Zgrada',
-      'Priključenje korisnika na HFC KDS mreža u privatnim kućama sa instalacijom CPE opreme (izrada instalacije od PM-a do korisnika sa instalacijom kompletne CPE opreme)': 'HFC Kuća',
-      'Priključenje korisnika na GPON mrežu u privatnim kućama (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme)': 'GPON Kuća',
-      'Priključenje korisnika na GPON mrežu u zgradi (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme)': 'GPON Zgrada',
-      'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji sa montažnim radovima': 'Sa Montažom',
-      'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji bez montažnih radova': 'Bez Montaže',
-      // Novi statusi sa "sa isporukom materijala"
       'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala': 'HFC Zgrada',
       'Priključenje korisnika na HFC KDS mreža u privatnim kućama sa instalacijom CPE opreme (izrada instalacije od PM-a do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala': 'HFC Kuća',
       'Priključenje korisnika na GPON mrežu u privatnim kućama (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme) sa isporukom materijala': 'GPON Kuća',
@@ -842,6 +834,180 @@ router.post('/exclude-from-finances/:workOrderId', auth, isSupervisorOrSuperAdmi
   } catch (error) {
     console.error('Greška pri isključivanju iz finansija:', error);
     res.status(500).json({ error: 'Greška pri isključivanju radnog naloga iz finansija' });
+  }
+});
+
+// POST /api/finances/migrate-customer-status-keys
+// Preimenuje stare customerStatus ključeve u nove (sa "sa isporukom materijala" sufiksom)
+// u FinancialSettings dokumentu (i u globalnom pricesByCustomerStatus i u technicianPrices).
+// Bezbedan za višestruko pokretanje - ne diraće već-migrirane ključeve.
+router.post('/migrate-customer-status-keys', auth, isSupervisorOrSuperAdmin, async (req, res) => {
+  try {
+    const SUFFIX = ' sa isporukom materijala';
+
+    // Stari ključevi koji se preimenuju (NE-ASTRA, NE-Nov korisnik)
+    const oldKeys = [
+      'Priključenje korisnika na HFC KDS mreža u zgradi sa instalacijom CPE opreme (izrada kompletne instalacije od RO do korisnika sa instalacijom kompletne CPE opreme)',
+      'Priključenje korisnika na HFC KDS mreža u privatnim kućama sa instalacijom CPE opreme (izrada instalacije od PM-a do korisnika sa instalacijom kompletne CPE opreme)',
+      'Priključenje korisnika na GPON mrežu u privatnim kućama (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme)',
+      'Priključenje korisnika na GPON mrežu u zgradi (izrada kompletne instalacije od PM do korisnika sa instalacijom kompletne CPE opreme)',
+      'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji sa montažnim radovima',
+      'Radovi kod postojećeg korisnika na unutrašnjoj instalaciji bez montažnih radova'
+    ];
+
+    // Koristimo direktan MongoDB pristup jer Mongoose strict-mode skida ne-schema ključeve
+    const collection = mongoose.connection.db.collection('financialsettings');
+    const settingsDoc = await collection.findOne({});
+
+    if (!settingsDoc) {
+      return res.status(404).json({ error: 'Finansijske postavke nisu pronađene u bazi' });
+    }
+
+    const log = {
+      global: { renamed: [], skipped: [] },
+      technicians: []
+    };
+
+    // 1. Globalni pricesByCustomerStatus
+    const newGlobalPrices = { ...(settingsDoc.pricesByCustomerStatus || {}) };
+    for (const oldKey of oldKeys) {
+      const newKey = oldKey + SUFFIX;
+      if (Object.prototype.hasOwnProperty.call(newGlobalPrices, oldKey)) {
+        const oldVal = Number(newGlobalPrices[oldKey]) || 0;
+        const existingNewVal = Number(newGlobalPrices[newKey]) || 0;
+
+        if (oldVal > 0 && existingNewVal === 0) {
+          newGlobalPrices[newKey] = oldVal;
+          log.global.renamed.push({ from: oldKey, to: newKey, value: oldVal });
+        } else if (oldVal > 0 && existingNewVal > 0) {
+          // Novi ključ već ima vrednost - ne prepisuj, samo obriši stari
+          log.global.skipped.push({ key: oldKey, reason: 'novi ključ već ima vrednost', oldVal, existingNewVal });
+        }
+        // Obriši stari ključ u svakom slučaju (i ako je 0)
+        delete newGlobalPrices[oldKey];
+      }
+    }
+
+    // 2. Po tehničaru
+    const newTechnicianPrices = (settingsDoc.technicianPrices || []).map(tp => {
+      const tpPrices = { ...(tp.pricesByCustomerStatus || {}) };
+      const techLog = { technicianId: tp.technicianId, renamed: [], skipped: [] };
+
+      for (const oldKey of oldKeys) {
+        const newKey = oldKey + SUFFIX;
+        if (Object.prototype.hasOwnProperty.call(tpPrices, oldKey)) {
+          const oldVal = Number(tpPrices[oldKey]) || 0;
+          const existingNewVal = Number(tpPrices[newKey]) || 0;
+
+          if (oldVal > 0 && existingNewVal === 0) {
+            tpPrices[newKey] = oldVal;
+            techLog.renamed.push({ from: oldKey, to: newKey, value: oldVal });
+          } else if (oldVal > 0 && existingNewVal > 0) {
+            techLog.skipped.push({ key: oldKey, oldVal, existingNewVal });
+          }
+          delete tpPrices[oldKey];
+        }
+      }
+
+      log.technicians.push(techLog);
+      return { ...tp, pricesByCustomerStatus: tpPrices };
+    });
+
+    // Sačuvaj kroz direktan MongoDB update
+    await collection.updateOne(
+      { _id: settingsDoc._id },
+      {
+        $set: {
+          pricesByCustomerStatus: newGlobalPrices,
+          technicianPrices: newTechnicianPrices
+        }
+      }
+    );
+
+    // Invalidate cache da bi novo učitani podaci bili sveži
+    invalidateFinancialReportsCache();
+
+    console.log('Customer status keys migracija uspešna:', JSON.stringify(log, null, 2));
+
+    res.json({
+      success: true,
+      message: 'Stari customerStatus ključevi su preimenovani u nove',
+      globalRenamed: log.global.renamed.length,
+      globalSkipped: log.global.skipped.length,
+      techniciansAffected: log.technicians.filter(t => t.renamed.length > 0).length,
+      log
+    });
+  } catch (error) {
+    console.error('Greška pri migraciji customerStatus ključeva:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/finances/retry-all-failed-transactions
+// Pokušava ponovo obračun za sve nerazrešene FailedFinancialTransaction zapise.
+// Vraća summary uspeha/neuspeha.
+router.post('/retry-all-failed-transactions', auth, isSupervisorOrSuperAdmin, async (req, res) => {
+  try {
+    const { createFinancialTransaction } = require('./workorders');
+
+    const failed = await FailedFinancialTransaction.find({
+      resolved: false,
+      excludedFromFinances: { $ne: true }
+    }).lean();
+
+    console.log(`[BulkRetry] Found ${failed.length} unresolved failed transactions to retry`);
+
+    const summary = {
+      total: failed.length,
+      succeeded: 0,
+      stillFailing: 0,
+      errors: 0
+    };
+    const details = [];
+
+    for (const ft of failed) {
+      const workOrderId = ft.workOrderId;
+      try {
+        // Obriši postojeću FinancialTransaction (ako postoji) i FailedFinancialTransaction
+        // tako da createFinancialTransaction može iznova da odluči
+        await FinancialTransaction.deleteOne({ workOrderId });
+        await FailedFinancialTransaction.deleteMany({ workOrderId });
+
+        await createFinancialTransaction(workOrderId);
+
+        const created = await FinancialTransaction.findOne({ workOrderId });
+        if (created) {
+          summary.succeeded++;
+          details.push({ workOrderId, status: 'succeeded' });
+        } else {
+          const newFail = await FailedFinancialTransaction.findOne({ workOrderId });
+          summary.stillFailing++;
+          details.push({
+            workOrderId,
+            status: 'still_failing',
+            reason: newFail?.failureMessage || 'unknown'
+          });
+        }
+      } catch (err) {
+        console.error(`[BulkRetry] Error for WO ${workOrderId}:`, err.message);
+        summary.errors++;
+        details.push({ workOrderId, status: 'error', reason: err.message });
+      }
+    }
+
+    // Invalidate cache nakon mass-promene
+    invalidateFinancialReportsCache();
+
+    console.log('[BulkRetry] Done:', summary);
+
+    res.json({
+      success: true,
+      summary,
+      details
+    });
+  } catch (error) {
+    console.error('Greška pri bulk retry-u failed transakcija:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
