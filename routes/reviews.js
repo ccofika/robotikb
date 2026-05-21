@@ -129,6 +129,86 @@ router.post('/webhook', async (req, res) => {
 });
 
 // ============================================================
+// GET /api/reviews/all - Sve ocene sa paginacijom + filter po tehničaru
+// Sortirano po tehničaru (alfabetski) pa po datumu desc.
+// Vraća i populate-ovan technicianId sa name.
+// Query params:
+//   page (default 1)
+//   limit (default 20)
+//   technicianId (opciono - filter po tehničaru)
+// ============================================================
+router.get('/all', auth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+    const technicianId = req.query.technicianId;
+
+    // Build query
+    const query = {};
+    if (technicianId && mongoose.Types.ObjectId.isValid(technicianId)) {
+      query.technicianId = new mongoose.Types.ObjectId(technicianId);
+    }
+
+    // Sort: prvo po tehničaru (asc), pa po datumu desc — da idu "podeljeni po tehničarima"
+    // Pošto je technicianId ObjectId, sortiranje po njemu daje deterministički redosled
+    // ali ne abecedno po imenu. Za pravilno sortiranje po imenu treba aggregation pipeline.
+    const [reviews, total] = await Promise.all([
+      Review.aggregate([
+        { $match: query },
+        {
+          $lookup: {
+            from: 'technicians',
+            localField: 'technicianId',
+            foreignField: '_id',
+            as: 'technician'
+          }
+        },
+        { $unwind: { path: '$technician', preserveNullAndEmptyArrays: true } },
+        { $addFields: { technicianName: { $ifNull: ['$technician.name', 'zzz_nepoznat'] } } },
+        { $sort: { technicianName: 1, createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+        {
+          $project: {
+            _id: 1,
+            workOrderId: 1,
+            technicianId: 1,
+            technicianName: 1,
+            tisJobId: 1,
+            customerName: 1,
+            onTime: 1,
+            professionalism: 1,
+            cleanInstallation: 1,
+            cleanInstallationComment: 1,
+            explanation: 1,
+            serviceQuality: 1,
+            npsScore: 1,
+            comment: 1,
+            createdAt: 1
+          }
+        }
+      ]),
+      Review.countDocuments(query)
+    ]);
+
+    console.log('[Reviews] Dohvaćeno', reviews.length, 'ocena (all) page:', page, 'filter:', technicianId || 'sve');
+
+    res.json({
+      reviews,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
+
+  } catch (error) {
+    console.error('[Reviews All] Greška:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju svih ocena' });
+  }
+});
+
+// ============================================================
 // GET /api/reviews/technician/:id - Svi review-ovi za tehničara
 // ============================================================
 router.get('/technician/:id', auth, async (req, res) => {
