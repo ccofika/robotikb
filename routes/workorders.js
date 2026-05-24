@@ -1942,6 +1942,32 @@ router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
 
+    // GUARD: Email korisnika se NE MOŽE menjati nakon verifikacije
+    // (anketa je već poslata ili ne može više biti poslata)
+    if (updateData.customerEmail !== undefined && workOrder.verified === true) {
+      const currentEmail = (workOrder.customerEmail || '').trim();
+      const newEmail = (updateData.customerEmail || '').trim();
+      if (currentEmail !== newEmail) {
+        return res.status(400).json({
+          error: 'Email korisnika se ne može menjati nakon verifikacije radnog naloga.'
+        });
+      }
+    }
+
+    // VALIDACIJA: Email format (ako je poslat i nije prazan)
+    if (updateData.customerEmail !== undefined && updateData.customerEmail !== null) {
+      const trimmedEmail = updateData.customerEmail.trim();
+      if (trimmedEmail !== '') {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(trimmedEmail)) {
+          return res.status(400).json({
+            error: 'Email nije u ispravnom formatu (npr. ime@domen.com).'
+          });
+        }
+      }
+      updateData.customerEmail = trimmedEmail;
+    }
+
     // Provera i konverzija technicianId
     if (updateData.technicianId === '') {
       updateData.technicianId = null;
@@ -2108,6 +2134,7 @@ router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
         verified: updatedWorkOrder.verified,
         customerName: updatedWorkOrder.userName || '',
         userPhone: updatedWorkOrder.userPhone || '',
+        customerEmail: updatedWorkOrder.customerEmail || '',
         tisJobId: updatedWorkOrder.tisJobId || '',
         tisId: updatedWorkOrder.tisId || ''
       };
