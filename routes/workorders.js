@@ -1282,6 +1282,23 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
     const workbook = xlsx.readFile(req.file.path);
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
+
+    // Fix phantom range: some Excel files declare a sheet range covering the entire
+    // worksheet (e.g. A1:XFC1048576) due to formatting applied to empty cells. Without
+    // this, sheet_to_json iterates billions of phantom cells and blocks the event loop.
+    const cellAddrs = Object.keys(worksheet).filter(k => !k.startsWith('!'));
+    if (cellAddrs.length > 0) {
+      let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+      for (const addr of cellAddrs) {
+        const { r, c } = xlsx.utils.decode_cell(addr);
+        if (r < minR) minR = r;
+        if (r > maxR) maxR = r;
+        if (c < minC) minC = c;
+        if (c > maxC) maxC = c;
+      }
+      worksheet['!ref'] = xlsx.utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } });
+    }
+
     const data = xlsx.utils.sheet_to_json(worksheet);
 
     if (data.length === 0) {
