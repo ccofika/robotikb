@@ -7,6 +7,13 @@ const xlsx = require('xlsx');
 const mongoose = require('mongoose');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const WorkOrder = require('../models/WorkOrder');
+const Equipment = require('../models/Equipment');
+
+// DD.MM.YYYY format za datume zaduženja opreme
+const formatDDMMYYYY = (date) => {
+  const d = new Date(date);
+  return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear()}`;
+};
 
 // Merge technician comment with the most recent cancel/postpone history entry.
 // `comment` empty + history empty -> ''
@@ -1051,17 +1058,40 @@ router.post('/evidencija-new', async (req, res) => {
       }
     }
 
+    // Zaduženje opreme: batch lookup pečata (assignedAt/assignedByName) po serijskim brojevima
+    // instalirane opreme. Case-insensitive jer serijski brojevi u bazi nisu svi lowercase.
+    const allInstalledSerials = new Set();
+    evidenceRecords.forEach(ev => {
+      (ev.installedEquipment || []).forEach(eq => {
+        if (eq.serialNumber) allInstalledSerials.add(eq.serialNumber.toLowerCase());
+      });
+    });
+
+    const stampBySerial = {};
+    if (allInstalledSerials.size > 0) {
+      const equipmentDocs = await Equipment.find({ serialNumber: { $in: [...allInstalledSerials] } })
+        .collation({ locale: 'en', strength: 2 })
+        .select('serialNumber assignedAt assignedByName')
+        .lean();
+      equipmentDocs.forEach(doc => {
+        stampBySerial[doc.serialNumber.toLowerCase()] = {
+          at: doc.assignedAt || null,
+          by: doc.assignedByName || ''
+        };
+      });
+    }
+
     // Kreiramo novi workbook
     const workbook = xlsx.utils.book_new();
 
     // Priprema podataka za evidenciju
     const evidencijaData = [];
-    
+
     // Header red 1 - prazan
     evidencijaData.push([]);
-    
+
     // Header red 2 - naslov i kategorije opreme
-    evidencijaData.push([
+    const headerRow2 = [
       null, null, null, null, null, null,
       'Spcifikacija instalacija:',
       'Instalacije - Regija Beograd',
@@ -1076,7 +1106,10 @@ router.post('/evidencija-new', async (req, res) => {
       'Kartica', null,
       'Mini node', null,
       'DEMONT, N-ispravno,R-neispravno'
-    ]);
+    ];
+    while (headerRow2.length < 34) headerRow2.push(null);
+    headerRow2.push('Zaduženje opreme', null); // kolone 34-35
+    evidencijaData.push(headerRow2);
     
     // Header red 3 - prazan
     evidencijaData.push([]);
@@ -1095,7 +1128,8 @@ router.post('/evidencija-new', async (req, res) => {
       'Serijski broj', 'N/R',  // Kartica 2
       'Serijski broj', 'N/R',  // Kartica 3
       'Serijski broj', 'N/R',  // Mini node
-      'Serijski broj', 'N/R'   // Demontaža
+      'Serijski broj', 'N/R',  // Demontaža
+      'Datum zaduženja', 'Zadužio'  // Zaduženje instalirane opreme tehničaru
     ]);
 
     // Dodavanje podataka za svaki WorkOrderEvidence zapis
@@ -1187,6 +1221,29 @@ router.post('/evidencija-new', async (req, res) => {
         row[33] = '';
       }
 
+      // Zaduženje instalirane opreme: kada i ko je zadužio opremu tehničaru.
+      // Jedna jedinstvena vrednost -> prikaži je direktno; više različitih -> po serijskom broju.
+      const stampParts = (evidence.installedEquipment || [])
+        .filter(eq => eq.serialNumber)
+        .map(eq => {
+          const stamp = stampBySerial[eq.serialNumber.toLowerCase()];
+          return {
+            serial: eq.serialNumber,
+            date: stamp && stamp.at ? formatDDMMYYYY(stamp.at) : '',
+            by: stamp ? (stamp.by || '') : ''
+          };
+        });
+
+      const uniqueDates = [...new Set(stampParts.map(p => p.date).filter(Boolean))];
+      const uniqueNames = [...new Set(stampParts.map(p => p.by).filter(Boolean))];
+
+      row[34] = uniqueDates.length <= 1
+        ? (uniqueDates[0] || '')
+        : stampParts.filter(p => p.date).map(p => `${p.serial}: ${p.date}`).join('\n');
+      row[35] = uniqueNames.length <= 1
+        ? (uniqueNames[0] || '')
+        : stampParts.filter(p => p.by).map(p => `${p.serial}: ${p.by}`).join('\n');
+
       evidencijaData.push(row);
     });
 
@@ -1210,6 +1267,7 @@ router.post('/evidencija-new', async (req, res) => {
     ws['!merges'].push({ s: { r: 1, c: 28 }, e: { r: 1, c: 29 } }); // Kartica 3
     ws['!merges'].push({ s: { r: 1, c: 30 }, e: { r: 1, c: 31 } }); // Mini node
     ws['!merges'].push({ s: { r: 1, c: 32 }, e: { r: 1, c: 33 } }); // Demontaža
+    ws['!merges'].push({ s: { r: 1, c: 34 }, e: { r: 1, c: 35 } }); // Zaduženje opreme
 
     // Postavljanje širine kolona
     const colWidths = [
@@ -1228,7 +1286,9 @@ router.post('/evidencija-new', async (req, res) => {
       { width: 15 }, // Tehnicar 1
       { width: 15 }, // Tehnicar 2
       // Oprema kolone
-      ...Array(20).fill({ width: 18 }) // 20 kolona za opremu
+      ...Array(20).fill({ width: 18 }), // 20 kolona za opremu
+      { width: 16 }, // Datum zaduženja
+      { width: 28 }  // Zadužio
     ];
     ws['!cols'] = colWidths;
 
