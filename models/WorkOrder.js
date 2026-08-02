@@ -261,6 +261,12 @@ const WorkOrderSchema = new Schema({
   },
   appointmentDateTime: {
     type: Date
+  },
+  // Podsetnik 30 min pre termina: čuva appointmentDateTime za koji je podsetnik
+  // poslat, pa se pri promeni termina podsetnik automatski šalje ponovo
+  reminderSentForAppointment: {
+    type: Date,
+    default: null
   }
 }, { timestamps: true });
 
@@ -274,5 +280,6 @@ WorkOrderSchema.index({ statusChangedAt: 1 }); // Za cancellation analysis
 WorkOrderSchema.index({ status: 1, statusChangedAt: 1 }); // Za cancellation analysis sa vremenskim opsegom
 WorkOrderSchema.index({ status: 1, technicianId: 1 }); // Kompozitni indeks za filtriranje po statusu i tehničaru
 WorkOrderSchema.index({ date: 1, status: 1 }); // Kompozitni indeks za sortiranje po datumu i statusu
+WorkOrderSchema.index({ status: 1, appointmentDateTime: 1 }); // Za scheduler (podsetnici + overdue)
 
 module.exports = mongoose.model('WorkOrder', WorkOrderSchema); 

@@ -3,6 +3,10 @@ const { WorkOrder, Technician } = require('../models');
 const Vehicle = require('../models/Vehicle');
 const notificationsRouter = require('../routes/notifications');
 const createNotification = notificationsRouter.createNotification;
+const androidNotificationService = require('./androidNotificationService');
+
+// Koliko minuta pre termina se šalje podsetnik tehničarima
+const REMINDER_LEAD_MINUTES = 30;
 
 // Funkcija za proveru i ažuriranje odloženih radnih naloga
 async function checkPostponedWorkOrders() {
@@ -108,6 +112,130 @@ async function checkOverdueWorkOrders() {
     }
   } catch (error) {
     console.error('Greška pri proveri overdue radnih naloga:', error);
+  }
+}
+
+// Offset (u minutima) zone Europe/Belgrade u odnosu na UTC za dati trenutak (DST-aware).
+// Ne zavisi od vremenske zone servera (Render radi u UTC).
+function belgradeOffsetMinutes(date) {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Belgrade',
+    hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  });
+  const parts = {};
+  fmt.formatToParts(date).forEach(p => { parts[p.type] = p.value; });
+  const asUTC = Date.UTC(
+    parseInt(parts.year), parseInt(parts.month) - 1, parseInt(parts.day),
+    parseInt(parts.hour) % 24, parseInt(parts.minute)
+  );
+  return Math.round((asUTC - date.getTime()) / 60000);
+}
+
+// Pravi trenutak termina: kalendarski dan iz `date` + `time` (zidno vreme u Srbiji).
+// NAPOMENA: appointmentDateTime u bazi je upisan setHours-om u zoni SERVERA (UTC),
+// pa je pomeren za 1-2h u odnosu na stvarno beogradsko vreme — zato računamo ovde.
+function getAppointmentInstant(workOrder) {
+  if (!workOrder.date) return null;
+  const d = new Date(workOrder.date);
+  if (isNaN(d.getTime())) return null;
+
+  let hours = 9, minutes = 0;
+  if (workOrder.time && typeof workOrder.time === 'string') {
+    const timeParts = workOrder.time.split(':');
+    const h = parseInt(timeParts[0]);
+    const m = parseInt(timeParts[1]);
+    if (!isNaN(h) && h >= 0 && h <= 23) hours = h;
+    if (!isNaN(m) && m >= 0 && m <= 59) minutes = m;
+  }
+
+  const utcGuess = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hours, minutes, 0, 0);
+  const offset = belgradeOffsetMinutes(new Date(utcGuess));
+  return new Date(utcGuess - offset * 60000);
+}
+
+// Podsetnik 30 minuta pre zakazanog termina — šalje push obojici tehničara na nalogu.
+// Poziva se svakog minuta; dedup preko WorkOrder.reminderSentForAppointment.
+async function checkUpcomingWorkOrderReminders() {
+  if (process.env.WO_REMINDERS_DISABLED === 'true') return;
+
+  try {
+    const now = new Date();
+
+    // Grubi prozor po appointmentDateTime — pomeren 1-2h zbog zone servera pri
+    // upisu, a za termine u 00:xx i do ~11.5h jer pisci koriste `parseInt(h) || 9`
+    // pa se ponoć upiše kao 09:xx. Precizna provera pravog termina je u JS ispod.
+    const windowStart = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const windowEnd = new Date(now.getTime() + 12 * 60 * 60 * 1000);
+
+    // Uključujemo i 'odlozen': odloženi nalog ima nov termin u date/time, a status
+    // se prebacuje u 'nezavrsen' tek NAKON termina (hourly cron + tz pomak) — bez
+    // ovoga odloženi nalozi nikad ne bi dobili podsetnik.
+    const candidates = await WorkOrder.find({
+      status: { $in: ['nezavrsen', 'odlozen'] },
+      appointmentDateTime: { $gte: windowStart, $lte: windowEnd }
+    }).select('_id date time address userName userPhone technicianId technician2Id appointmentDateTime reminderSentForAppointment');
+
+    for (const workOrder of candidates) {
+      const instant = getAppointmentInstant(workOrder);
+      if (!instant) continue;
+
+      const msUntil = instant.getTime() - now.getTime();
+      // Šalje se samo unutar prozora (0, 30 min] — prošli termini se preskaču
+      if (msUntil <= 0 || msUntil > REMINDER_LEAD_MINUTES * 60 * 1000) continue;
+
+      const technicianIds = [workOrder.technicianId, workOrder.technician2Id].filter(Boolean);
+      if (technicianIds.length === 0) continue;
+
+      // Identitet termina za dedup — menja se kad se nalog pomeri, pa se
+      // podsetnik za novi termin šalje ponovo
+      const identity = workOrder.appointmentDateTime || instant;
+      if (workOrder.reminderSentForAppointment &&
+          workOrder.reminderSentForAppointment.getTime() === identity.getTime()) {
+        continue;
+      }
+
+      // Atomski "claim" pre slanja — sprečava dupli podsetnik ako se ciklusi
+      // preklope ili radi više instanci servera
+      const claimed = await WorkOrder.updateOne(
+        { _id: workOrder._id, reminderSentForAppointment: { $ne: identity } },
+        { $set: { reminderSentForAppointment: identity } }
+      );
+      if (claimed.modifiedCount === 0) continue;
+
+      const minutesUntil = Math.max(1, Math.round(msUntil / 60000));
+      console.log(`⏰ Podsetnik: nalog ${workOrder._id} (${workOrder.address}) za ${minutesUntil} min — tehničari: ${technicianIds.join(', ')}`);
+
+      let anyCreated = false;
+      for (const technicianId of technicianIds) {
+        try {
+          const result = await androidNotificationService.createWorkOrderReminderNotification(technicianId.toString(), {
+            address: workOrder.address || '',
+            userName: workOrder.userName || '',
+            userPhone: workOrder.userPhone || '',
+            orderId: workOrder._id,
+            minutesUntil,
+            time: workOrder.time || ''
+          });
+          if (result && result.success) anyCreated = true;
+        } catch (notifError) {
+          console.error(`Greška pri slanju podsetnika tehničaru ${technicianId}:`, notifError.message);
+        }
+      }
+
+      // Ako nijedna notifikacija nije ni KREIRANA (npr. baza privremeno nedostupna),
+      // oslobodi claim da sledeći minut proba ponovo — prozor traje samo 30 min.
+      if (!anyCreated) {
+        await WorkOrder.updateOne(
+          { _id: workOrder._id, reminderSentForAppointment: identity },
+          { $set: { reminderSentForAppointment: null } }
+        );
+        console.warn(`⚠️ Podsetnik za nalog ${workOrder._id} nije kreiran — claim oslobođen, pokušaće ponovo.`);
+      }
+    }
+  } catch (error) {
+    console.error('Greška pri slanju podsetnika za radne naloge:', error);
   }
 }
 
@@ -322,8 +450,13 @@ function startWorkOrderScheduler() {
     await checkVehicleRegistrations();
     await checkTechnicianEmployments();
   });
-  
-  console.log('Work Order Scheduler je pokrenut - proverava odložene i overdue radne naloge svakog sata');
+
+  // Podsetnik 30 min pre termina — proverava svakog minuta (jeftin indeksiran upit)
+  cron.schedule('* * * * *', async () => {
+    await checkUpcomingWorkOrderReminders();
+  });
+
+  console.log('Work Order Scheduler je pokrenut - proverava odložene i overdue radne naloge svakog sata, podsetnike svakog minuta');
 }
 
 // Ručno testiranje scheduler-a
@@ -339,6 +472,8 @@ module.exports = {
   startWorkOrderScheduler,
   checkPostponedWorkOrders,
   checkOverdueWorkOrders,
+  checkUpcomingWorkOrderReminders,
+  getAppointmentInstant,
   checkVehicleRegistrations,
   ensureAppointmentDateTimeSet,
   testScheduler

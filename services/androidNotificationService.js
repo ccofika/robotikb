@@ -41,6 +41,43 @@ class AndroidNotificationService {
   }
 
   /**
+   * Podsetnik 30 minuta pre zakazanog radnog naloga
+   * @param {String} technicianId - ID tehničara
+   * @param {Object} workOrderData - { address, userName, userPhone, orderId, minutesUntil, time }
+   */
+  async createWorkOrderReminderNotification(technicianId, workOrderData) {
+    try {
+      const notification = await AndroidNotification.createWorkOrderReminderNotification(
+        technicianId,
+        workOrderData
+      );
+
+      console.log(`✅ Android notifikacija kreirana - Podsetnik za radni nalog (tehničar ${technicianId}, za ${workOrderData.minutesUntil} min)`);
+
+      // Pokušaj slanja push notifikacije (non-blocking)
+      setImmediate(async () => {
+        try {
+          await this.sendPushNotification(notification);
+        } catch (error) {
+          console.error('⚠️ Push notifikacija nije poslata:', error.message);
+        }
+      });
+
+      return {
+        success: true,
+        notification
+      };
+
+    } catch (error) {
+      console.error('❌ Greška pri kreiranju Android notifikacije (podsetnik):', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * Kreiranje notifikacije za dodjeljivanje opreme
    * @param {String} technicianId - ID tehničara
    * @param {Array} equipmentList - Lista opreme sa detaljima
@@ -164,6 +201,20 @@ class AndroidNotificationService {
         channelId: this.getChannelId(notification.type)
       };
 
+      // Podsetnik ima akciono dugme "Pozovi korisnika" — kategorija je registrovana
+      // u aplikaciji (notificationService.setupNotificationChannels). Na starijim
+      // verzijama aplikacije bez registrovane kategorije notifikacija se prikazuje
+      // normalno, samo bez dugmeta.
+      if (notification.type === 'work_order_reminder') {
+        // Dugme samo ako nalog ima broj telefona — inače bi bilo mrtvo dugme
+        if (notification.relatedData && notification.relatedData.userPhone) {
+          message.categoryId = 'work_order_reminder';
+        }
+        // Podsetnik je vremenski kritičan: ako uređaj nije online u narednih 30 min,
+        // zakasnela isporuka "za 30 min" poruke bi samo zbunila — pusti da istekne.
+        message.ttl = 1800;
+      }
+
       // Pošalji preko Expo Push API
       const response = await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST',
@@ -223,6 +274,9 @@ class AndroidNotificationService {
   getChannelId(type) {
     const channels = {
       'work_order': 'work-orders',
+      // Podsetnik koristi postojeći 'work-orders' kanal (HIGH importance) —
+      // postoji i na starim instalacijama, pa notifikacija stiže svima
+      'work_order_reminder': 'work-orders',
       'equipment_add': 'equipment-added',
       'equipment_remove': 'equipment-removed'
     };

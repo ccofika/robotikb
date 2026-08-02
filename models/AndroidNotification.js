@@ -11,7 +11,7 @@ const AndroidNotificationSchema = new mongoose.Schema({
 
   type: {
     type: String,
-    enum: ['work_order', 'equipment_add', 'equipment_remove'],
+    enum: ['work_order', 'equipment_add', 'equipment_remove', 'work_order_reminder'],
     required: true
   },
 
@@ -151,6 +151,32 @@ AndroidNotificationSchema.statics.createWorkOrderNotification = async function(t
       municipality,
       date,
       time
+    }
+  });
+};
+
+// Static metoda - podsetnik 30 minuta pre zakazanog radnog naloga
+AndroidNotificationSchema.statics.createWorkOrderReminderNotification = async function(technicianId, workOrderData) {
+  const { address, userName, userPhone, orderId, minutesUntil, time } = workOrderData;
+
+  const parts = [address, userName, userPhone].filter(Boolean).join(' - ');
+  // "pozovi korisnika" pominjemo samo kada broj telefona postoji
+  const message = userPhone
+    ? `${parts}. Ako ćeš zakasniti, pozovi korisnika.`
+    : `${parts}.`;
+
+  return this.create({
+    technicianId,
+    type: 'work_order_reminder',
+    title: `Radni nalog za ${minutesUntil} min (${time})`,
+    message,
+    relatedId: orderId,
+    relatedData: {
+      address,
+      userName,
+      userPhone: userPhone || '',
+      time,
+      minutesUntil
     }
   });
 };
