@@ -227,7 +227,11 @@ class AndroidNotificationService {
 
       const result = await response.json();
 
-      if (result.data && result.data[0] && result.data[0].status === 'ok') {
+      // Expo za JEDNU poruku vraća data kao OBJEKAT, a za niz poruka kao NIZ —
+      // podrži oba oblika (stara provera data[0] je uspešna slanja beležila kao grešku)
+      const ticket = Array.isArray(result.data) ? result.data[0] : result.data;
+
+      if (ticket && ticket.status === 'ok') {
         // Uspešno poslato
         notification.pushSent = true;
         notification.pushSentAt = new Date();
@@ -238,11 +242,11 @@ class AndroidNotificationService {
 
         return {
           success: true,
-          ticketId: result.data[0].id
+          ticketId: ticket.id
         };
       } else {
         // Neuspešno slanje
-        const error = result.data?.[0]?.message || 'Unknown error';
+        const error = ticket?.message || ticket?.details?.error || JSON.stringify(result.errors || result).slice(0, 200) || 'Unknown error';
         notification.pushError = error;
         await notification.save();
 
