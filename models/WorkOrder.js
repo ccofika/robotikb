@@ -267,6 +267,25 @@ const WorkOrderSchema = new Schema({
   reminderSentForAppointment: {
     type: Date,
     default: null
+  },
+  reminderSentAt: {
+    type: Date,
+    default: null
+  },
+  // Praćenje kontakta sa korisnikom: kada je tehničar kliknuo "pozovi korisnika"
+  // u aplikaciji (notifikacija/baner/kartica naloga). Ne garantuje obavljen poziv.
+  customerCallAttemptedAt: {
+    type: Date,
+    default: null
+  },
+  customerCallSource: {
+    type: String,
+    default: ''
+  },
+  // Alert adminima "korisnik nije kontaktiran" 15 min pre termina — dedup po terminu
+  uncontactedAlertSentForAppointment: {
+    type: Date,
+    default: null
   }
 }, { timestamps: true });
 

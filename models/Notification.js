@@ -17,7 +17,8 @@ const NotificationSchema = new mongoose.Schema({
       'material_anomaly',              // Nova anomalija za validaciju materijala
       'vehicle_registration_expiry',   // Isticanje registracije vozila
       'technician_employment_expiry',  // Isticanje ugovora tehničara
-      'low_review_rating'              // Loša ocena korisnika
+      'low_review_rating',             // Loša ocena korisnika
+      'customer_not_contacted'         // Tehničar nije pozvao korisnika pred termin
     ],
     required: true,
   },
@@ -200,6 +201,20 @@ NotificationSchema.statics.createVehicleRegistrationExpiry = function(vehicleId,
     vehicleName,
     licensePlate,
     expiryDate
+  });
+};
+
+// Static method: tehničar nije kontaktirao korisnika pred zakazani termin
+NotificationSchema.statics.createCustomerNotContacted = function(workOrderId, technicianNames, userName, address, time, recipientId) {
+  return this.create({
+    title: 'Korisnik nije kontaktiran',
+    message: `Tehničar ${technicianNames} nije pozvao korisnika ${userName || ''} (${address}) — termin u ${time}. Podsetnik je poslat pre više od 15 minuta.`,
+    type: 'customer_not_contacted',
+    priority: 'high',
+    recipientId,
+    targetPage: '/work-orders-by-technician',
+    targetId: workOrderId.toString(),
+    workOrderId
   });
 };
 

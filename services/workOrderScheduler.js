@@ -7,6 +7,8 @@ const androidNotificationService = require('./androidNotificationService');
 
 // Koliko minuta pre termina se šalje podsetnik tehničarima
 const REMINDER_LEAD_MINUTES = 30;
+// Koliko minuta pre termina se adminima šalje alert ako korisnik nije kontaktiran
+const UNCONTACTED_ALERT_LEAD_MINUTES = 15;
 
 // Funkcija za proveru i ažuriranje odloženih radnih naloga
 async function checkPostponedWorkOrders() {
@@ -156,7 +158,8 @@ function getAppointmentInstant(workOrder) {
 }
 
 // Podsetnik 30 minuta pre zakazanog termina — šalje push obojici tehničara na nalogu.
-// Poziva se svakog minuta; dedup preko WorkOrder.reminderSentForAppointment.
+// Dodatno, 15 min pre termina: ako tehničar nije kliknuo "pozovi korisnika",
+// adminima stiže web notifikacija. Poziva se svakog minuta.
 async function checkUpcomingWorkOrderReminders() {
   if (process.env.WO_REMINDERS_DISABLED === 'true') return;
 
@@ -175,67 +178,141 @@ async function checkUpcomingWorkOrderReminders() {
     const candidates = await WorkOrder.find({
       status: { $in: ['nezavrsen', 'odlozen'] },
       appointmentDateTime: { $gte: windowStart, $lte: windowEnd }
-    }).select('_id date time address userName userPhone technicianId technician2Id appointmentDateTime reminderSentForAppointment');
+    })
+      .select('_id date time address userName userPhone technicianId technician2Id appointmentDateTime reminderSentForAppointment reminderSentAt customerCallAttemptedAt uncontactedAlertSentForAppointment')
+      .populate('technicianId', 'name')
+      .populate('technician2Id', 'name');
 
     for (const workOrder of candidates) {
       const instant = getAppointmentInstant(workOrder);
       if (!instant) continue;
 
       const msUntil = instant.getTime() - now.getTime();
-      // Šalje se samo unutar prozora (0, 30 min] — prošli termini se preskaču
+      // Prošli termini se preskaču (overdue sistem ih pokriva)
       if (msUntil <= 0 || msUntil > REMINDER_LEAD_MINUTES * 60 * 1000) continue;
 
-      const technicianIds = [workOrder.technicianId, workOrder.technician2Id].filter(Boolean);
-      if (technicianIds.length === 0) continue;
+      // technicianId/technician2Id su populate-ovani dokumenti — izvuci ID i ime
+      const technicianEntries = [workOrder.technicianId, workOrder.technician2Id].filter(Boolean);
+      if (technicianEntries.length === 0) continue;
+      const technicianIds = technicianEntries.map(t => (t && t._id ? t._id : t).toString());
 
       // Identitet termina za dedup — menja se kad se nalog pomeri, pa se
       // podsetnik za novi termin šalje ponovo
       const identity = workOrder.appointmentDateTime || instant;
-      if (workOrder.reminderSentForAppointment &&
-          workOrder.reminderSentForAppointment.getTime() === identity.getTime()) {
-        continue;
-      }
 
-      // Atomski "claim" pre slanja — sprečava dupli podsetnik ako se ciklusi
-      // preklope ili radi više instanci servera
-      const claimed = await WorkOrder.updateOne(
-        { _id: workOrder._id, reminderSentForAppointment: { $ne: identity } },
-        { $set: { reminderSentForAppointment: identity } }
-      );
-      if (claimed.modifiedCount === 0) continue;
+      // --- 1) Podsetnik tehničarima (do 30 min pre termina) ---
+      const reminderAlreadySent = workOrder.reminderSentForAppointment &&
+        workOrder.reminderSentForAppointment.getTime() === identity.getTime();
 
-      const minutesUntil = Math.max(1, Math.round(msUntil / 60000));
-      console.log(`⏰ Podsetnik: nalog ${workOrder._id} (${workOrder.address}) za ${minutesUntil} min — tehničari: ${technicianIds.join(', ')}`);
+      if (!reminderAlreadySent) {
+        // Atomski "claim" pre slanja — sprečava dupli podsetnik ako se ciklusi
+        // preklope ili radi više instanci servera
+        const claimed = await WorkOrder.updateOne(
+          { _id: workOrder._id, reminderSentForAppointment: { $ne: identity } },
+          { $set: { reminderSentForAppointment: identity, reminderSentAt: now } }
+        );
 
-      let anyCreated = false;
-      for (const technicianId of technicianIds) {
-        try {
-          const result = await androidNotificationService.createWorkOrderReminderNotification(technicianId.toString(), {
-            address: workOrder.address || '',
-            userName: workOrder.userName || '',
-            userPhone: workOrder.userPhone || '',
-            orderId: workOrder._id,
-            minutesUntil,
-            time: workOrder.time || ''
-          });
-          if (result && result.success) anyCreated = true;
-        } catch (notifError) {
-          console.error(`Greška pri slanju podsetnika tehničaru ${technicianId}:`, notifError.message);
+        if (claimed.modifiedCount > 0) {
+          const minutesUntil = Math.max(1, Math.round(msUntil / 60000));
+          console.log(`⏰ Podsetnik: nalog ${workOrder._id} (${workOrder.address}) za ${minutesUntil} min — tehničari: ${technicianIds.join(', ')}`);
+
+          let anyCreated = false;
+          for (const technicianId of technicianIds) {
+            try {
+              const result = await androidNotificationService.createWorkOrderReminderNotification(technicianId, {
+                address: workOrder.address || '',
+                userName: workOrder.userName || '',
+                userPhone: workOrder.userPhone || '',
+                orderId: workOrder._id,
+                minutesUntil,
+                time: workOrder.time || ''
+              });
+              if (result && result.success) anyCreated = true;
+            } catch (notifError) {
+              console.error(`Greška pri slanju podsetnika tehničaru ${technicianId}:`, notifError.message);
+            }
+          }
+
+          // Ako nijedna notifikacija nije ni KREIRANA (npr. baza privremeno nedostupna),
+          // oslobodi claim da sledeći minut proba ponovo — prozor traje samo 30 min.
+          if (!anyCreated) {
+            await WorkOrder.updateOne(
+              { _id: workOrder._id, reminderSentForAppointment: identity },
+              { $set: { reminderSentForAppointment: null, reminderSentAt: null } }
+            );
+            console.warn(`⚠️ Podsetnik za nalog ${workOrder._id} nije kreiran — claim oslobođen, pokušaće ponovo.`);
+          }
         }
       }
 
-      // Ako nijedna notifikacija nije ni KREIRANA (npr. baza privremeno nedostupna),
-      // oslobodi claim da sledeći minut proba ponovo — prozor traje samo 30 min.
-      if (!anyCreated) {
-        await WorkOrder.updateOne(
-          { _id: workOrder._id, reminderSentForAppointment: identity },
-          { $set: { reminderSentForAppointment: null } }
-        );
-        console.warn(`⚠️ Podsetnik za nalog ${workOrder._id} nije kreiran — claim oslobođen, pokušaće ponovo.`);
+      // --- 2) Alert adminima (do 15 min pre termina): korisnik nije kontaktiran ---
+      if (msUntil <= UNCONTACTED_ALERT_LEAD_MINUTES * 60 * 1000) {
+        await maybeSendUncontactedAlert(workOrder, technicianEntries, identity, now);
       }
     }
   } catch (error) {
     console.error('Greška pri slanju podsetnika za radne naloge:', error);
+  }
+}
+
+// Alert adminima na web platformi kada tehničar nije kliknuo "pozovi korisnika"
+// do 15 min pre termina. Uslovi: nalog ima telefon, podsetnik za OVAJ termin je
+// poslat pre bar 5 min (da tehničar stigne da reaguje), poziv nije zabeležen.
+async function maybeSendUncontactedAlert(workOrder, technicianEntries, identity, now) {
+  try {
+    if (!workOrder.userPhone) return;
+    // Poziv se računa kao kontakt samo ako je u poslednja 24h (stariji poziv je
+    // verovatno bio za raniji termin istog naloga)
+    if (workOrder.customerCallAttemptedAt &&
+        (now.getTime() - workOrder.customerCallAttemptedAt.getTime()) < 24 * 60 * 60 * 1000) return;
+    if (!workOrder.reminderSentForAppointment ||
+        workOrder.reminderSentForAppointment.getTime() !== identity.getTime()) return;
+    if (!workOrder.reminderSentAt ||
+        (now.getTime() - workOrder.reminderSentAt.getTime()) < 5 * 60 * 1000) return;
+    if (workOrder.uncontactedAlertSentForAppointment &&
+        workOrder.uncontactedAlertSentForAppointment.getTime() === identity.getTime()) return;
+
+    // Atomski claim — isti obrazac kao za podsetnik
+    const claimed = await WorkOrder.updateOne(
+      { _id: workOrder._id, uncontactedAlertSentForAppointment: { $ne: identity } },
+      { $set: { uncontactedAlertSentForAppointment: identity } }
+    );
+    if (claimed.modifiedCount === 0) return;
+
+    const technicianNames = technicianEntries
+      .map(t => (t && t.name) ? t.name : null)
+      .filter(Boolean)
+      .join(' i ') || 'Nepoznat tehničar';
+
+    const adminUsers = await Technician.find({ isAdmin: true }).select('_id name');
+    console.log(`🚨 Korisnik nije kontaktiran: nalog ${workOrder._id} (${workOrder.address}) — obaveštavam ${adminUsers.length} admina`);
+
+    let anyCreated = false;
+    for (const adminUser of adminUsers) {
+      try {
+        await createNotification('customer_not_contacted', {
+          workOrderId: workOrder._id,
+          technicianNames,
+          userName: workOrder.userName || '',
+          address: workOrder.address || '',
+          time: workOrder.time || '',
+          recipientId: adminUser._id
+        });
+        anyCreated = true;
+      } catch (notifError) {
+        console.error(`Greška pri slanju alerta adminu ${adminUser.name}:`, notifError.message);
+      }
+    }
+
+    if (!anyCreated) {
+      await WorkOrder.updateOne(
+        { _id: workOrder._id, uncontactedAlertSentForAppointment: identity },
+        { $set: { uncontactedAlertSentForAppointment: null } }
+      );
+      console.warn(`⚠️ Alert za nalog ${workOrder._id} nije kreiran — claim oslobođen, pokušaće ponovo.`);
+    }
+  } catch (error) {
+    console.error('Greška pri alertu za nekontaktiranog korisnika:', error);
   }
 }
 

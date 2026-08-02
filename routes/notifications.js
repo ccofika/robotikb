@@ -291,6 +291,17 @@ async function createNotification(type, data) {
         );
         break;
 
+      case 'customer_not_contacted':
+        notification = await Notification.createCustomerNotContacted(
+          data.workOrderId,
+          data.technicianNames,
+          data.userName,
+          data.address,
+          data.time,
+          data.recipientId
+        );
+        break;
+
       default:
         throw new Error('Nepoznat tip notifikacije');
     }

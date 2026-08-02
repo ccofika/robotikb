@@ -5082,6 +5082,32 @@ router.post('/voice-recordings/trigger-sync', auth, async (req, res) => {
 
 // ============================================================================
 
+// POST - Tehničar je kliknuo "Pozovi korisnika" (notifikacija/baner/kartica naloga).
+// Beleži pokušaj kontakta — koristi ga scheduler za alert adminima 15 min pre termina.
+router.post('/:id/customer-call', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID radnog naloga' });
+    }
+
+    const source = typeof req.body?.source === 'string' ? req.body.source.slice(0, 40) : '';
+    const result = await WorkOrder.updateOne(
+      { _id: id },
+      { $set: { customerCallAttemptedAt: new Date(), customerCallSource: source } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Greška pri beleženju poziva korisnika:', error);
+    res.status(500).json({ error: 'Greška pri beleženju poziva' });
+  }
+});
+
 // Eksportuj funkciju za korišćenje u drugim rutama
 module.exports = router;
 module.exports.createFinancialTransaction = createFinancialTransaction;
