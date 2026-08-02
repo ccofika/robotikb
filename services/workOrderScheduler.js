@@ -260,6 +260,9 @@ async function checkUpcomingWorkOrderReminders() {
 // poslat pre bar 5 min (da tehničar stigne da reaguje), poziv nije zabeležen.
 async function maybeSendUncontactedAlert(workOrder, technicianEntries, identity, now) {
   try {
+    // Poseban kill-switch: tehničari na staroj verziji aplikacije ne prijavljuju
+    // klikove, pa njihovi nalozi generišu lažne alerte dok svi ne pređu na novu.
+    if (process.env.UNCONTACTED_ALERTS_DISABLED === 'true') return;
     if (!workOrder.userPhone) return;
     // Poziv se računa kao kontakt samo ako je u poslednja 24h (stariji poziv je
     // verovatno bio za raniji termin istog naloga)
