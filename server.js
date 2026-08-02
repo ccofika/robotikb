@@ -244,6 +244,7 @@ app.use('/api/backend-logs', backendLogsRoutes);
 app.use('/api/defective-equipment', defectiveEquipmentRoutes);
 app.use('/api/vehicles', vehiclesRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/push', require('./routes/pushSubscriptions'));
 app.use('/api/android-notifications', androidNotificationsRoutes);
 app.use('/api/finances', financesRoutes);
 app.use('/api/ai-analysis', aiAnalysisRoutes);

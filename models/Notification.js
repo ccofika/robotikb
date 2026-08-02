@@ -148,6 +148,36 @@ const NotificationSchema = new mongoose.Schema({
 NotificationSchema.index({ recipientId: 1, isRead: 1, createdAt: -1 });
 NotificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
+// ── Web push na websajtu ──────────────────────────────────────────────────
+// Svaka NOVO kreirana notifikacija (bilo kog tipa, sadašnjeg ili budućeg)
+// automatski šalje browser push primaocu — OSIM 'work_order_verification'
+// (završeni nalozi stižu prečesto, po dogovoru samo u panel).
+// markAsRead() takođe zove save() — zato se pamti da li je dokument nov.
+const PUSH_EXCLUDED_TYPES = ['work_order_verification'];
+
+NotificationSchema.pre('save', function(next) {
+  this.$locals.wasNew = this.isNew;
+  next();
+});
+
+NotificationSchema.post('save', function(doc) {
+  if (!doc.$locals.wasNew) return;
+  if (PUSH_EXCLUDED_TYPES.includes(doc.type)) return;
+  try {
+    // Lazy require — izbegava kružne zavisnosti pri učitavanju modela
+    const webPushService = require('../services/webPushService');
+    webPushService.sendToUser(doc.recipientId, {
+      title: doc.title,
+      body: doc.message,
+      url: doc.targetPage || '/',
+      tag: doc._id.toString(),
+    }).catch(() => {});
+  } catch (error) {
+    // Push nikada ne sme da obori kreiranje notifikacije
+    console.error('[WebPush] Hook greška:', error.message);
+  }
+});
+
 // Static method to create work order verification notification
 NotificationSchema.statics.createWorkOrderVerification = function(workOrderId, technicianId, technicianName, recipientId) {
   return this.create({
