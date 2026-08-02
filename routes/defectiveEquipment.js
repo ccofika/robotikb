@@ -311,6 +311,9 @@ const express = require('express');
          equipment.removedAt = null;
          equipment.assignedTo = null;
          equipment.assignedToUser = null;
+         equipment.assignedAt = null;
+         equipment.assignedBy = null;
+         equipment.assignedByName = '';
 
          await equipment.save();
 

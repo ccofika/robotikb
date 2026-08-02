@@ -882,7 +882,22 @@ router.put('/:id', auth, logActivity('equipment', 'equipment_edit', {
     if (updateData.serialNumber) equipment.serialNumber = updateData.serialNumber.toLowerCase();
     if (updateData.location) equipment.location = updateData.location;
     if (updateData.status) equipment.status = updateData.status;
-    if (updateData.assignedTo !== undefined) equipment.assignedTo = updateData.assignedTo;
+    if (updateData.assignedTo !== undefined) {
+      const oldAssignedTo = equipment.assignedTo ? equipment.assignedTo.toString() : null;
+      const newAssignedTo = updateData.assignedTo ? updateData.assignedTo.toString() : null;
+      equipment.assignedTo = updateData.assignedTo;
+      if (!newAssignedTo) {
+        // Razduženo (vraćeno u magacin kroz edit)
+        equipment.assignedAt = null;
+        equipment.assignedBy = null;
+        equipment.assignedByName = '';
+      } else if (newAssignedTo !== oldAssignedTo) {
+        // Zaduženo drugom tehničaru kroz edit stranicu
+        equipment.assignedAt = new Date();
+        equipment.assignedBy = req.user?._id || null;
+        equipment.assignedByName = req.user?.name || '';
+      }
+    }
     
     // Specijalna logika za defektnu opremu
     if (updateData.status === 'defective' && oldStatus !== 'defective') {
@@ -893,6 +908,9 @@ router.put('/:id', auth, logActivity('equipment', 'equipment_edit', {
       equipment.removedAt = updateData.removedAt || new Date();
       equipment.assignedTo = null;
       equipment.assignedToUser = null;
+      equipment.assignedAt = null;
+      equipment.assignedBy = null;
+      equipment.assignedByName = '';
       
       console.log('📅 Equipment marked as defective:', {
         id: equipment._id,
@@ -1064,7 +1082,10 @@ router.post('/assign-to-technician/:technicianId', auth, logActivity('equipment'
       equipment.assignedTo = technicianId;
       equipment.location = 'tehnicar';
       equipment.status = 'assigned';
-      
+      equipment.assignedAt = new Date();
+      equipment.assignedBy = req.user?._id || null;
+      equipment.assignedByName = req.user?.name || '';
+
       await equipment.save();
       results.successful++;
     }
@@ -1121,7 +1142,10 @@ router.post('/return-to-warehouse', async (req, res) => {
       equipment.assignedToUser = null;
       equipment.location = 'magacin';
       equipment.status = 'available';
-      
+      equipment.assignedAt = null;
+      equipment.assignedBy = null;
+      equipment.assignedByName = '';
+
       await equipment.save();
       results.successful++;
     }

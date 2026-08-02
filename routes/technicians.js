@@ -393,7 +393,7 @@ router.delete('/:id', auth, logActivity('technicians', 'technician_delete', {
     // Oslobodi svu opremu koja je dodeljena ovom tehničaru
     await Equipment.updateMany(
       { assignedTo: id },
-      { $set: { assignedTo: null, location: 'magacin', status: 'available' } }
+      { $set: { assignedTo: null, location: 'magacin', status: 'available', assignedAt: null, assignedBy: null, assignedByName: '' } }
     );
 
     await Technician.findByIdAndDelete(id);
@@ -702,7 +702,10 @@ router.post('/:id/equipment', auth, logActivity('technicians', 'equipment_assign
           location: `tehnicar-${id}`,
           status: 'pending_confirmation',
           awaitingConfirmation: true,
-          confirmationStatus: 'pending'
+          confirmationStatus: 'pending',
+          assignedAt: new Date(),
+          assignedBy: req.user?._id || null,
+          assignedByName: req.user?.name || ''
         }
       }
     );
@@ -823,7 +826,10 @@ router.post('/:id/equipment/return', auth, logActivity('technicians', 'equipment
         $set: {
           assignedTo: null,
           location: 'magacin',
-          status: 'available'
+          status: 'available',
+          assignedAt: null,
+          assignedBy: null,
+          assignedByName: ''
         }
       }
     );
@@ -1053,6 +1059,9 @@ router.post('/:id/equipment/reject', auth, async (req, res) => {
     equipment.status = 'available';
     equipment.location = 'magacin';
     equipment.assignedTo = null;
+    equipment.assignedAt = null;
+    equipment.assignedBy = null;
+    equipment.assignedByName = '';
     equipment.rejectionReason = reason.trim();
     equipment.confirmationDate = new Date();
     

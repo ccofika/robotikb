@@ -28,6 +28,20 @@ const EquipmentSchema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'Technician'
   },
+  // Kada i ko je zadužio opremu tehničaru (postavlja se pri zaduženju, briše pri razduženju)
+  assignedAt: {
+    type: Date,
+    default: null
+  },
+  assignedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'Technician',
+    default: null
+  },
+  assignedByName: {
+    type: String,
+    default: ''
+  },
   previousAssignedTo: {
     type: Schema.Types.ObjectId,
     ref: 'Technician'

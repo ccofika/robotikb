@@ -552,6 +552,9 @@ router.put('/:id/remove', auth, async (req, res) => {
       equipment.status = 'defective';
       equipment.assignedToUser = null;
       equipment.assignedTo = null; // Ukloni i dodelu tehničaru jer je oprema neispravna
+      equipment.assignedAt = null;
+      equipment.assignedBy = null;
+      equipment.assignedByName = '';
       equipment.removedAt = new Date(); // Dodaj datum uklanjanja
     }
     
@@ -684,6 +687,10 @@ router.post('/remove-by-serial', async (req, res) => {
     let equipmentRemoved = false;
     let equipmentDetails = null;
 
+    // Ime tehničara za assignedByName pečat (oprema preuzeta od korisnika na terenu)
+    const removingTechnician = await Technician.findById(technicianId).select('name').lean();
+    const removingTechName = removingTechnician?.name ? `${removingTechnician.name} (preuzeto od korisnika)` : 'Preuzeto od korisnika';
+
     if (equipment) {
       // Oprema postoji u sistemu - dodeli je tehničaru
       console.log('Found equipment in system:', equipment);
@@ -693,6 +700,9 @@ router.post('/remove-by-serial', async (req, res) => {
       equipment.status = 'assigned';
       equipment.assignedTo = technicianId;
       equipment.assignedToUser = null;
+      equipment.assignedAt = new Date();
+      equipment.assignedBy = technicianId;
+      equipment.assignedByName = removingTechName;
       equipment.removedAt = new Date();
 
       await equipment.save();
@@ -726,6 +736,9 @@ router.post('/remove-by-serial', async (req, res) => {
         status: 'assigned',
         assignedTo: technicianId,
         assignedToUser: null,
+        assignedAt: new Date(),
+        assignedBy: technicianId,
+        assignedByName: removingTechName,
         removedAt: new Date()
       });
 
