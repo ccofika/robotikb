@@ -34,7 +34,45 @@ const createInventorySummary = (inventory) => {
 };
 
 const createEmailTemplate = (type, data) => {
-  const templates = { 
+  const templates = {
+    customerNotContacted: {
+      subject: `⚠️ Korisnik nije kontaktiran — ${data.address || ''} (termin u ${data.time || '?'})`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #e74c3c;">⚠️ Korisnik nije kontaktiran</h2>
+          <p>Tehničar <strong>${data.technicianNames || 'Nepoznat'}</strong> nije pozvao korisnika pred zakazani termin, a podsetnik mu je poslat pre više od 15 minuta.</p>
+          <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
+            <tr>
+              <td style="padding: 6px 10px; color: #666; width: 110px;">Korisnik:</td>
+              <td style="padding: 6px 10px;"><strong>${data.userName || '—'}</strong></td>
+            </tr>
+            <tr style="background: #f8f9fa;">
+              <td style="padding: 6px 10px; color: #666;">Adresa:</td>
+              <td style="padding: 6px 10px;"><strong>${data.address || '—'}</strong>${data.municipality ? ` (${data.municipality})` : ''}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 10px; color: #666;">Termin:</td>
+              <td style="padding: 6px 10px;"><strong>danas u ${data.time || '?'}</strong></td>
+            </tr>
+            <tr style="background: #f8f9fa;">
+              <td style="padding: 6px 10px; color: #666;">Tehničar:</td>
+              <td style="padding: 6px 10px;"><strong>${data.technicianNames || '—'}</strong></td>
+            </tr>
+          </table>
+          <p>
+            <a href="https://administracija.robotik.rs/work-orders-by-technician"
+               style="display: inline-block; background: #2563eb; color: #ffffff; padding: 10px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+              Otvori radne naloge
+            </a>
+          </p>
+          <hr style="margin: 20px 0;">
+          <p style="font-size: 12px; color: #666;">
+            Ova poruka je automatski generisana od strane Robotik sistema.<br>
+            Vreme slanja: ${new Date().toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}
+          </p>
+        </div>
+      `
+    },
     lowStock: {
       subject: 'Upozorenje - Nizak nivo zaliha',
       html: `

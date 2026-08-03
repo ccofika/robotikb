@@ -4,6 +4,7 @@ const Vehicle = require('../models/Vehicle');
 const notificationsRouter = require('../routes/notifications');
 const createNotification = notificationsRouter.createNotification;
 const androidNotificationService = require('./androidNotificationService');
+const emailService = require('./emailService');
 
 // Koliko minuta pre termina se šalje podsetnik tehničarima
 const REMINDER_LEAD_MINUTES = 30;
@@ -313,6 +314,27 @@ async function maybeSendUncontactedAlert(workOrder, technicianEntries, identity,
         { $set: { uncontactedAlertSentForAppointment: null } }
       );
       console.warn(`⚠️ Alert za nalog ${workOrder._id} nije kreiran — claim oslobođen, pokušaće ponovo.`);
+      return;
+    }
+
+    // Mejl obaveštenje na fiksne adrese — JEDNOM po događaju (ne po adminu).
+    // Fire-and-forget: neuspešan mejl ne sme da poremeti scheduler.
+    const emailRecipients = (process.env.UNCONTACTED_ALERT_EMAILS || 'nikola.popovic@robotik.rs,office@robotik.rs')
+      .split(',').map(e => e.trim()).filter(Boolean);
+    const emailData = {
+      technicianNames,
+      userName: workOrder.userName || '',
+      address: workOrder.address || '',
+      municipality: workOrder.municipality || '',
+      time: workOrder.time || ''
+    };
+    for (const addr of emailRecipients) {
+      emailService.sendEmailToAddress(addr, 'customerNotContacted', emailData)
+        .then(r => {
+          if (r.success) console.log(`📧 Mejl "korisnik nije kontaktiran" poslat na ${addr}`);
+          else console.error(`📧 Mejl "korisnik nije kontaktiran" na ${addr} NIJE poslat:`, r.error);
+        })
+        .catch(err => console.error(`📧 Mejl na ${addr} — greška:`, err.message));
     }
   } catch (error) {
     console.error('Greška pri alertu za nekontaktiranog korisnika:', error);
