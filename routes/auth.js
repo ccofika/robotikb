@@ -11,6 +11,14 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
+// Poređenje imena bez dijakritika (č/ć→c, š→s, ž→z, đ→d): imena u bazi su sa
+// ispravnim kvržicama, a tehničari na telefonu često kucaju bez njih.
+const foldName = (s) => (s || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[̀-ͯ]/g, '')
+  .replace(/đ/g, 'd');
+
 // POST - Login za tehničara
 router.post('/login', async (req, res) => {
   try {
@@ -23,7 +31,19 @@ router.post('/login', async (req, res) => {
     
     // Traženje korisnika u bazi (tehničar, admin, supervisor, superadmin)
     const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const technician = await Technician.findOne({ name: { $regex: new RegExp(`^${escapedName}$`, 'i') } });
+    let technician = await Technician.findOne({ name: { $regex: new RegExp(`^${escapedName}$`, 'i') } });
+
+    // Fallback: poklapanje bez dijakritika — "milan aca" pronalazi "Milan Aća".
+    // Prihvata se samo ako je poklapanje JEDINSTVENO (lozinka se svakako proverava).
+    if (!technician) {
+      const target = foldName(name);
+      const allTechnicians = await Technician.find({});
+      const matches = allTechnicians.filter(t => foldName(t.name) === target);
+      if (matches.length === 1) {
+        technician = matches[0];
+        console.log(`Login: dijakritik-fallback "${name}" → "${technician.name}"`);
+      }
+    }
 
     if (!technician) {
       console.log('Technician not found');
