@@ -20,6 +20,22 @@ const { parseBuffer } = require('music-metadata');
 const { logActivity } = require('../middleware/activityLogger');
 const { auth } = require('../middleware/auth');
 
+// Dozvoljene vrednosti za tim i njihove labele za prikaz
+const TIM_LABELS = { robotik: 'Robotik', mtel: 'mtel' };
+
+// Helper funkcija za normalizaciju "Tim" vrednosti iz Excel-a / unosa.
+// Prihvata varijante: "Robotik", "Robotik 1", "Robotik 2", "ROBOTIK MONTAŽA" → 'robotik';
+// "mtel", "M-tel", "M telecommunication", "M-TELECOMMUNICATION" → 'mtel'.
+// Vraća 'robotik' | 'mtel' | null (null = nepoznato/prazno).
+const normalizeTim = (raw) => {
+  if (raw === undefined || raw === null) return null;
+  const compact = raw.toString().trim().toLowerCase().replace(/[\s\-_.:]/g, '');
+  if (!compact) return null;
+  if (compact.startsWith('robotik')) return 'robotik';
+  if (compact.startsWith('mtel') || compact.startsWith('mtelecom')) return 'mtel';
+  return null;
+};
+
 // Helper funkcija za case-insensitive pretragu serijskog broja
 const findEquipmentBySerialNumber = (serialNumber) => {
   // Escape special regex characters
@@ -1019,7 +1035,7 @@ router.get('/technician/:technicianId/overdue', async (req, res) => {
     })
       .populate('technicianId', 'name')
       .populate('technician2Id', 'name')
-      .select('_id address appointmentDateTime isOverdue overdueMarkedAt comment status type adminComment')
+      .select('_id address appointmentDateTime isOverdue overdueMarkedAt comment status type adminComment tim')
       .lean()
       .exec();
       
@@ -1187,40 +1203,55 @@ router.get('/:id/materials', async (req, res) => {
 // GET - Preuzimanje šablona (mora biti pre /:id rute)
 router.get('/template', (req, res) => {
   const templatePath = path.join(__dirname, '../templates/workorders-template.xlsx');
-  
-  // Ako šablon ne postoji, kreiramo ga
-  if (!fs.existsSync(templatePath)) {
-    const workbook = xlsx.utils.book_new();
-    const data = [
-      {
-        "Tehnicar 1": "Ime tehničara",
-        "Tehnicar 2": "",
-        "Područje": "BORČA",
-        "Početak instalacije": "31/05/2023 12:00",
-        "Tehnologija": "HFC",
-        "TIS ID korisnika": "904317",
-        "Adresa korisnika": "Beograd,BORČA,OBROVAČKA 9",
-        "Ime korisnika": "PETAR ĐUKIĆ",
-        "Kontakt telefon 1": "0642395394",
-        "TIS Posao ID": "629841530",
-        "Paket": "Dodatni STB/CA - Kabl TV",
-        "Dodatni poslovi": "629841530,Dodatni STB/CA - Kabl TV",
-        "Tip zahteva": "Zamena uređaja"
-      }
-    ];
-    
-    const worksheet = xlsx.utils.json_to_sheet(data);
-    xlsx.utils.book_append_sheet(workbook, worksheet, "Radni Nalozi");
-    
-    // Kreiramo direktorijum ako ne postoji
-    const dir = path.dirname(templatePath);
-    if (!fs.existsSync(dir)){
-      fs.mkdirSync(dir, { recursive: true });
+
+  // Šablon se uvek regeneriše da bi uvek odražavao aktuelnu strukturu kolona
+  const workbook = xlsx.utils.book_new();
+  const data = [
+    {
+      "Tehnicar 1": "Ime tehničara",
+      "Tehnicar 2": "",
+      "Tim": "Robotik",
+      "Područje": "BORČA",
+      "Početak instalacije": "31/05/2023 12:00",
+      "Tehnologija": "HFC",
+      "TIS ID korisnika": "904317",
+      "Adresa korisnika": "Beograd,BORČA,OBROVAČKA 9",
+      "Ime korisnika": "PETAR ĐUKIĆ",
+      "Kontakt telefon 1": "0642395394",
+      "TIS Posao ID": "629841530",
+      "Paket": "Dodatni STB/CA - Kabl TV",
+      "Dodatni poslovi": "629841530,Dodatni STB/CA - Kabl TV",
+      "Tip zahteva": "Zamena uređaja"
+    },
+    {
+      "Tehnicar 1": "Ime tehničara",
+      "Tehnicar 2": "",
+      "Tim": "M telecommunication",
+      "Područje": "BORČA",
+      "Početak instalacije": "31/05/2023 14:00",
+      "Tehnologija": "HFC",
+      "TIS ID korisnika": "904318",
+      "Adresa korisnika": "Beograd,BORČA,OBROVAČKA 11",
+      "Ime korisnika": "MARKO MARKOVIĆ",
+      "Kontakt telefon 1": "0642395395",
+      "TIS Posao ID": "629841531",
+      "Paket": "2025v1_Super PLAN 2 S (Net 400 + TV)",
+      "Dodatni poslovi": "",
+      "Tip zahteva": "Nov korisnik"
     }
-    
-    xlsx.writeFile(workbook, templatePath);
+  ];
+
+  const worksheet = xlsx.utils.json_to_sheet(data);
+  xlsx.utils.book_append_sheet(workbook, worksheet, "Radni Nalozi");
+
+  // Kreiramo direktorijum ako ne postoji
+  const dir = path.dirname(templatePath);
+  if (!fs.existsSync(dir)){
+    fs.mkdirSync(dir, { recursive: true });
   }
-  
+
+  xlsx.writeFile(workbook, templatePath);
+
   res.download(templatePath, 'radni-nalozi-sablon.xlsx');
 });
 
@@ -1264,13 +1295,17 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
         duplicatesCount: responseData?.duplicates?.length || 0,
         errorsCount: responseData?.errors?.length || 0,
         newUsersCount: responseData?.newUsers?.length || 0,
-        existingUsersCount: responseData?.existingUsers?.length || 0
+        existingUsersCount: responseData?.existingUsers?.length || 0,
+        timWarningsCount: responseData?.timWarnings?.length || 0,
+        timSummary: responseData?.timSummary || null
       },
       addedItems: responseData?.newWorkOrders || [],
       duplicates: responseData?.duplicates || [],
       errors: responseData?.errors || [],
       newUsers: responseData?.newUsers || [],
-      existingUsers: responseData?.existingUsers || []
+      existingUsers: responseData?.existingUsers || [],
+      timWarnings: responseData?.timWarnings || [],
+      skippedSheets: responseData?.skippedSheets || []
     };
   }
 }), upload.single('file'), async (req, res) => {
@@ -1280,29 +1315,51 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
     }
     
     const workbook = xlsx.readFile(req.file.path);
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
 
     // Fix phantom range: some Excel files declare a sheet range covering the entire
     // worksheet (e.g. A1:XFC1048576) due to formatting applied to empty cells. Without
     // this, sheet_to_json iterates billions of phantom cells and blocks the event loop.
-    const cellAddrs = Object.keys(worksheet).filter(k => !k.startsWith('!'));
-    if (cellAddrs.length > 0) {
-      let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
-      for (const addr of cellAddrs) {
-        const { r, c } = xlsx.utils.decode_cell(addr);
-        if (r < minR) minR = r;
-        if (r > maxR) maxR = r;
-        if (c < minC) minC = c;
-        if (c > maxC) maxC = c;
+    const fixPhantomRange = (worksheet) => {
+      const cellAddrs = Object.keys(worksheet).filter(k => !k.startsWith('!'));
+      if (cellAddrs.length > 0) {
+        let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+        for (const addr of cellAddrs) {
+          const { r, c } = xlsx.utils.decode_cell(addr);
+          if (r < minR) minR = r;
+          if (r > maxR) maxR = r;
+          if (c < minC) minC = c;
+          if (c > maxC) maxC = c;
+        }
+        worksheet['!ref'] = xlsx.utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } });
       }
-      worksheet['!ref'] = xlsx.utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } });
+    };
+
+    // Novi AZZ format sadrži više sheet-ova (jedan po ekipi), pa se obrađuju SVI
+    // sheet-ovi. Sheet bez ijedne ključne kolone radnog naloga se preskače uz napomenu.
+    const data = [];
+    const skippedSheets = [];
+    for (const sheetName of workbook.SheetNames) {
+      const worksheet = workbook.Sheets[sheetName];
+      if (!worksheet) continue;
+      fixPhantomRange(worksheet);
+      const rows = xlsx.utils.sheet_to_json(worksheet);
+      const dataRows = rows.filter(r =>
+        r["Adresa korisnika"] !== undefined ||
+        r["TIS Posao ID"] !== undefined ||
+        r["Početak instalacije"] !== undefined
+      );
+      if (dataRows.length === 0) {
+        if (rows.length > 0) skippedSheets.push(sheetName);
+        continue;
+      }
+      for (const row of dataRows) {
+        // __rowNum__ je 0-based indeks reda iz sheet-a koji dodaje xlsx biblioteka
+        data.push({ row, sheetName, excelRow: (row.__rowNum__ ?? 0) + 1 });
+      }
     }
 
-    const data = xlsx.utils.sheet_to_json(worksheet);
-
     if (data.length === 0) {
-      return res.status(400).json({ error: 'Excel fajl ne sadrži podatke' });
+      return res.status(400).json({ error: 'Excel fajl ne sadrži podatke ni u jednom sheet-u' });
     }
 
     // Dohvatanje svih tehničara iz baze
@@ -1319,8 +1376,9 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
     const existingUsers = [];
     const errors = [];
     const duplicates = [];
-    
-    for (const row of data) {
+    const timWarnings = [];
+
+    for (const { row, sheetName, excelRow } of data) {
       try {
         // Izvlačenje podataka iz reda
         const technicianName1 = row["Tehnicar 1"] || '';
@@ -1339,7 +1397,29 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
         const packageName = row["Paket"] || '';
         const additionalJobs = row["Dodatni poslovi"] || '';
         const requestType = row["Tip zahteva"] || '';
-        
+        const rbZahteva = row["RB zahteva"] !== undefined ? row["RB zahteva"].toString() : '';
+
+        // NOVO PRAVILO: kolona "Tim" — svaki nalog se svrstava u Robotik ili mtel.
+        // Nepoznata/prazna vrednost ne blokira import, ali se prijavljuje u izveštaju.
+        // Naziv kolone se traži tolerantno (npr. "Tim ", "TIM") da ne pukne na razmaku u header-u.
+        const timKey = Object.keys(row).find(k => k.toString().trim().toLowerCase() === 'tim');
+        const timRaw = timKey && row[timKey] !== undefined && row[timKey] !== null ? row[timKey].toString().trim() : '';
+        const tim = normalizeTim(timRaw);
+        if (!tim) {
+          timWarnings.push({
+            sheet: sheetName,
+            excelRow,
+            rbZahteva,
+            address: row["Adresa korisnika"] || '',
+            userName: row["Ime korisnika"] || '',
+            tisJobId: row["TIS Posao ID"] !== undefined ? row["TIS Posao ID"].toString() : '',
+            value: timRaw,
+            reason: timRaw
+              ? `Nepoznata vrednost "${timRaw}" u koloni "Tim" — dozvoljene vrednosti su Robotik i mtel (npr. "Robotik", "Robotik 1", "M telecommunication"). Nalog je uvezen bez tima.`
+              : 'Kolona "Tim" je prazna ili ne postoji u sheet-u — nalog je uvezen bez tima i neće imati boju tima u tabelama.'
+          });
+        }
+
         // Parsiranje datuma i vremena
         let date = new Date().toISOString().split('T')[0];
         let time = '09:00';
@@ -1405,6 +1485,9 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
             technicianName1,
             technicianName2,
             packageName,
+            tim: tim ? TIM_LABELS[tim] : (timRaw || '-'),
+            sheet: sheetName,
+            excelRow,
             reason: 'Radni nalog sa identičnim podacima već postoji u sistemu'
           });
           continue;
@@ -1461,6 +1544,7 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
           comment: '',
           status: 'nezavrsen',
           technology,
+          tim,
           tisId,
           userName,
           userPhone,
@@ -1492,7 +1576,7 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
         
       } catch (error) {
         console.error('Greška pri obradi reda:', error);
-        errors.push(`Greška pri obradi reda: ${JSON.stringify(row)}`);
+        errors.push(`Sheet "${sheetName}", red ${excelRow} (${row["Adresa korisnika"] || 'bez adrese'}): greška pri obradi reda — ${error.message}`);
       }
     }
     
@@ -1581,14 +1665,24 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
       // Ne prekidamo proces ako email ne uspe
     }
     
+    // Zbirna statistika po timovima za izveštaj
+    const timSummary = {
+      robotik: newWorkOrders.filter(wo => wo.tim === 'robotik').length,
+      mtel: newWorkOrders.filter(wo => wo.tim === 'mtel').length,
+      bezTima: newWorkOrders.filter(wo => !wo.tim).length
+    };
+
     res.json({
       newWorkOrders,
       newUsers,
       existingUsers,
       errors,
-      duplicates
+      duplicates,
+      timWarnings,
+      timSummary,
+      skippedSheets
     });
-    
+
   } catch (error) {
     console.error('Greška pri upload-u:', error);
     res.status(500).json({ error: 'Greška pri obradi Excel fajla: ' + error.message });
@@ -1607,13 +1701,19 @@ router.post('/', auth, logActivity('workorders', 'workorder_add', {
   getEntityName: (req, responseData) => responseData?.tisJobId || 'WorkOrder'
 }), async (req, res) => {
   try {
-    const { 
+    const {
       date, time, municipality, address, type, technicianId, technician2Id, details, comment,
-      technology, tisId, userName, userPhone, tisJobId, additionalJobs 
+      technology, tisId, userName, userPhone, tisJobId, additionalJobs, tim: timRaw
     } = req.body;
-    
+
     if (!date || !municipality || !address || !type) {
       return res.status(400).json({ error: 'Datum, opština, adresa i tip su obavezna polja' });
+    }
+
+    // Validacija tima (Robotik | mtel) — ako je poslat, mora biti prepoznatljiv
+    const tim = normalizeTim(timRaw);
+    if (timRaw && !tim) {
+      return res.status(400).json({ error: `Nepoznata vrednost tima "${timRaw}" — dozvoljene vrednosti su Robotik i mtel` });
     }
     
     // Provera da li tehničar postoji
@@ -1684,6 +1784,7 @@ router.post('/', auth, logActivity('workorders', 'workorder_add', {
       comment: comment || '',
       status: 'nezavrsen',
       technology: technology || '',
+      tim,
       tisId: tisId || '',
       userName: userName || '',
       userPhone: userPhone || '',
@@ -1848,6 +1949,7 @@ router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
 
       // Technical info
       technology: 'Tehnologija',
+      tim: 'Tim',
       tisJobId: 'TIS Job ID',
       tisId: 'TIS ID',
 
@@ -1902,6 +2004,10 @@ router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
       if (key === 'status') {
         const oldLabel = statusLabels[oldValue] || oldValue;
         const newLabel = statusLabels[newValue] || newValue;
+        changes.push(`Promenjen ${label}: ${oldLabel} → ${newLabel}`);
+      } else if (key === 'tim') {
+        const oldLabel = TIM_LABELS[oldValue] || oldValue || 'Nije definisan';
+        const newLabel = TIM_LABELS[newValue] || newValue || 'Nije definisan';
         changes.push(`Promenjen ${label}: ${oldLabel} → ${newLabel}`);
       } else if (key === 'verified') {
         if (newValue === true && oldValue !== true) {
@@ -1983,6 +2089,19 @@ router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
         }
       }
       updateData.customerEmail = trimmedEmail;
+    }
+
+    // VALIDACIJA: Tim (Robotik | mtel) — normalizacija i provera vrednosti
+    if (updateData.tim !== undefined) {
+      if (updateData.tim === null || updateData.tim === '') {
+        updateData.tim = null;
+      } else {
+        const normalizedTim = normalizeTim(updateData.tim);
+        if (!normalizedTim) {
+          return res.status(400).json({ error: `Nepoznata vrednost tima "${updateData.tim}" — dozvoljene vrednosti su Robotik i mtel` });
+        }
+        updateData.tim = normalizedTim;
+      }
     }
 
     // Provera i konverzija technicianId

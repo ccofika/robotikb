@@ -33,7 +33,7 @@ router.get('/', auth, async (req, res) => {
           { type: regex }
         ]
       })
-        .select('tisJobId tisId address municipality userName type status date')
+        .select('tisJobId tisId address municipality userName type status date tim')
         .sort({ date: -1 })
         .limit(5)
         .lean(),

@@ -99,6 +99,12 @@ const WorkOrderSchema = new Schema({
     enum: ['HFC', 'GPON', 'VDSL', 'other'],
     default: 'other'
   },
+  // Tim u koji je radni nalog svrstan (iz "Tim" kolone u Excel importu)
+  tim: {
+    type: String,
+    enum: ['robotik', 'mtel', null],
+    default: null
+  },
   tisId: {
     type: String
   },
