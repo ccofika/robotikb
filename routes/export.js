@@ -8,11 +8,29 @@ const mongoose = require('mongoose');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const WorkOrder = require('../models/WorkOrder');
 const Equipment = require('../models/Equipment');
+const SupportCall = require('../models/SupportCall');
 
-// DD.MM.YYYY format za datume zaduženja opreme
-const formatDDMMYYYY = (date) => {
+// Prikazne labele za tipove poziva podršci u exportu
+const SUPPORT_TYPE_LABELS = {
+  administrative: 'Administrativna podrška',
+  super: 'Superpodrška'
+};
+
+// DD.MM.YYYY. HH:mm format za datume zaduženja opreme.
+// Zona je eksplicitno Europe/Belgrade jer server radi u UTC — bez toga bi se
+// prikazano vreme (i datum za zaduženja posle 22h) razlikovalo od onoga što
+// administrator vidi u aplikaciji.
+const formatAssignedAt = (date) => {
   const d = new Date(date);
-  return `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear()}`;
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('sr-RS', {
+    timeZone: 'Europe/Belgrade',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 };
 
 // Merge technician comment with the most recent cancel/postpone history entry.
@@ -1081,6 +1099,24 @@ router.post('/evidencija-new', async (req, res) => {
       });
     }
 
+    // Pozivi podršci: batch lookup celog timeline-a po radnom nalogu
+    const allWorkOrderIds = [...new Set(
+      evidenceRecords.map(ev => ev.workOrderId).filter(Boolean).map(id => id.toString())
+    )];
+
+    const supportCallsByWorkOrderId = new Map();
+    if (allWorkOrderIds.length > 0) {
+      const supportCallDocs = await SupportCall.find({ workOrderId: { $in: allWorkOrderIds } })
+        .sort({ calledAt: 1 })
+        .select('workOrderId supportType phoneNumber technicianName calledAt')
+        .lean();
+      supportCallDocs.forEach(call => {
+        const key = call.workOrderId.toString();
+        if (!supportCallsByWorkOrderId.has(key)) supportCallsByWorkOrderId.set(key, []);
+        supportCallsByWorkOrderId.get(key).push(call);
+      });
+    }
+
     // Kreiramo novi workbook
     const workbook = xlsx.utils.book_new();
 
@@ -1109,6 +1145,7 @@ router.post('/evidencija-new', async (req, res) => {
     ];
     while (headerRow2.length < 34) headerRow2.push(null);
     headerRow2.push('Zaduženje opreme', null); // kolone 34-35
+    headerRow2.push('Pozivi podršci');         // kolona 36
     evidencijaData.push(headerRow2);
     
     // Header red 3 - prazan
@@ -1129,7 +1166,8 @@ router.post('/evidencija-new', async (req, res) => {
       'Serijski broj', 'N/R',  // Kartica 3
       'Serijski broj', 'N/R',  // Mini node
       'Serijski broj', 'N/R',  // Demontaža
-      'Datum zaduženja', 'Zadužio'  // Zaduženje instalirane opreme tehničaru
+      'Datum i vreme zaduženja', 'Zadužio',  // Zaduženje instalirane opreme tehničaru
+      'Pozivi podršci'                       // Timeline poziva podršci za nalog
     ]);
 
     // Dodavanje podataka za svaki WorkOrderEvidence zapis
@@ -1229,7 +1267,7 @@ router.post('/evidencija-new', async (req, res) => {
           const stamp = stampBySerial[eq.serialNumber.toLowerCase()];
           return {
             serial: eq.serialNumber,
-            date: stamp && stamp.at ? formatDDMMYYYY(stamp.at) : '',
+            date: stamp && stamp.at ? formatAssignedAt(stamp.at) : '',
             by: stamp ? (stamp.by || '') : ''
           };
         });
@@ -1243,6 +1281,20 @@ router.post('/evidencija-new', async (req, res) => {
       row[35] = uniqueNames.length <= 1
         ? (uniqueNames[0] || '')
         : stampParts.filter(p => p.by).map(p => `${p.serial}: ${p.by}`).join('\n');
+
+      // Pozivi podršci: ceo timeline za nalog, jedan poziv po redu — ništa
+      // se ne sabira niti izostavlja
+      const workOrderCalls = evidence.workOrderId
+        ? (supportCallsByWorkOrderId.get(evidence.workOrderId.toString()) || [])
+        : [];
+      row[36] = workOrderCalls
+        .map(call => {
+          const label = SUPPORT_TYPE_LABELS[call.supportType] || call.supportType;
+          const phone = call.phoneNumber ? ` (${call.phoneNumber})` : '';
+          const by = call.technicianName ? ` — ${call.technicianName}` : '';
+          return `${formatAssignedAt(call.calledAt)} — ${label}${phone}${by}`;
+        })
+        .join('\n');
 
       evidencijaData.push(row);
     });
@@ -1287,8 +1339,9 @@ router.post('/evidencija-new', async (req, res) => {
       { width: 15 }, // Tehnicar 2
       // Oprema kolone
       ...Array(20).fill({ width: 18 }), // 20 kolona za opremu
-      { width: 16 }, // Datum zaduženja
-      { width: 28 }  // Zadužio
+      { width: 22 }, // Datum i vreme zaduženja
+      { width: 28 }, // Zadužio
+      { width: 52 }  // Pozivi podršci (timeline, jedan poziv po redu)
     ];
     ws['!cols'] = colWidths;
 

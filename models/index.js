@@ -15,6 +15,7 @@ const AdminActivityLog = require('./AdminActivityLog');
 const ErrorLog = require('./ErrorLog');
 const PerformanceLog = require('./PerformanceLog');
 const CallRecording = require('./CallRecording');
+const SupportCall = require('./SupportCall');
 
 module.exports = {
   User,
@@ -33,5 +34,6 @@ module.exports = {
   AdminActivityLog,
   ErrorLog,
   PerformanceLog,
-  CallRecording
+  CallRecording,
+  SupportCall
 }; 
