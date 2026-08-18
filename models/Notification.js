@@ -18,7 +18,8 @@ const NotificationSchema = new mongoose.Schema({
       'vehicle_registration_expiry',   // Isticanje registracije vozila
       'technician_employment_expiry',  // Isticanje ugovora tehničara
       'low_review_rating',             // Loša ocena korisnika
-      'customer_not_contacted'         // Tehničar nije pozvao korisnika pred termin
+      'customer_not_contacted',        // Tehničar nije pozvao korisnika pred termin
+      'duplicate_address'              // Novi (importovan) nalog na adresi ranije otkazanog naloga
     ],
     required: true,
   },
@@ -245,6 +246,32 @@ NotificationSchema.statics.createCustomerNotContacted = function(workOrderId, te
     targetPage: '/work-orders-by-technician',
     targetId: workOrderId.toString(),
     workOrderId
+  });
+};
+
+// Static method: importovan nalog na adresi na kojoj postoji ranije otkazan nalog
+NotificationSchema.statics.createDuplicateAddress = function(workOrderId, tisId, address, canceledCount, recipientId) {
+  return this.create({
+    title: 'Nalog na adresi otkazanog naloga',
+    message: `Novi radni nalog${tisId ? ` (TIS ${tisId})` : ''} je na adresi "${address}" na kojoj ${canceledCount === 1 ? 'postoji ranije otkazan nalog' : `postoje ${canceledCount} ranije otkazana naloga`}.`,
+    type: 'duplicate_address',
+    priority: 'medium',
+    recipientId,
+    targetPage: `/work-orders/${workOrderId}`,
+    targetId: workOrderId.toString(),
+    workOrderId
+  });
+};
+
+// Static method: zbirna verzija kada import flaguje mnogo naloga odjednom
+NotificationSchema.statics.createDuplicateAddressSummary = function(count, recipientId) {
+  return this.create({
+    title: 'Nalozi na adresama otkazanih naloga',
+    message: `U poslednjem importu je ${count} radnih naloga na adresama na kojima postoje ranije otkazani nalozi. Otvorite radne naloge za detalje.`,
+    type: 'duplicate_address',
+    priority: 'medium',
+    recipientId,
+    targetPage: '/work-orders'
   });
 };
 

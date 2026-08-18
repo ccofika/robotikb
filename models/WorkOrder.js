@@ -292,6 +292,20 @@ const WorkOrderSchema = new Schema({
   uncontactedAlertSentForAppointment: {
     type: Date,
     default: null
+  },
+  // Provera pri importu: da li na istoj adresi postoji ranije OTKAZAN nalog.
+  // checkedAt sprečava ponovnu proveru/notifikaciju za isti nalog.
+  duplicateAddressFlagged: {
+    type: Boolean,
+    default: false
+  },
+  duplicateAddressCanceledCount: {
+    type: Number,
+    default: 0
+  },
+  duplicateAddressCheckedAt: {
+    type: Date,
+    default: null
   }
 }, { timestamps: true });
 

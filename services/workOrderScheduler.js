@@ -5,6 +5,7 @@ const notificationsRouter = require('../routes/notifications');
 const createNotification = notificationsRouter.createNotification;
 const androidNotificationService = require('./androidNotificationService');
 const emailService = require('./emailService');
+const ContactEvent = require('../models/ContactEvent');
 
 // Koliko minuta pre termina se šalje podsetnik tehničarima
 const REMINDER_LEAD_MINUTES = 30;
@@ -242,6 +243,16 @@ async function checkUpcomingWorkOrderReminders() {
               { $set: { reminderSentForAppointment: null, reminderSentAt: null } }
             );
             console.warn(`⚠️ Podsetnik za nalog ${workOrder._id} nije kreiran — claim oslobođen, pokušaće ponovo.`);
+          } else {
+            // Trajni zapis za timeline na webu (fire-and-forget)
+            const reminderTechNames = technicianEntries
+              .map(t => (t && t.name) ? t.name : null).filter(Boolean).join(' i ');
+            ContactEvent.create({
+              workOrderId: workOrder._id,
+              eventType: 'reminder_sent',
+              at: now,
+              technicianName: reminderTechNames
+            }).catch(err => console.error('[ContactEvent] Upis reminder_sent nije uspeo:', err.message));
           }
         }
       }
@@ -316,6 +327,14 @@ async function maybeSendUncontactedAlert(workOrder, technicianEntries, identity,
       console.warn(`⚠️ Alert za nalog ${workOrder._id} nije kreiran — claim oslobođen, pokušaće ponovo.`);
       return;
     }
+
+    // Trajni zapis za timeline na webu (fire-and-forget)
+    ContactEvent.create({
+      workOrderId: workOrder._id,
+      eventType: 'uncontacted_alert',
+      at: now,
+      technicianName: technicianNames
+    }).catch(err => console.error('[ContactEvent] Upis uncontacted_alert nije uspeo:', err.message));
 
     // Mejl obaveštenje na fiksne adrese — JEDNOM po događaju (ne po adminu).
     // Fire-and-forget: neuspešan mejl ne sme da poremeti scheduler.

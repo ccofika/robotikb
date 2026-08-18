@@ -1672,6 +1672,16 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
       bezTima: newWorkOrders.filter(wo => !wo.tim).length
     };
 
+    // Pozadinska provera adresa (otkazani nalozi na istoj adresi) — fire-and-forget,
+    // NAMERNO bez await: import odgovara odmah, provera ide polako u pozadini.
+    try {
+      const { checkOrdersInBackground } = require('../services/duplicateAddressChecker');
+      const createdIds = newWorkOrders.map(wo => wo._id);
+      setImmediate(() => checkOrdersInBackground(createdIds));
+    } catch (dupErr) {
+      console.error('[DuplicateAddress] Pokretanje pozadinske provere nije uspelo:', dupErr.message);
+    }
+
     res.json({
       newWorkOrders,
       newUsers,
@@ -5201,6 +5211,41 @@ router.post('/voice-recordings/trigger-sync', auth, async (req, res) => {
 
 // ============================================================================
 
+// GET - Svi radni nalozi na ISTOJ adresi kao dati nalog (svi statusi, bez njega samog).
+// Hrani sekciju "Nalozi na istoj adresi" na web detaljima naloga.
+router.get('/:id/same-address', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID radnog naloga' });
+    }
+    const order = await WorkOrder.findById(id).select('address').lean();
+    if (!order) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    const { addressPattern } = require('../services/duplicateAddressChecker');
+    const pattern = addressPattern(order.address);
+    if (!pattern) return res.json([]);
+
+    const sameAddress = await WorkOrder.find({
+      _id: { $ne: id },
+      address: pattern
+    })
+      .select('tisId tisJobId userName address municipality date time status type technicianId technician2Id createdAt')
+      .populate('technicianId', 'name')
+      .populate('technician2Id', 'name')
+      .sort({ date: -1, time: -1 })
+      .limit(50)
+      .lean();
+
+    res.json(sameAddress);
+  } catch (error) {
+    console.error('Greška pri dohvatanju naloga na istoj adresi:', error);
+    res.status(500).json({ error: 'Greška pri dohvatanju naloga na istoj adresi' });
+  }
+});
+
 // POST - Tehničar je kliknuo "Pozovi korisnika" (notifikacija/baner/kartica naloga).
 // Beleži pokušaj kontakta — koristi ga scheduler za alert adminima 15 min pre termina.
 router.post('/:id/customer-call', auth, async (req, res) => {
@@ -5211,14 +5256,29 @@ router.post('/:id/customer-call', auth, async (req, res) => {
     }
 
     const source = typeof req.body?.source === 'string' ? req.body.source.slice(0, 40) : '';
+    const callTime = new Date();
     const result = await WorkOrder.updateOne(
       { _id: id },
-      { $set: { customerCallAttemptedAt: new Date(), customerCallSource: source } }
+      { $set: { customerCallAttemptedAt: callTime, customerCallSource: source } }
     );
 
     if (result.matchedCount === 0) {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
     }
+
+    // Trajni zapis za timeline na webu (polja na nalogu čuvaju samo poslednji klik).
+    // Fire-and-forget — neuspeh upisa ne sme da sruši beleženje poziva.
+    try {
+      const ContactEvent = require('../models/ContactEvent');
+      ContactEvent.create({
+        workOrderId: id,
+        eventType: 'customer_call',
+        at: callTime,
+        technicianId: req.user?._id,
+        technicianName: req.user?.name || '',
+        source
+      }).catch(err => console.error('[ContactEvent] Upis customer_call nije uspeo:', err.message));
+    } catch (e) { /* nikad ne blokiraj odgovor */ }
 
     res.json({ success: true });
   } catch (error) {

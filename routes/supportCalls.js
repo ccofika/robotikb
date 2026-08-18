@@ -74,7 +74,9 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// GET - Timeline svih poziva podršci za jedan radni nalog (hronološki)
+// GET - Objedinjeni timeline kontakata za jedan radni nalog (hronološki):
+// pozivi podršci (SupportCall) + pozivi korisniku, podsetnici i alerti (ContactEvent).
+// Svaka stavka nosi eventType: 'support_call' | 'customer_call' | 'reminder_sent' | 'uncontacted_alert'.
 router.get('/workorder/:workOrderId', auth, async (req, res) => {
   try {
     const { workOrderId } = req.params;
@@ -82,12 +84,23 @@ router.get('/workorder/:workOrderId', auth, async (req, res) => {
       return res.status(400).json({ error: 'Neispravan ID radnog naloga' });
     }
 
-    const calls = await SupportCall.find({ workOrderId })
-      .sort({ calledAt: 1 })
-      .populate('technicianId', 'name')
-      .lean();
+    const ContactEvent = require('../models/ContactEvent');
+    const [calls, events] = await Promise.all([
+      SupportCall.find({ workOrderId })
+        .sort({ calledAt: 1 })
+        .populate('technicianId', 'name')
+        .lean(),
+      ContactEvent.find({ workOrderId })
+        .sort({ at: 1 })
+        .lean()
+    ]);
 
-    res.json(calls);
+    const timeline = [
+      ...calls.map(c => ({ ...c, eventType: 'support_call', at: c.calledAt })),
+      ...events.map(e => ({ ...e, eventType: e.eventType }))
+    ].sort((a, b) => new Date(a.at) - new Date(b.at));
+
+    res.json(timeline);
   } catch (error) {
     console.error('[SupportCall] Greška pri dohvatanju poziva za nalog:', error);
     res.status(500).json({ error: 'Greška pri dohvatanju poziva podrške' });
