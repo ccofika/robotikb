@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
-// Beleži klik tehničara na dugme za poziv podrške iz mobilne aplikacije.
+// Beleži klik tehničara na dugme za poziv (podrška ili kontakt osoba)
+// iz mobilne aplikacije.
 // Dedup pravilo: ponovljeni klik na ISTO dugme za ISTI nalog unutar 60s
 // se ne upisuje (sprovodi ga ruta, ne šema).
 const SupportCallSchema = new Schema({
@@ -23,7 +24,7 @@ const SupportCallSchema = new Schema({
   },
   supportType: {
     type: String,
-    enum: ['administrative', 'super'],
+    enum: ['administrative', 'super', 'marko', 'ana'],
     required: true
   },
   phoneNumber: {

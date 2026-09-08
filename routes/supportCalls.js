@@ -5,6 +5,10 @@ const { auth } = require('../middleware/auth');
 const SupportCall = require('../models/SupportCall');
 const WorkOrder = require('../models/WorkOrder');
 
+// Dozvoljeni tipovi poziva — mora da prati enum u models/SupportCall.js
+// i SUPPORT_LINES u mobilnoj aplikaciji
+const SUPPORT_TYPES = ['administrative', 'super', 'marko', 'ana'];
+
 // Ponovljeni klik na isto dugme za isti nalog unutar ovog prozora se računa
 // kao isti poziv i ne upisuje se ponovo
 const DEDUP_WINDOW_MS = 60 * 1000;
@@ -21,7 +25,7 @@ router.post('/', auth, async (req, res) => {
     if (!workOrderId || !mongoose.Types.ObjectId.isValid(workOrderId)) {
       return res.status(400).json({ error: 'Neispravan ID radnog naloga' });
     }
-    if (!['administrative', 'super'].includes(supportType)) {
+    if (!SUPPORT_TYPES.includes(supportType)) {
       return res.status(400).json({ error: 'Neispravan tip podrške' });
     }
 
@@ -120,12 +124,10 @@ router.get('/technician/:technicianId/summary', auth, async (req, res) => {
       { $group: { _id: '$supportType', count: { $sum: 1 }, lastCalledAt: { $max: '$calledAt' } } }
     ]);
 
-    const summary = {
-      total: 0,
-      administrative: 0,
-      super: 0,
-      lastCalledAt: null
-    };
+    // Svaki tip uvek postoji u odgovoru (nula ako nema poziva), pa frontend
+    // ne mora da proverava da li ključ postoji
+    const summary = { total: 0, lastCalledAt: null };
+    SUPPORT_TYPES.forEach(type => { summary[type] = 0; });
     byType.forEach(row => {
       summary[row._id] = row.count;
       summary.total += row.count;

@@ -13,7 +13,9 @@ const SupportCall = require('../models/SupportCall');
 // Prikazne labele za tipove poziva podršci u exportu
 const SUPPORT_TYPE_LABELS = {
   administrative: 'Administrativna podrška',
-  super: 'Superpodrška'
+  super: 'Superpodrška',
+  marko: 'Marko',
+  ana: 'Ana'
 };
 
 // DD.MM.YYYY. HH:mm format za datume zaduženja opreme.
