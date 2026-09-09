@@ -27,6 +27,24 @@ const TIM_LABELS = { robotik: 'Robotik', mtel: 'mtel' };
 // Prihvata varijante: "Robotik", "Robotik 1", "Robotik 2", "ROBOTIK MONTAŽA" → 'robotik';
 // "mtel", "M-tel", "M telecommunication", "M-TELECOMMUNICATION" → 'mtel'.
 // Vraća 'robotik' | 'mtel' | null (null = nepoznato/prazno).
+// Escape korisnickog unosa za $regex — bez ovoga znakovi kao . * + ? ( ) [ ]
+// menjaju znacenje upita ili ga obore (npr. pretraga "1+2" ili "(061)").
+const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Za ciste numericke pretrage (telefon, TIS ID) dopusti razdvajace u SACUVANOJ
+// vrednosti: unos "0611655593" tada nalazi i "(061) 165-55-93" ili " 061 165 5593".
+// Takodje pokriva srpski pozivni broj: 0XX... i 381XX... su isti broj, pa unos
+// "0613069150" nalazi i "+381613069150".
+// Vraca [] za kratke/nenumericke pojmove da ne bismo pravili preskupe upite.
+const digitsLooseVariants = (term) => {
+  const digits = String(term).replace(/\D/g, '');
+  if (digits.length < 6) return [];
+  const variants = new Set([digits]);
+  if (digits.startsWith('381')) variants.add('0' + digits.slice(3));
+  else if (digits.startsWith('0')) variants.add('381' + digits.slice(1));
+  return [...variants].map(d => d.split('').join('[^0-9]*'));
+};
+
 const normalizeTim = (raw) => {
   if (raw === undefined || raw === null) return null;
   const compact = raw.toString().trim().toLowerCase().replace(/[\s\-_.:]/g, '');
@@ -782,15 +800,26 @@ router.get('/', async (req, res) => {
       const andConditions = [];
 
       // Search filter
+      // tisJobId (TIS Posao ID) i userPhone su OBAVEZNI — administratori
+      // najcesce traze nalog upravo po Job ID-u ili po telefonu korisnika.
+      // escapeRegex jer korisnicki unos moze sadrzati . * + ? ( ) [ ] itd.
       if (search) {
-        andConditions.push({
-          $or: [
-            { tisId: { $regex: search, $options: 'i' } },
-            { userName: { $regex: search, $options: 'i' } },
-            { address: { $regex: search, $options: 'i' } },
-            { municipality: { $regex: search, $options: 'i' } }
-          ]
+        const term = escapeRegex(search);
+        const looseVariants = digitsLooseVariants(search);
+        const orConditions = [
+          { tisId: { $regex: term, $options: 'i' } },
+          { tisJobId: { $regex: term, $options: 'i' } },
+          { userPhone: { $regex: term, $options: 'i' } },
+          { userName: { $regex: term, $options: 'i' } },
+          { address: { $regex: term, $options: 'i' } },
+          { municipality: { $regex: term, $options: 'i' } }
+        ];
+        looseVariants.forEach(v => {
+          orConditions.push({ userPhone: { $regex: v } });
+          orConditions.push({ tisId: { $regex: v } });
+          orConditions.push({ tisJobId: { $regex: v } });
         });
+        andConditions.push({ $or: orConditions });
       }
 
       // Status filter
@@ -930,18 +959,23 @@ router.get('/technician/:technicianId', async (req, res) => {
 
     if (search) {
       // Search mode: search ALL orders for this technician (no date limit)
-      baseQuery = {
-        ...techFilter,
-        $and: [{
-          $or: [
-            { tisId: { $regex: search, $options: 'i' } },
-            { userName: { $regex: search, $options: 'i' } },
-            { address: { $regex: search, $options: 'i' } },
-            { municipality: { $regex: search, $options: 'i' } },
-            { description: { $regex: search, $options: 'i' } }
-          ]
-        }]
-      };
+      const searchTerm = escapeRegex(search);
+      const looseTermVariants = digitsLooseVariants(search);
+      const techOr = [
+        { tisId: { $regex: searchTerm, $options: 'i' } },
+        { tisJobId: { $regex: searchTerm, $options: 'i' } },
+        { userPhone: { $regex: searchTerm, $options: 'i' } },
+        { userName: { $regex: searchTerm, $options: 'i' } },
+        { address: { $regex: searchTerm, $options: 'i' } },
+        { municipality: { $regex: searchTerm, $options: 'i' } },
+        { description: { $regex: searchTerm, $options: 'i' } }
+      ];
+      looseTermVariants.forEach(v => {
+        techOr.push({ userPhone: { $regex: v } });
+        techOr.push({ tisId: { $regex: v } });
+        techOr.push({ tisJobId: { $regex: v } });
+      });
+      baseQuery = { ...techFilter, $and: [{ $or: techOr }] };
       if (status) baseQuery.status = status;
     } else if (all === 'true' || status) {
       // If ?all=true or specific status filter, return all matching

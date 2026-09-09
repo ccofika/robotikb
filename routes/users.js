@@ -4,6 +4,24 @@ const { User, WorkOrder, Equipment } = require('../models');
 const mongoose = require('mongoose');
 const { logActivity } = require('../middleware/activityLogger');
 
+// Escape korisnickog unosa za $regex — bez ovoga znakovi kao . * + ? ( ) [ ]
+// menjaju znacenje upita ili ga obore (npr. pretraga "(061)" ili "1+2").
+// Za ciste numericke pretrage (telefon, TIS ID) dopusti razdvajace u SACUVANOJ
+// vrednosti: unos "0611655593" tada nalazi i "(061) 165-55-93" ili " 061 165 5593".
+// Takodje pokriva srpski pozivni broj: 0XX... i 381XX... su isti broj, pa unos
+// "0613069150" nalazi i "+381613069150".
+// Vraca [] za kratke/nenumericke pojmove da ne bismo pravili preskupe upite.
+const digitsLooseVariants = (term) => {
+  const digits = String(term).replace(/\D/g, '');
+  if (digits.length < 6) return [];
+  const variants = new Set([digits]);
+  if (digits.startsWith('381')) variants.add('0' + digits.slice(3));
+  else if (digits.startsWith('0')) variants.add('381' + digits.slice(1));
+  return [...variants].map(d => d.split('').join('[^0-9]*'));
+};
+
+const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 // Simple in-memory cache for user list queries (1 minute TTL)
 const cache = {
   data: new Map(),
@@ -120,15 +138,15 @@ router.get('/', async (req, res) => {
         const [equipmentUsers, workOrderUsers] = await Promise.all([
           // Find users by equipment serial numbers
           Equipment.distinct('location', {
-            serialNumber: { $regex: search, $options: 'i' },
+            serialNumber: { $regex: escapeRegex(search), $options: 'i' },
             location: { $regex: /^user-/ }
           }),
           // Find users by work order data (using correct field names)
           WorkOrder.distinct('user', {
             $or: [
-              { tisJobId: { $regex: search, $options: 'i' } },
-              { details: { $regex: search, $options: 'i' } },
-              { tisId: { $regex: search, $options: 'i' } }
+              { tisJobId: { $regex: escapeRegex(search), $options: 'i' } },
+              { details: { $regex: escapeRegex(search), $options: 'i' } },
+              { tisId: { $regex: escapeRegex(search), $options: 'i' } }
             ]
           })
         ]);
@@ -141,11 +159,17 @@ router.get('/', async (req, res) => {
         // Build comprehensive search condition
         const searchConditions = [
           // Direct user field searches
-          { name: { $regex: search, $options: 'i' } },
-          { address: { $regex: search, $options: 'i' } },
-          { phone: { $regex: search, $options: 'i' } },
-          { tisId: { $regex: search, $options: 'i' } }
+          { name: { $regex: escapeRegex(search), $options: 'i' } },
+          { address: { $regex: escapeRegex(search), $options: 'i' } },
+          { phone: { $regex: escapeRegex(search), $options: 'i' } },
+          { tisId: { $regex: escapeRegex(search), $options: 'i' } }
         ];
+
+        // Telefon/TIS ID zapisan sa razdvajacima ili vodecim razmakom
+        digitsLooseVariants(search).forEach(v => {
+          searchConditions.push({ phone: { $regex: v } });
+          searchConditions.push({ tisId: { $regex: v } });
+        });
 
         // Add equipment-based search
         if (equipmentTisIds.length > 0) {
@@ -160,14 +184,17 @@ router.get('/', async (req, res) => {
         searchCondition = { $or: searchConditions };
       } else {
         // Short search - only direct fields
-        searchCondition = {
-          $or: [
-            { name: { $regex: search, $options: 'i' } },
-            { address: { $regex: search, $options: 'i' } },
-            { phone: { $regex: search, $options: 'i' } },
-            { tisId: { $regex: search, $options: 'i' } }
-          ]
-        };
+        const shortOr = [
+          { name: { $regex: escapeRegex(search), $options: 'i' } },
+          { address: { $regex: escapeRegex(search), $options: 'i' } },
+          { phone: { $regex: escapeRegex(search), $options: 'i' } },
+          { tisId: { $regex: escapeRegex(search), $options: 'i' } }
+        ];
+        digitsLooseVariants(search).forEach(v => {
+          shortOr.push({ phone: { $regex: v } });
+          shortOr.push({ tisId: { $regex: v } });
+        });
+        searchCondition = { $or: shortOr };
       }
     }
 
@@ -217,10 +244,15 @@ router.get('/', async (req, res) => {
     }
 
     // Combine conditions
-    const matchCondition = {
-      ...searchCondition,
-      ...filtersCondition
-    };
+    // VAZNO: i searchCondition i filtersCondition mogu imati $or na istom nivou.
+    // Spread ({...a, ...b}) je u tom slucaju TIHO gazio search — npr. pretraga
+    // uz filter "bez radnih naloga" je vracala sve korisnike bez naloga.
+    // $and drzi oba uslova aktivnim.
+    const conditionParts = [searchCondition, filtersCondition]
+      .filter(c => c && Object.keys(c).length > 0);
+    const matchCondition = conditionParts.length > 1
+      ? { $and: conditionParts }
+      : (conditionParts[0] || {});
 
     // Build sort condition
     const sortCondition = {};
