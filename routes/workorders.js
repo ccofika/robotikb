@@ -19,6 +19,7 @@ const convert = require('heic-convert');
 const { parseBuffer } = require('music-metadata');
 const { logActivity } = require('../middleware/activityLogger');
 const { auth } = require('../middleware/auth');
+const { looseTextRegex, digitsLooseVariants } = require('../utils/searchRegex');
 
 // Dozvoljene vrednosti za tim i njihove labele za prikaz
 const TIM_LABELS = { robotik: 'Robotik', mtel: 'mtel' };
@@ -27,23 +28,7 @@ const TIM_LABELS = { robotik: 'Robotik', mtel: 'mtel' };
 // Prihvata varijante: "Robotik", "Robotik 1", "Robotik 2", "ROBOTIK MONTAŽA" → 'robotik';
 // "mtel", "M-tel", "M telecommunication", "M-TELECOMMUNICATION" → 'mtel'.
 // Vraća 'robotik' | 'mtel' | null (null = nepoznato/prazno).
-// Escape korisnickog unosa za $regex — bez ovoga znakovi kao . * + ? ( ) [ ]
-// menjaju znacenje upita ili ga obore (npr. pretraga "1+2" ili "(061)").
-const escapeRegex = (str) => String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-// Za ciste numericke pretrage (telefon, TIS ID) dopusti razdvajace u SACUVANOJ
-// vrednosti: unos "0611655593" tada nalazi i "(061) 165-55-93" ili " 061 165 5593".
-// Takodje pokriva srpski pozivni broj: 0XX... i 381XX... su isti broj, pa unos
-// "0613069150" nalazi i "+381613069150".
-// Vraca [] za kratke/nenumericke pojmove da ne bismo pravili preskupe upite.
-const digitsLooseVariants = (term) => {
-  const digits = String(term).replace(/\D/g, '');
-  if (digits.length < 6) return [];
-  const variants = new Set([digits]);
-  if (digits.startsWith('381')) variants.add('0' + digits.slice(3));
-  else if (digits.startsWith('0')) variants.add('381' + digits.slice(1));
-  return [...variants].map(d => d.split('').join('[^0-9]*'));
-};
 
 const normalizeTim = (raw) => {
   if (raw === undefined || raw === null) return null;
@@ -802,9 +787,9 @@ router.get('/', async (req, res) => {
       // Search filter
       // tisJobId (TIS Posao ID) i userPhone su OBAVEZNI — administratori
       // najcesce traze nalog upravo po Job ID-u ili po telefonu korisnika.
-      // escapeRegex jer korisnicki unos moze sadrzati . * + ? ( ) [ ] itd.
+      // looseTextRegex: tolerantno na dijakritiku i visestruke razmake, i escape-uje unos
       if (search) {
-        const term = escapeRegex(search);
+        const term = looseTextRegex(search);
         const looseVariants = digitsLooseVariants(search);
         const orConditions = [
           { tisId: { $regex: term, $options: 'i' } },
@@ -959,7 +944,7 @@ router.get('/technician/:technicianId', async (req, res) => {
 
     if (search) {
       // Search mode: search ALL orders for this technician (no date limit)
-      const searchTerm = escapeRegex(search);
+      const searchTerm = looseTextRegex(search);
       const looseTermVariants = digitsLooseVariants(search);
       const techOr = [
         { tisId: { $regex: searchTerm, $options: 'i' } },

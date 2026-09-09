@@ -6,6 +6,7 @@ const Equipment = require('../models/Equipment');
 const Material = require('../models/Material');
 const Technician = require('../models/Technician');
 const User = require('../models/User');
+const { looseTextRegex, digitsLooseVariants } = require('../utils/searchRegex');
 
 // ============================================================
 // GET /api/search?q=searchTerm - Global search across all data
@@ -19,21 +20,10 @@ router.get('/', auth, async (req, res) => {
     }
 
     const searchTerm = q.trim();
-    // Escape korisnickog unosa — bez ovoga unos poput "(061" ili "[abc" obori
-    // konstrukciju RegExp-a i ruta vrati 500.
-    const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(escaped, 'i');
-
-    // Za numericke pojmove dopusti razdvajace i srpski pozivni broj u
-    // sacuvanoj vrednosti ("0611655593" nalazi "(061) 165-55-93", "+381...")
-    const digits = searchTerm.replace(/\D/g, '');
-    const looseRegexes = [];
-    if (digits.length >= 6) {
-      const forms = new Set([digits]);
-      if (digits.startsWith('381')) forms.add('0' + digits.slice(3));
-      else if (digits.startsWith('0')) forms.add('381' + digits.slice(1));
-      forms.forEach(d => looseRegexes.push(new RegExp(d.split('').join('[^0-9]*'))));
-    }
+    // Tolerantno na dijakritiku i visestruke razmake; usput escape-uje unos
+    // (bez toga "(061" ili "[abc" obori RegExp i ruta vrati 500).
+    const regex = new RegExp(looseTextRegex(searchTerm), 'i');
+    const looseRegexes = digitsLooseVariants(searchTerm).map(v => new RegExp(v));
 
     const [workOrders, equipment, materials, technicians] = await Promise.all([
       // Work Orders
