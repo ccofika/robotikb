@@ -18,7 +18,7 @@ const { uploadImage, deleteImage, uploadVoiceRecording, deleteVoiceRecording } =
 const convert = require('heic-convert');
 const { parseBuffer } = require('music-metadata');
 const { logActivity } = require('../middleware/activityLogger');
-const { auth } = require('../middleware/auth');
+const { auth, isAdmin, isTechnicianOwner } = require('../middleware/auth');
 const { looseTextRegex, digitsLooseVariants } = require('../utils/searchRegex');
 
 // Dozvoljene vrednosti za tim i njihove labele za prikaz
@@ -718,7 +718,7 @@ const imageUpload = multer({
 
 
 // GET - Dohvati filter opcije za Edit stranicu (distinct municipalities i technicians)
-router.get('/edit-filters', async (req, res) => {
+router.get('/edit-filters', auth, isAdmin, async (req, res) => {
   try {
     const [municipalities, technicianAgg] = await Promise.all([
       WorkOrder.distinct('municipality'),
@@ -770,7 +770,7 @@ router.get('/edit-filters', async (req, res) => {
 });
 
 // GET - Dohvati sve radne naloge
-router.get('/', async (req, res) => {
+router.get('/', auth, isAdmin, async (req, res) => {
   try {
     const { recent, olderThan, page, limit, search, status, municipality, technician } = req.query;
     const startTime = Date.now();
@@ -924,7 +924,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET - Dohvati radne naloge tehničara
-router.get('/technician/:technicianId', async (req, res) => {
+router.get('/technician/:technicianId', auth, isTechnicianOwner, async (req, res) => {
   try {
     const { technicianId } = req.params;
     const { page, limit, status, all, search } = req.query;
@@ -1036,7 +1036,7 @@ router.get('/technician/:technicianId', async (req, res) => {
 });
 
 // GET - Dohvati overdue radne naloge za tehničara
-router.get('/technician/:technicianId/overdue', async (req, res) => {
+router.get('/technician/:technicianId/overdue', auth, isTechnicianOwner, async (req, res) => {
   try {
     const { technicianId } = req.params;
     
@@ -1066,7 +1066,7 @@ router.get('/technician/:technicianId/overdue', async (req, res) => {
 });
 
 // GET - Dohvati nedodeljene radne naloge
-router.get('/unassigned', async (req, res) => {
+router.get('/unassigned', auth, isAdmin, async (req, res) => {
   try {
     const { recent } = req.query;
     const startTime = Date.now();
@@ -1101,7 +1101,7 @@ router.get('/unassigned', async (req, res) => {
 });
 
 // GET - Dohvati radne naloge za verifikaciju
-router.get('/verification', async (req, res) => {
+router.get('/verification', auth, isAdmin, async (req, res) => {
   try {
     const ordersForVerification = await WorkOrder.find({
       status: 'zavrsen',
@@ -1116,7 +1116,7 @@ router.get('/verification', async (req, res) => {
 });
 
 
-router.post('/:id/used-equipment', async (req, res) => {
+router.post('/:id/used-equipment', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const { equipment } = req.body;
@@ -1148,7 +1148,7 @@ router.post('/:id/used-equipment', async (req, res) => {
 });
 
 // GET endpoint za dohvatanje opreme korisnika za radni nalog
-router.get('/:id/user-equipment', async (req, res) => {
+router.get('/:id/user-equipment', auth, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -1194,7 +1194,7 @@ router.get('/:id/user-equipment', async (req, res) => {
 });
 
 // GET endpoint za dohvatanje materijala za radni nalog
-router.get('/:id/materials', async (req, res) => {
+router.get('/:id/materials', auth, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -1220,7 +1220,7 @@ router.get('/:id/materials', async (req, res) => {
 });
 
 // GET - Preuzimanje šablona (mora biti pre /:id rute)
-router.get('/template', (req, res) => {
+router.get('/template', auth, isAdmin, (req, res) => {
   const templatePath = path.join(__dirname, '../templates/workorders-template.xlsx');
 
   // Šablon se uvek regeneriše da bi uvek odražavao aktuelnu strukturu kolona
@@ -1275,7 +1275,7 @@ router.get('/template', (req, res) => {
 });
 
 // GET - Dohvati radni nalog po ID-u
-router.get('/:id', async (req, res) => {
+router.get('/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -1303,7 +1303,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST - Dodaj nove radne naloge putem Excel fajla
-router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
+router.post('/upload', auth, isAdmin, logActivity('workorders', 'workorder_bulk_add', {
   getEntityName: (req, responseData) => `${responseData?.newWorkOrders?.length || 0} radnih naloga`,
   getDetails: async (req, responseData) => {
     return {
@@ -1726,7 +1726,7 @@ router.post('/upload', auth, logActivity('workorders', 'workorder_bulk_add', {
 });
 
 // POST - Dodaj pojedinačni radni nalog
-router.post('/', auth, logActivity('workorders', 'workorder_add', {
+router.post('/', auth, isAdmin, logActivity('workorders', 'workorder_add', {
   getEntityName: (req, responseData) => responseData?.tisJobId || 'WorkOrder'
 }), async (req, res) => {
   try {
@@ -1944,7 +1944,7 @@ router.post('/', auth, logActivity('workorders', 'workorder_add', {
 });
 
 // PUT - Ažuriraj radni nalog
-router.put('/:id', auth, logActivity('workorders', 'workorder_edit', {
+router.put('/:id', auth, isAdmin, logActivity('workorders', 'workorder_edit', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => responseData?.tisJobId || 'WorkOrder',
   getDetails: async (req, responseData) => {
@@ -2743,7 +2743,7 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
 });
 
 // POST - Dodavanje slike radnom nalogu (Cloudinary)
-router.post('/:id/images', imageUpload.single('image'), async (req, res) => {
+router.post('/:id/images', auth, imageUpload.single('image'), async (req, res) => {
   try {
     const { id } = req.params;
     const { technicianId } = req.body;
@@ -2840,7 +2840,7 @@ router.post('/:id/images', imageUpload.single('image'), async (req, res) => {
 });
 
 // DELETE - Brisanje slike iz radnog naloga
-router.delete('/:id/images', async (req, res) => {
+router.delete('/:id/images', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const { imageUrl, technicianId } = req.body;
@@ -2910,7 +2910,7 @@ router.delete('/:id/images', async (req, res) => {
 });
 
 // PUT - Verifikacija radnog naloga od strane admina
-router.put('/:id/verify', auth, logActivity('workorders', 'workorder_edit', {
+router.put('/:id/verify', auth, isAdmin, logActivity('workorders', 'workorder_edit', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => responseData?.workOrder?.tisJobId || 'WorkOrder',
   getDetails: async (req, responseData) => {
@@ -3033,7 +3033,7 @@ router.put('/:id/verify', auth, logActivity('workorders', 'workorder_edit', {
 });
 
 // PUT - Vraćanje radnog naloga kao neispravno popunjenog
-router.put('/:id/return-incorrect', auth, logActivity('workorders', 'workorder_edit', {
+router.put('/:id/return-incorrect', auth, isAdmin, logActivity('workorders', 'workorder_edit', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => {
     return responseData?.tisJobId || responseData?.workOrder?.tisJobId || 'WorkOrder';
@@ -3518,7 +3518,7 @@ router.post('/:id/used-materials', auth, async (req, res) => {
 });
 
 // POST - Ažuriranje utrošene opreme za radni nalog
-router.post('/:id/used-equipment', (req, res) => {
+router.post('/:id/used-equipment', auth, (req, res) => {
   const { id } = req.params;
   const { equipmentSerialNumbers } = req.body;
   
@@ -3546,7 +3546,7 @@ router.post('/:id/used-equipment', (req, res) => {
 });
 
 // DELETE - Brisanje radnog naloga
-router.delete('/:id', auth, logActivity('workorders', 'workorder_delete', {
+router.delete('/:id', auth, isAdmin, logActivity('workorders', 'workorder_delete', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => responseData?.deletedData?.tisJobId || 'WorkOrder'
 }), async (req, res) => {
@@ -3607,7 +3607,7 @@ router.delete('/:id', auth, logActivity('workorders', 'workorder_delete', {
 });
 
 // GET - Dohvati analitiku vremena završavanja radnih naloga
-router.get('/statistics/completion-time', async (req, res) => {
+router.get('/statistics/completion-time', auth, isAdmin, async (req, res) => {
   try {
     const { technician, period, startDate, endDate } = req.query;
     
@@ -3822,7 +3822,7 @@ router.get('/statistics/completion-time', async (req, res) => {
 });
 
 // GET - Dohvati statistiku radnih naloga (optimizovano sa MongoDB agregacijom)
-router.get('/statistics/summary', async (req, res) => {
+router.get('/statistics/summary', auth, isAdmin, async (req, res) => {
   try {
     // Paralelno izvršavanje agregacija za maksimalnu performansu
     const [
@@ -3991,7 +3991,7 @@ router.get('/statistics/summary', async (req, res) => {
 });
 
 // POST - Dodavanje instaliranog uređaja u WorkOrderEvidence
-router.post('/:id/installed-equipment', async (req, res) => {
+router.post('/:id/installed-equipment', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { equipmentType, serialNumber, condition, notes } = req.body;
@@ -4047,7 +4047,7 @@ router.post('/:id/installed-equipment', async (req, res) => {
 });
 
 // POST - Dodavanje uklonjenog uređaja u WorkOrderEvidence
-router.post('/:id/removed-equipment', async (req, res) => {
+router.post('/:id/removed-equipment', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { equipmentType, serialNumber, condition, reason, notes } = req.body;
@@ -4125,7 +4125,7 @@ router.post('/:id/removed-equipment', async (req, res) => {
 });
 
 // PUT - Ažuriranje statusa korisnika u WorkOrderEvidence
-router.put('/:id/customer-status', auth, logActivity('workorders', 'workorder_edit', {
+router.put('/:id/customer-status', auth, isAdmin, logActivity('workorders', 'workorder_edit', {
   getEntityId: (req) => req.params.id,
   getEntityName: async (req, responseData) => {
     // Get WorkOrder to find tisJobId
@@ -4200,7 +4200,7 @@ router.put('/:id/customer-status', auth, logActivity('workorders', 'workorder_ed
 });
 
 // GET - Dohvati WorkOrderEvidence za radni nalog
-router.get('/:id/evidence', async (req, res) => {
+router.get('/:id/evidence', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -4237,7 +4237,7 @@ router.get('/:id/evidence', async (req, res) => {
 });
 
 // DELETE - Uklanjanje instaliranog uređaja iz WorkOrderEvidence
-router.delete('/:id/installed-equipment/:equipmentId', async (req, res) => {
+router.delete('/:id/installed-equipment/:equipmentId', auth, isAdmin, async (req, res) => {
   try {
     const { id, equipmentId } = req.params;
     
@@ -4266,7 +4266,7 @@ router.delete('/:id/installed-equipment/:equipmentId', async (req, res) => {
 });
 
 // DELETE - Uklanjanje uklonjenog uređaja iz WorkOrderEvidence
-router.delete('/:id/removed-equipment/:equipmentId', async (req, res) => {
+router.delete('/:id/removed-equipment/:equipmentId', auth, isAdmin, async (req, res) => {
   try {
     const { id, equipmentId } = req.params;
     
@@ -4295,7 +4295,7 @@ router.delete('/:id/removed-equipment/:equipmentId', async (req, res) => {
 });
 
 // Test endpoint za ručno pokretanje scheduler-a
-router.post('/test-scheduler', async (req, res) => {
+router.post('/test-scheduler', auth, isAdmin, async (req, res) => {
   try {
     await testScheduler();
     res.json({ message: 'Scheduler test completed - check console logs' });
@@ -4306,7 +4306,7 @@ router.post('/test-scheduler', async (req, res) => {
 });
 
 // GET version za lakše testiranje u browseru
-router.get('/test-scheduler', async (req, res) => {
+router.get('/test-scheduler', auth, isAdmin, async (req, res) => {
   try {
     console.log('=== MANUAL SCHEDULER TEST via GET ===');
     await testScheduler();
@@ -4321,7 +4321,7 @@ router.get('/test-scheduler', async (req, res) => {
 });
 
 // DEBUG - Check completion time data
-router.get('/debug/completion-time', async (req, res) => {
+router.get('/debug/completion-time', auth, isAdmin, async (req, res) => {
   try {
     // Find all work orders with prvoMenjanjeStatusa
     const workOrders = await WorkOrder.find({
@@ -4354,7 +4354,7 @@ router.get('/debug/completion-time', async (req, res) => {
 });
 
 // DEBUG - Check overdue work orders status
-router.get('/debug/overdue-status', async (req, res) => {
+router.get('/debug/overdue-status', auth, isAdmin, async (req, res) => {
   try {
     const currentTime = new Date();
     const oneHourAgo = new Date(currentTime.getTime() - (60 * 60 * 1000));
@@ -4389,7 +4389,7 @@ router.get('/debug/overdue-status', async (req, res) => {
 });
 
 // POST - AI analiza radnog naloga (samo analiza, bez automatske verifikacije)
-router.post('/:id/ai-verify', async (req, res) => {
+router.post('/:id/ai-verify', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -4452,7 +4452,7 @@ router.post('/:id/ai-verify', async (req, res) => {
 // ============================================================================
 
 // POST - Add equipment to work order via Edit page
-router.post('/:id/edit/add-equipment', auth, logActivity('edit', 'edit_equipment_add', {
+router.post('/:id/edit/add-equipment', auth, isAdmin, logActivity('edit', 'edit_equipment_add', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => responseData?.workOrder?.tisJobId || 'WorkOrder'
 }), async (req, res) => {
@@ -4589,7 +4589,7 @@ router.post('/:id/edit/add-equipment', auth, logActivity('edit', 'edit_equipment
 });
 
 // POST - Add materials to work order via Edit page
-router.post('/:id/edit/add-materials', auth, logActivity('edit', 'edit_material_add', {
+router.post('/:id/edit/add-materials', auth, isAdmin, logActivity('edit', 'edit_material_add', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => responseData?.workOrder?.tisJobId || 'WorkOrder'
 }), async (req, res) => {
@@ -4737,7 +4737,7 @@ router.post('/:id/edit/add-materials', auth, logActivity('edit', 'edit_material_
 });
 
 // GET - Get removed equipment for work order
-router.get('/:id/removed-equipment', async (req, res) => {
+router.get('/:id/removed-equipment', auth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -5101,7 +5101,7 @@ router.post('/voice-recordings/upload', auth, voiceUpload.single('audio'), async
 
 // DELETE /api/workorders/:id/voice-recordings/:recordingId
 // Brisanje voice recording-a iz radnog naloga
-router.delete('/:id/voice-recordings/:recordingId', auth, async (req, res) => {
+router.delete('/:id/voice-recordings/:recordingId', auth, isAdmin, async (req, res) => {
   try {
     const { id, recordingId } = req.params;
 
@@ -5232,7 +5232,7 @@ router.post('/voice-recordings/trigger-sync', auth, async (req, res) => {
 
 // GET - Svi radni nalozi na ISTOJ adresi kao dati nalog (svi statusi, bez njega samog).
 // Hrani sekciju "Nalozi na istoj adresi" na web detaljima naloga.
-router.get('/:id/same-address', auth, async (req, res) => {
+router.get('/:id/same-address', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {

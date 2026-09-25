@@ -11,7 +11,7 @@ const emailService = require('../services/emailService');
 const { createInventorySummary } = require('../utils/emailTemplates');
 const { logActivity } = require('../middleware/activityLogger');
 
-const { auth, isAdmin } = require('../middleware/auth');
+const { auth, isAdmin, isTechnicianOwner } = require('../middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -39,7 +39,7 @@ const getUserFromToken = async (req) => {
 };
 
 // GET - Dohvati sve tehničare (optimized)
-router.get('/', async (req, res) => {
+router.get('/', auth, isAdmin, async (req, res) => {
   try {
     const { statsOnly } = req.query;
 
@@ -83,7 +83,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET - Dohvati tehničara po ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', auth, isTechnicianOwner, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -143,7 +143,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // GET - Dohvati opremu tehničara
-router.get('/:id/equipment', async (req, res) => {
+router.get('/:id/equipment', auth, isTechnicianOwner, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -194,7 +194,7 @@ router.get('/:id/equipment', async (req, res) => {
 });
 
 // GET - Dohvati materijale tehničara
-router.get('/:id/materials', async (req, res) => {
+router.get('/:id/materials', auth, isTechnicianOwner, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -238,7 +238,7 @@ router.get('/:id/materials', async (req, res) => {
 });
 
 // POST - Kreiraj novog tehničara
-router.post('/', auth, logActivity('technicians', 'technician_add', {
+router.post('/', auth, isAdmin, logActivity('technicians', 'technician_add', {
   getEntityName: (req, responseData) => responseData?.name
 }), async (req, res) => {
   try {
@@ -280,13 +280,18 @@ router.post('/', auth, logActivity('technicians', 'technician_add', {
 });
 
 // PUT - Ažuriranje tehničara
-router.put('/:id', auth, logActivity('technicians', 'technician_edit', {
+router.put('/:id', auth, isTechnicianOwner, logActivity('technicians', 'technician_edit', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => responseData?.name
 }), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, password, gmail, profileImage, phoneNumber, isActive, employedUntil } = req.body;
+
+    // Tehničar sme da menja samo sopstvenu profilnu sliku; lozinku, ime i status menja admin
+    if (req.user.role === 'technician' && Object.keys(req.body).some(key => key !== 'profileImage')) {
+      return res.status(403).json({ error: 'Nemate dozvolu za izmenu ovih podataka.' });
+    }
 
     // Ako se pokušava ažurirati sa "admin" ID-om, pronađi pravog korisnika iz tokena
     let technician;
@@ -368,7 +373,7 @@ router.put('/:id', auth, logActivity('technicians', 'technician_edit', {
 });
 
 // DELETE - Brisanje tehničara
-router.delete('/:id', auth, logActivity('technicians', 'technician_delete', {
+router.delete('/:id', auth, isAdmin, logActivity('technicians', 'technician_delete', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => responseData?.deletedData?.name
 }), async (req, res) => {
@@ -413,7 +418,7 @@ router.delete('/:id', auth, logActivity('technicians', 'technician_delete', {
 });
 
 // POST - Dodaj materijal tehničaru
-router.post('/:id/materials', auth, logActivity('technicians', 'material_assign_to_tech', {
+router.post('/:id/materials', auth, isAdmin, logActivity('technicians', 'material_assign_to_tech', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => {
     // Extract technician name and material type from response
@@ -505,7 +510,7 @@ router.post('/:id/materials', auth, logActivity('technicians', 'material_assign_
 });
 
 // PUT - Ažuriraj količinu materijala kod tehničara
-router.put('/:id/materials/:materialId', auth, async (req, res) => {
+router.put('/:id/materials/:materialId', auth, isAdmin, async (req, res) => {
   try {
     const { id, materialId } = req.params;
     const { quantity } = req.body;
@@ -592,7 +597,7 @@ router.put('/:id/materials/:materialId', auth, async (req, res) => {
 });
 
 // DELETE - Ukloni materijal od tehničara
-router.delete('/:id/materials/:materialId', auth, async (req, res) => {
+router.delete('/:id/materials/:materialId', auth, isAdmin, async (req, res) => {
   try {
     const { id, materialId } = req.params;
     
@@ -651,7 +656,7 @@ router.delete('/:id/materials/:materialId', auth, async (req, res) => {
 });
 
 // POST - Assign equipment to technician (BULK)
-router.post('/:id/equipment', auth, logActivity('technicians', 'equipment_assign_to_tech', {
+router.post('/:id/equipment', auth, isAdmin, logActivity('technicians', 'equipment_assign_to_tech', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => `${responseData?.assignedCount || 0} opreme → Tehničar: ${responseData?.technicianName || 'Unknown'}`,
   getDetails: async (req, responseData) => {
@@ -767,7 +772,7 @@ router.post('/:id/equipment', auth, logActivity('technicians', 'equipment_assign
 });
 
 // POST - Return equipment from technician (BULK)
-router.post('/:id/equipment/return', auth, logActivity('technicians', 'equipment_unassign_from_tech', {
+router.post('/:id/equipment/return', auth, isAdmin, logActivity('technicians', 'equipment_unassign_from_tech', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => `${responseData?.unassignedCount || 0} opreme → Od tehničara: ${responseData?.technicianName || 'Unknown'}`,
   getDetails: async (req, responseData) => {
@@ -885,7 +890,7 @@ router.post('/:id/equipment/return', auth, logActivity('technicians', 'equipment
 });
 
 // POST - Return material from technician
-router.post('/:id/materials/return', auth, async (req, res) => {
+router.post('/:id/materials/return', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { materialId, quantity } = req.body;
@@ -968,7 +973,7 @@ router.post('/:id/materials/return', auth, async (req, res) => {
 });
 
 // GET - Dohvati opremu koja čeka potvrdu za tehničara
-router.get('/:id/equipment/pending', async (req, res) => {
+router.get('/:id/equipment/pending', auth, isTechnicianOwner, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -990,7 +995,7 @@ router.get('/:id/equipment/pending', async (req, res) => {
 });
 
 // POST - Potvrdi opremu
-router.post('/:id/equipment/confirm', auth, async (req, res) => {
+router.post('/:id/equipment/confirm', auth, isTechnicianOwner, async (req, res) => {
   try {
     const { id } = req.params;
     const { equipmentId } = req.body;
@@ -1029,7 +1034,7 @@ router.post('/:id/equipment/confirm', auth, async (req, res) => {
 });
 
 // POST - Odbaci opremu
-router.post('/:id/equipment/reject', auth, async (req, res) => {
+router.post('/:id/equipment/reject', auth, isTechnicianOwner, async (req, res) => {
   try {
     const { id } = req.params;
     const { equipmentId, reason } = req.body;
@@ -1143,7 +1148,7 @@ router.post('/upload-profile-image', auth, profileImageUpload.single('image'), a
 });
 
 // GET - Dohvati osnovnu opremu tehničara
-router.get('/:id/basic-equipment', async (req, res) => {
+router.get('/:id/basic-equipment', auth, isTechnicianOwner, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1188,7 +1193,7 @@ router.get('/:id/basic-equipment', async (req, res) => {
 });
 
 // POST - Dodaj osnovnu opremu tehničaru
-router.post('/:id/basic-equipment', auth, logActivity('technicians', 'basic_equipment_assign_to_tech', {
+router.post('/:id/basic-equipment', auth, isAdmin, logActivity('technicians', 'basic_equipment_assign_to_tech', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => {
     const techName = responseData?.name || 'Unknown';
@@ -1277,7 +1282,7 @@ router.post('/:id/basic-equipment', auth, logActivity('technicians', 'basic_equi
 });
 
 // POST - Return basic equipment from technician
-router.post('/:id/basic-equipment/return', auth, async (req, res) => {
+router.post('/:id/basic-equipment/return', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { basicEquipmentId, quantity } = req.body;
@@ -1362,7 +1367,7 @@ router.post('/:id/basic-equipment/return', auth, async (req, res) => {
 
 // GET /api/technicians/:id/recordings
 // Dohvati sve snimke poziva za tehničara za određeni datum
-router.get('/:id/recordings', auth, async (req, res) => {
+router.get('/:id/recordings', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { date, includeWorkOrders } = req.query;
@@ -1441,7 +1446,7 @@ router.get('/:id/recordings', auth, async (req, res) => {
 
 // GET /api/technicians/:id/recordings/dates
 // Dohvati listu datuma koji imaju snimke za tehničara (za kalendar)
-router.get('/:id/recordings/dates', auth, async (req, res) => {
+router.get('/:id/recordings/dates', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { month, year } = req.query;
@@ -1651,7 +1656,7 @@ router.delete('/:id/documents/:documentId', auth, isAdmin, async (req, res) => {
 });
 
 // PUT - Toggle status aktivnosti tehničara
-router.put('/:id/toggle-status', auth, async (req, res) => {
+router.put('/:id/toggle-status', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 

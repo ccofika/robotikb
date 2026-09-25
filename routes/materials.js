@@ -3,10 +3,10 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const { Material } = require('../models');
 const { logActivity } = require('../middleware/activityLogger');
-const { auth } = require('../middleware/auth');
+const { auth, isAdmin } = require('../middleware/auth');
 
 // GET - Dohvati sve materijale sa podrškom za query parametre (optimized)
-router.get('/', async (req, res) => {
+router.get('/', auth, isAdmin, async (req, res) => {
   try {
     const { stats, limit, statsOnly } = req.query;
 
@@ -41,7 +41,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET - Dohvati materijal po ID-u
-router.get('/:id', async (req, res) => {
+router.get('/:id', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -63,7 +63,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST - Dodaj novi materijal
-router.post('/', auth, logActivity('materials', 'material_add', {
+router.post('/', auth, isAdmin, logActivity('materials', 'material_add', {
   getEntityName: (req, responseData) => responseData?.type
 }), async (req, res) => {
   try {
@@ -96,7 +96,7 @@ router.post('/', auth, logActivity('materials', 'material_add', {
 });
 
 // PUT - Ažuriranje materijala
-router.put('/:id', auth, logActivity('materials', 'material_edit', {
+router.put('/:id', auth, isAdmin, logActivity('materials', 'material_edit', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => responseData?.type
 }), async (req, res) => {
@@ -145,7 +145,7 @@ router.put('/:id', auth, logActivity('materials', 'material_edit', {
 });
 
 // DELETE - Brisanje materijala
-router.delete('/:id', auth, logActivity('materials', 'material_delete', {
+router.delete('/:id', auth, isAdmin, logActivity('materials', 'material_delete', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => responseData?.deletedData?.type || 'Material'
 }), async (req, res) => {

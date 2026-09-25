@@ -5,7 +5,7 @@ const fs = require('fs').promises;
 const multer = require('multer');
 const ApkVersion = require('../models/ApkVersion');
 const { uploadAPK, deleteAPK } = require('../config/cloudinary');
-const { auth } = require('../middleware/auth');
+const { auth, isAdmin } = require('../middleware/auth');
 
 // Multer config for APK upload (memory storage)
 const apkStorage = multer.memoryStorage();
@@ -28,7 +28,7 @@ const apkUpload = multer({
  * @desc    Upload new APK to Cloudinary and create version entry
  * @access  Private (requires auth - admin/superadmin only)
  */
-router.post('/upload', auth, apkUpload.single('apk'), async (req, res) => {
+router.post('/upload', auth, isAdmin, apkUpload.single('apk'), async (req, res) => {
   try {
     console.log('[APK Upload] Request received');
     console.log('[APK Upload] User:', req.user?.name, req.user?.role);
@@ -270,7 +270,7 @@ router.get('/latest', async (req, res) => {
  * @route   GET /api/apk/list
  * @desc    List all APK versions (admin)
  */
-router.get('/list', auth, async (req, res) => {
+router.get('/list', auth, isAdmin, async (req, res) => {
   try {
     const versions = await ApkVersion.find()
       .sort({ versionCode: -1 })
@@ -289,7 +289,7 @@ router.get('/list', auth, async (req, res) => {
  * @desc    Create new APK version entry (admin)
  * @body    version, versionCode, fileName, filePath, fileSize, changelog, isMandatory
  */
-router.post('/create', auth, async (req, res) => {
+router.post('/create', auth, isAdmin, async (req, res) => {
   try {
     const {
       version,
@@ -350,7 +350,7 @@ router.post('/create', auth, async (req, res) => {
  * @route   PUT /api/apk/:id/deactivate
  * @desc    Deactivate an APK version (admin)
  */
-router.put('/:id/deactivate', auth, async (req, res) => {
+router.put('/:id/deactivate', auth, isAdmin, async (req, res) => {
   try {
     const apkVersion = await ApkVersion.findByIdAndUpdate(
       req.params.id,

@@ -586,7 +586,7 @@ router.get('/:id', auth, isAdmin, async (req, res) => {
 });
 
 // POST - Dodaj novu opremu putem Excel fajla
-router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
+router.post('/upload', auth, isAdmin, logActivity('equipment', 'equipment_bulk_add', {
   getEntityName: (req, responseData) => `${responseData?.addedCount || 0} komada opreme`,
   getDetails: async (req, responseData) => {
     return {
@@ -808,7 +808,7 @@ router.post('/upload', auth, logActivity('equipment', 'equipment_bulk_add', {
 });
 
 // POST - Dodaj pojedinačnu opremu
-router.post('/', auth, logActivity('equipment', 'equipment_add', {
+router.post('/', auth, isAdmin, logActivity('equipment', 'equipment_add', {
   getEntityName: (req, responseData) => `${responseData?.category} - ${responseData?.serialNumber}`
 }), async (req, res) => {
   try {
@@ -842,7 +842,7 @@ router.post('/', auth, logActivity('equipment', 'equipment_add', {
 });
 
 // PUT - Ažuriranje opreme
-router.put('/:id', auth, logActivity('equipment', 'equipment_edit', {
+router.put('/:id', auth, isAdmin, logActivity('equipment', 'equipment_edit', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => `${responseData?.category} - ${responseData?.serialNumber}`
 }), async (req, res) => {
@@ -992,7 +992,7 @@ router.put('/:id', auth, logActivity('equipment', 'equipment_edit', {
 });
 
 // DELETE - Brisanje opreme
-router.delete('/:id', auth, logActivity('equipment', 'equipment_delete', {
+router.delete('/:id', auth, isAdmin, logActivity('equipment', 'equipment_delete', {
   getEntityId: (req) => req.params.id,
   getEntityName: (req, responseData) => `${responseData?.deletedData?.category} - ${responseData?.deletedData?.serialNumber}` || 'Equipment'
 }), async (req, res) => {
@@ -1028,7 +1028,7 @@ router.delete('/:id', auth, logActivity('equipment', 'equipment_delete', {
 });
 
 // POST - Dodeli opremu tehničaru
-router.post('/assign-to-technician/:technicianId', auth, logActivity('equipment', 'equipment_assign_to_tech'), async (req, res) => {
+router.post('/assign-to-technician/:technicianId', auth, isAdmin, logActivity('equipment', 'equipment_assign_to_tech'), async (req, res) => {
   try {
     const { technicianId } = req.params;
     const { equipmentIds } = req.body;

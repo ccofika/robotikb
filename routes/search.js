@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { auth } = require('../middleware/auth');
+const { auth, isAdmin } = require('../middleware/auth');
 const WorkOrder = require('../models/WorkOrder');
 const Equipment = require('../models/Equipment');
 const Material = require('../models/Material');
@@ -11,7 +11,7 @@ const { looseTextRegex, digitsLooseVariants } = require('../utils/searchRegex');
 // ============================================================
 // GET /api/search?q=searchTerm - Global search across all data
 // ============================================================
-router.get('/', auth, async (req, res) => {
+router.get('/', auth, isAdmin, async (req, res) => {
   try {
     const { q } = req.query;
 

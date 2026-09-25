@@ -1,6 +1,11 @@
 // C:\Users\stefa\OneDrive\Desktop\transfer\server\routes\export.js
 const express = require('express');
 const router = express.Router();
+const { auth, isAdmin } = require('../middleware/auth');
+
+// Izvozi (evidencija, specifikacije, oprema korisnika) - samo admin/supervisor/superadmin
+router.use(auth, isAdmin);
+
 const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');

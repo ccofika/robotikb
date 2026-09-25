@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-const { auth } = require('../middleware/auth');
+const { auth, isAdmin } = require('../middleware/auth');
 const SupportCall = require('../models/SupportCall');
 const WorkOrder = require('../models/WorkOrder');
 
@@ -81,7 +81,7 @@ router.post('/', auth, async (req, res) => {
 // GET - Objedinjeni timeline kontakata za jedan radni nalog (hronološki):
 // pozivi podršci (SupportCall) + pozivi korisniku, podsetnici i alerti (ContactEvent).
 // Svaka stavka nosi eventType: 'support_call' | 'customer_call' | 'reminder_sent' | 'uncontacted_alert'.
-router.get('/workorder/:workOrderId', auth, async (req, res) => {
+router.get('/workorder/:workOrderId', auth, isAdmin, async (req, res) => {
   try {
     const { workOrderId } = req.params;
     if (!mongoose.Types.ObjectId.isValid(workOrderId)) {
@@ -112,7 +112,7 @@ router.get('/workorder/:workOrderId', auth, async (req, res) => {
 });
 
 // GET - Zbirni pregled po tehničaru (broj poziva po tipu + poslednji poziv)
-router.get('/technician/:technicianId/summary', auth, async (req, res) => {
+router.get('/technician/:technicianId/summary', auth, isAdmin, async (req, res) => {
   try {
     const { technicianId } = req.params;
     if (!mongoose.Types.ObjectId.isValid(technicianId)) {

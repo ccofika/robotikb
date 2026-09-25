@@ -137,7 +137,7 @@ router.post('/webhook', async (req, res) => {
 //   limit (default 20)
 //   technicianId (opciono - filter po tehničaru)
 // ============================================================
-router.get('/all', auth, async (req, res) => {
+router.get('/all', auth, isAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
@@ -211,7 +211,7 @@ router.get('/all', auth, async (req, res) => {
 // ============================================================
 // GET /api/reviews/technician/:id - Svi review-ovi za tehničara
 // ============================================================
-router.get('/technician/:id', auth, async (req, res) => {
+router.get('/technician/:id', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const page = parseInt(req.query.page) || 1;
@@ -249,7 +249,7 @@ router.get('/technician/:id', auth, async (req, res) => {
 // ============================================================
 // GET /api/reviews/stats/:id - Statistika za jednog tehničara
 // ============================================================
-router.get('/stats/:id', auth, async (req, res) => {
+router.get('/stats/:id', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -313,7 +313,7 @@ router.get('/stats/:id', auth, async (req, res) => {
 // ============================================================
 // GET /api/reviews/stats/all - Statistika za sve tehničare
 // ============================================================
-router.get('/stats/all', auth, async (req, res) => {
+router.get('/stats/all', auth, isAdmin, async (req, res) => {
   try {
     const stats = await Review.aggregate([
       {
@@ -351,7 +351,7 @@ router.get('/stats/all', auth, async (req, res) => {
 // ============================================================
 // GET /api/reviews/dashboard-summary - Sumarni podaci za dashboard
 // ============================================================
-router.get('/dashboard-summary', auth, async (req, res) => {
+router.get('/dashboard-summary', auth, isAdmin, async (req, res) => {
   try {
     const [summaryStats, recentReviews] = await Promise.all([
       Review.aggregate([
