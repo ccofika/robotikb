@@ -3,10 +3,13 @@ const router = express.Router();
 const { User, WorkOrder, Equipment } = require('../models');
 const mongoose = require('mongoose');
 const { logActivity } = require('../middleware/activityLogger');
+const { auth, isAdmin } = require('../middleware/auth');
 const { looseTextRegex, digitsLooseVariants } = require('../utils/searchRegex');
 
 // menjaju znacenje upita ili ga obore (npr. pretraga "(061)" ili "1+2").
 
+// Registar korisnika (imena, telefoni, adrese) - samo admin/supervisor/superadmin
+router.use(auth, isAdmin);
 
 // Simple in-memory cache for user list queries (1 minute TTL)
 const cache = {

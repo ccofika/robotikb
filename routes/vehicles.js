@@ -4,7 +4,11 @@ const mongoose = require('mongoose');
 const multer = require('multer');
 const Vehicle = require('../models/Vehicle');
 const { logActivity } = require('../middleware/activityLogger');
+const { auth, isAdmin } = require('../middleware/auth');
 const { uploadServiceInvoice, deleteServiceInvoice } = require('../config/cloudinary');
+
+// Vozni park - samo admin/supervisor/superadmin
+router.use(auth, isAdmin);
 
 // Multer config za upload slike fakture
 const invoiceUpload = multer({

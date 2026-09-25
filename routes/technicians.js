@@ -11,7 +11,7 @@ const emailService = require('../services/emailService');
 const { createInventorySummary } = require('../utils/emailTemplates');
 const { logActivity } = require('../middleware/activityLogger');
 
-const { auth } = require('../middleware/auth');
+const { auth, isAdmin } = require('../middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -1534,7 +1534,7 @@ const documentUpload = multer({
 });
 
 // POST - Upload dokumenta za tehničara
-router.post('/:id/documents', auth, documentUpload.single('document'), async (req, res) => {
+router.post('/:id/documents', auth, isAdmin, documentUpload.single('document'), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1586,7 +1586,7 @@ router.post('/:id/documents', auth, documentUpload.single('document'), async (re
 });
 
 // GET - Dohvati dokumente tehničara
-router.get('/:id/documents', async (req, res) => {
+router.get('/:id/documents', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1610,7 +1610,7 @@ router.get('/:id/documents', async (req, res) => {
 });
 
 // DELETE - Obriši dokument tehničara
-router.delete('/:id/documents/:documentId', auth, async (req, res) => {
+router.delete('/:id/documents/:documentId', auth, isAdmin, async (req, res) => {
   try {
     const { id, documentId } = req.params;
 
@@ -1680,7 +1680,7 @@ router.put('/:id/toggle-status', auth, async (req, res) => {
 // GET - Proxy za preuzimanje/pregled dokumenta
 // Koristi cloudinary.utils.private_download_url() koji generiše API-autentifikovane URL-ove
 // umesto delivery URL-ova (res.cloudinary.com) koji su blokirani za "untrusted" naloge
-router.get('/:id/documents/:documentId/view', async (req, res) => {
+router.get('/:id/documents/:documentId/view', auth, isAdmin, async (req, res) => {
   try {
     const { id, documentId } = req.params;
 

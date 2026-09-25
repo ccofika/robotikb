@@ -3,6 +3,11 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const { BasicEquipment } = require('../models');
 const { logActivity } = require('../middleware/activityLogger');
+const { auth, isAdmin } = require('../middleware/auth');
+
+// Katalog osnovne opreme - samo admin/supervisor/superadmin.
+// Tehničar svoju osnovnu opremu čita preko /api/technicians/:id/basic-equipment.
+router.use(auth, isAdmin);
 
 // GET - Dohvati svu osnovnu opremu
 router.get('/', async (req, res) => {

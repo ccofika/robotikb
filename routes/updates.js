@@ -3,6 +3,10 @@ const router = express.Router();
 const AppUpdate = require('../models/AppUpdate');
 const path = require('path');
 const fs = require('fs').promises;
+const { auth, isAdmin } = require('../middleware/auth');
+
+// /check, /manifest i /assets/:updateId/bundle ostaju javni: OTA protokol ne šalje JWT.
+// (Trenutna mobilna aplikacija ih ne koristi - legacy OTA sistem.)
 
 // Check za dostupne update-e
 router.get('/check', async (req, res) => {
@@ -116,7 +120,7 @@ router.get('/assets/:updateId/bundle', async (req, res) => {
 });
 
 // Admin endpoint za kreiranje novog update-a (samo za testiranje)
-router.post('/create', async (req, res) => {
+router.post('/create', auth, isAdmin, async (req, res) => {
   try {
     const { version, runtimeVersion, platform, bundlePath, changelog, isMandatory } = req.body;
 
@@ -147,7 +151,7 @@ router.post('/create', async (req, res) => {
 });
 
 // Lista svih update-a (admin)
-router.get('/list', async (req, res) => {
+router.get('/list', auth, isAdmin, async (req, res) => {
   try {
     const updates = await AppUpdate.find()
       .sort({ createdAt: -1 })

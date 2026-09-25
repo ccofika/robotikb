@@ -1,6 +1,10 @@
 const express = require('express');
      const router = express.Router();
      const { Equipment, Log, WorkOrder, Technician } = require('../models');
+     const { auth, isAdmin } = require('../middleware/auth');
+
+     // Neispravna oprema - samo admin/supervisor/superadmin
+     router.use(auth, isAdmin);
 
      // Cache for stats (1 minute TTL)
      let statsCache = null;

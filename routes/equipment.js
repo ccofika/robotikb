@@ -9,7 +9,7 @@ const { Equipment, Log, Technician } = require('../models');
 const emailService = require('../services/emailService');
 const { createInventorySummary } = require('../utils/emailTemplates');
 const { logActivity } = require('../middleware/activityLogger');
-const { auth } = require('../middleware/auth');
+const { auth, isAdmin } = require('../middleware/auth');
 
 // Helper funkcija za case-insensitive pretragu serijskog broja
 const findEquipmentBySerialNumber = (serialNumber) => {
@@ -207,7 +207,7 @@ const isValidCategory = (category) => {
 };
 
 // GET - Dohvati sve komade opreme (optimized)
-router.get('/', async (req, res) => {
+router.get('/', auth, isAdmin, async (req, res) => {
   try {
     const { statsOnly } = req.query;
 
@@ -230,7 +230,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET - Dohvati opremu za prikaz (samo magacin i tehničari) with server-side pagination
-router.get('/display', async (req, res) => {
+router.get('/display', auth, isAdmin, async (req, res) => {
   try {
     const startTime = Date.now();
 
@@ -372,7 +372,7 @@ router.get('/display', async (req, res) => {
 });
 
 // GET - Dohvati sve kategorije opreme sa brojem elemenata
-router.get('/categories', async (req, res) => {
+router.get('/categories', auth, isAdmin, async (req, res) => {
   try {
     const { withCounts } = req.query;
 
@@ -427,7 +427,7 @@ router.get('/categories', async (req, res) => {
 });
 
 // GET - Dohvati sve moguće lokacije (magacin + svi tehničari)
-router.get('/locations', async (req, res) => {
+router.get('/locations', auth, isAdmin, async (req, res) => {
   try {
     // Dobij sve tehničare
     const technicians = await require('../models').Technician.find().select('_id name').lean();
@@ -453,7 +453,7 @@ router.get('/locations', async (req, res) => {
 });
 
 // GET - Dohvati opremu grupisanu po OPIS-u (description)
-router.get('/grouped', async (req, res) => {
+router.get('/grouped', auth, isAdmin, async (req, res) => {
   try {
     const { location, groupBy = 'description' } = req.query;
 
@@ -493,7 +493,7 @@ router.get('/grouped', async (req, res) => {
 });
 
 // GET - Dohvati opremu po kategoriji
-router.get('/category/:category', async (req, res) => {
+router.get('/category/:category', auth, isAdmin, async (req, res) => {
   try {
     const { category } = req.params;
     const filteredEquipment = await Equipment.find({ category });
@@ -505,7 +505,7 @@ router.get('/category/:category', async (req, res) => {
 });
 
 // GET - Dohvati opremu po serijskom broju
-router.get('/serial/:serialNumber', async (req, res) => {
+router.get('/serial/:serialNumber', auth, isAdmin, async (req, res) => {
   try {
     const { serialNumber } = req.params;
     
@@ -524,7 +524,7 @@ router.get('/serial/:serialNumber', async (req, res) => {
 });
 
 // GET - Preuzimanje šablona za opremu (mora biti pre /:id rute)
-router.get('/template', (req, res) => {
+router.get('/template', auth, isAdmin, (req, res) => {
   const templatePath = path.join(__dirname, '../templates/equipment-template.xlsx');
 
   // Ako šablon ne postoji, kreiramo ga
@@ -564,7 +564,7 @@ router.get('/template', (req, res) => {
 });
 
 // GET - Dohvati jedan komad opreme po ID-u
-router.get('/:id', async (req, res) => {
+router.get('/:id', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -1101,7 +1101,7 @@ router.post('/assign-to-technician/:technicianId', auth, logActivity('equipment'
 });
 
 // POST - Vrati opremu u magacin
-router.post('/return-to-warehouse', async (req, res) => {
+router.post('/return-to-warehouse', auth, isAdmin, async (req, res) => {
   try {
     const { equipmentIds } = req.body;
     

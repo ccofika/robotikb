@@ -4,6 +4,10 @@ const { Log, Technician, WorkOrder, DismissedWorkOrder, FinancialTransaction, Fi
 const mongoose = require('mongoose');
 const fetch = require('node-fetch');
 const geocodingService = require('../services/geocodingService');
+const { auth, isAdmin } = require('../middleware/auth');
+
+// Logovi i dashboard analitika - samo admin/supervisor/superadmin
+router.use(auth, isAdmin);
 
 // Import optimized queries and cache middleware
 const { cacheMiddleware, invalidateDashboardCache } = require('../middleware/cacheMiddleware');

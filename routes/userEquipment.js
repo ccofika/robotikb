@@ -7,7 +7,7 @@ const WorkOrder = require('../models/WorkOrder');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const Technician = require('../models/Technician');
 const AdminActivityLog = require('../models/AdminActivityLog');
-const { auth } = require('../middleware/auth');
+const { auth, isAdmin } = require('../middleware/auth');
 const { logEquipmentAdded, logEquipmentRemoved } = require('../utils/logger');
 
 // Helper funkcija za case-insensitive pretragu serijskog broja
@@ -135,7 +135,7 @@ const logEditAction = async (action, user, workOrder, equipment, material, quant
 };
 
 // GET - Dohvati svu opremu kod korisnika (optimized)
-router.get('/', async (req, res) => {
+router.get('/', auth, isAdmin, async (req, res) => {
   try {
     const { statsOnly } = req.query;
     console.log('Fetching all installed user equipment');
@@ -228,7 +228,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET - Dohvati opremu po ID korisnika
-router.get('/user/:userId', async (req, res) => {
+router.get('/user/:userId', auth, isAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
     console.log('Fetching equipment for user ID:', userId);
@@ -284,7 +284,7 @@ router.get('/user/:userId', async (req, res) => {
 });
 
 // GET - Dohvati istoriju opreme po ID korisnika
-router.get('/user/:userId/history', async (req, res) => {
+router.get('/user/:userId/history', auth, isAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
     
@@ -664,7 +664,7 @@ router.put('/:id/remove', auth, async (req, res) => {
 });
 
 // POST - Ukloni opremu po serijskom broju
-router.post('/remove-by-serial', async (req, res) => {
+router.post('/remove-by-serial', auth, async (req, res) => {
   let { workOrderId, technicianId, equipmentName, equipmentDescription, serialNumber } = req.body;
 
   if (!workOrderId || !technicianId || !equipmentName || !equipmentDescription || !serialNumber) {
@@ -813,7 +813,7 @@ router.post('/remove-by-serial', async (req, res) => {
 });
 
 // GET - Dohvati opremu po radnom nalogu
-router.get('/workorder/:workOrderId', async (req, res) => {
+router.get('/workorder/:workOrderId', auth, async (req, res) => {
   try {
     const { workOrderId } = req.params;
     const workOrder = await WorkOrder.findById(workOrderId);
@@ -970,7 +970,7 @@ router.post('/workorder/:workOrderId/undo-removal', auth, async (req, res) => {
 });
 
 // GET - Dohvati uklonjenu opremu za radni nalog
-router.get('/workorder/:workOrderId/removed', async (req, res) => {
+router.get('/workorder/:workOrderId/removed', auth, async (req, res) => {
   try {
     const { workOrderId } = req.params;
 

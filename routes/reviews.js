@@ -6,7 +6,7 @@ const Notification = require('../models/Notification');
 const Technician = require('../models/Technician');
 const WorkOrder = require('../models/WorkOrder');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
-const { auth } = require('../middleware/auth');
+const { auth, isAdmin } = require('../middleware/auth');
 
 // ============================================================
 // POST /api/reviews/webhook - Prijem review-a iz Google Apps Script
@@ -414,7 +414,7 @@ router.get('/dashboard-summary', auth, async (req, res) => {
 // ============================================================
 // DELETE /api/reviews/:id - Brisanje review-a (admin only)
 // ============================================================
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', auth, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
