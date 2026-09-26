@@ -124,7 +124,7 @@ class EmailService {
       };
     }
   }
-  // Slanje email-a direktno na email adresu (za korisničku anketu)
+  // Slanje email-a direktno na email adresu (korisnička anketa, obračun zarade tehničaru)
   async sendEmailToAddress(email, emailType, data) {
     try {
       const template = createEmailTemplate(emailType, data);
@@ -142,7 +142,7 @@ class EmailService {
 
       const result = await transporter.sendMail(mailOptions);
 
-      console.log(`[ReviewEmail] Email ankete poslat na ${email}:`, result.messageId);
+      console.log(`[Email] ${emailType} poslat na ${email}:`, result.messageId);
 
       return {
         success: true,
@@ -151,7 +151,7 @@ class EmailService {
       };
 
     } catch (error) {
-      console.error('[ReviewEmail] Greška pri slanju email-a ankete:', error);
+      console.error(`[Email] Greška pri slanju email-a (${emailType}):`, error);
       return {
         success: false,
         error: error.message

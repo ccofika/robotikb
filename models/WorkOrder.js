@@ -6,6 +6,11 @@ const WorkOrderSchema = new Schema({
     type: Date,
     required: true
   },
+  // Datum naloga kako je unet pri kreiranju — ostaje isti i kada se nalog odloži ili
+  // prebaci na ispravku posle reklamacije (koristi se u mesečnom obračunu tehničara)
+  originalDate: {
+    type: Date
+  },
   time: {
     type: String,
     required: true
@@ -155,6 +160,183 @@ const WorkOrderSchema = new Schema({
   adminComment: {
     type: String
   },
+  // Komentar tehničara: zašto neka od obaveznih fotografija nedostaje
+  missingPhotosComment: {
+    type: String,
+    default: ''
+  },
+  // Vraćanja naloga tehničaru na ispravku (odbijanja pri verifikaciji).
+  // Vraćanje sa umanjenjem podiže minus za 10%, a 6. takvo vraćanje znači da se nalog ne plaća.
+  rejectionHistory: [{
+    rejectedAt: {
+      type: Date,
+      default: Date.now
+    },
+    rejectedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'Technician'
+    },
+    rejectedByName: {
+      type: String,
+      default: ''
+    },
+    comment: {
+      type: String,
+      default: ''
+    },
+    source: {
+      type: String,
+      enum: ['manual', 'ai'],
+      default: 'manual'
+    },
+    penaltyApplied: {
+      type: Boolean,
+      default: false
+    },
+    penaltyPercentBefore: {
+      type: Number,
+      default: 0
+    },
+    penaltyPercentAfter: {
+      type: Number,
+      default: 0
+    },
+    // Ciklus umanjenja: reklamacija sa novim tehničarem počinje novi ciklus od 0%
+    cycle: {
+      type: Number,
+      default: 0
+    },
+    technicianIds: [{
+      type: Schema.Types.ObjectId,
+      ref: 'Technician'
+    }],
+    technicianNames: [String]
+  }],
+  // Broj vraćanja sa umanjenjem u tekućem ciklusu i trenutni minus na zaradu (0–100%)
+  rejectionPenaltyCount: {
+    type: Number,
+    default: 0
+  },
+  rejectionPenaltyPercent: {
+    type: Number,
+    default: 0
+  },
+  penaltyCycle: {
+    type: Number,
+    default: 0
+  },
+  // Reklamacije: radovi kod korisnika loše izvedeni, nalog se dodeljuje drugom tehničaru
+  complaints: [{
+    createdAt: {
+      type: Date,
+      default: Date.now
+    },
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'Technician'
+    },
+    createdByName: {
+      type: String,
+      default: ''
+    },
+    reason: {
+      type: String,
+      default: ''
+    },
+    // Da li je nalog bio verifikovan (plaćen) u trenutku reklamacije
+    wasVerified: {
+      type: Boolean,
+      default: false
+    },
+    removedTechnicians: [{
+      technicianId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Technician'
+      },
+      name: String,
+      // Koliko je tehničar već bio plaćen za ovaj nalog (0 ako nalog nije bio plaćen)
+      paidAmount: {
+        type: Number,
+        default: 0
+      },
+      // Ukupan odbitak = reklamirani nalog se ne plaća + još jedan nalog iste kategorije
+      deductionAmount: {
+        type: Number,
+        default: 0
+      },
+      // Poništena isplata za reklamirani nalog
+      orderDeductionAmount: {
+        type: Number,
+        default: 0
+      },
+      deductionTransactionId: {
+        type: Schema.Types.ObjectId,
+        ref: 'FinancialTransaction'
+      },
+      // Dodatno skinut nalog: poslednji plaćeni nalog iste kategorije ('complaint_extra'),
+      // ili iznos jednog takvog naloga kada drugog nema ('complaint_extra_fallback')
+      extraDeductionKind: {
+        type: String
+      },
+      extraDeductionAmount: {
+        type: Number,
+        default: 0
+      },
+      extraDeductionTransactionId: {
+        type: Schema.Types.ObjectId,
+        ref: 'FinancialTransaction'
+      },
+      extraWorkOrderId: {
+        type: Schema.Types.ObjectId,
+        ref: 'WorkOrder'
+      },
+      extraTisId: String,
+      extraTisJobId: String,
+      extraAddress: String,
+      note: String
+    }],
+    keptTechnicians: [{
+      technicianId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Technician'
+      },
+      name: String
+    }],
+    newTechnicianId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Technician'
+    },
+    newTechnicianName: {
+      type: String,
+      default: ''
+    },
+    fixDate: {
+      type: Date
+    },
+    fixTime: {
+      type: String
+    },
+    // Isplata novom tehničaru za ispravku: 'pending' (čeka verifikaciju ispravke), 'paid',
+    // 'included' (nalog nije bio plaćen pa ulazi u redovan obračun), 'not_applicable'
+    fixStatus: {
+      type: String,
+      enum: ['pending', 'paid', 'included', 'not_applicable'],
+      default: 'pending'
+    },
+    fixAmount: {
+      type: Number,
+      default: 0
+    },
+    fixTransactionId: {
+      type: Schema.Types.ObjectId,
+      ref: 'FinancialTransaction'
+    },
+    fixNote: String,
+    penaltyPercentBefore: {
+      type: Number,
+      default: 0
+    }
+  }],
   user: {
     type: Schema.Types.ObjectId,
     ref: 'User'

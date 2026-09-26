@@ -20,6 +20,24 @@ const { parseBuffer } = require('music-metadata');
 const { logActivity } = require('../middleware/activityLogger');
 const { auth, isAdmin, isTechnicianOwner } = require('../middleware/auth');
 const { looseTextRegex, digitsLooseVariants } = require('../utils/searchRegex');
+const {
+  STANDARD_ENTRY_FILTER,
+  round2,
+  penaltyPercentForCount,
+  applyPenalty,
+  buildComplaintPlan,
+  createComplaintDeductionEntry,
+  processPendingComplaintFixes
+} = require('../services/workOrderFinanceService');
+
+// Keš izveštaja na stranici Finansije treba osvežiti posle svake nove finansijske stavke
+const invalidateFinanceCache = () => {
+  try {
+    require('./finances').invalidateFinancialReportsCache();
+  } catch (error) {
+    console.error('Greška pri osvežavanju keša finansija:', error.message);
+  }
+};
 
 // Dozvoljene vrednosti za tim i njihove labele za prikaz
 const TIM_LABELS = { robotik: 'Robotik', mtel: 'mtel' };
@@ -144,9 +162,18 @@ async function createFinancialTransaction(workOrderId) {
       return;
     }
 
-    // Proveri da li transakcija već postoji
-    const existingTransaction = await FinancialTransaction.findOne({ workOrderId: workOrderId });
+    // Proveri da li redovna transakcija već postoji (odbici i isplate za reklamacije su posebne stavke)
+    const existingTransaction = await FinancialTransaction.findOne({ workOrderId: workOrderId, ...STANDARD_ENTRY_FILTER });
     if (existingTransaction) {
+      // Nalog je već plaćen — ako je u međuvremenu bila reklamacija, isplati tehničara koji ga je ispravio
+      const fixResult = await processPendingComplaintFixes(workOrderId);
+      if (!fixResult.ok) {
+        await createFailedFinancialTransaction(workOrderId, fixResult.reason, fixResult.message, [fixResult.field]);
+        return;
+      }
+      if (fixResult.created > 0) {
+        invalidateFinanceCache();
+      }
       console.log('Financial transaction already exists for this work order');
       await removeFailedFinancialTransaction(workOrderId);
       return;
@@ -164,6 +191,9 @@ async function createFinancialTransaction(workOrderId) {
       );
       return;
     }
+
+    // Minus zbog vraćanja naloga na ispravku (0–100%), primenjuje se na zaradu svakog tehničara
+    const rejectionPenaltyPercent = workOrder.rejectionPenaltyPercent || 0;
 
     // VALIDACIJA 2: Pronađi WorkOrderEvidence
     const evidence = await WorkOrderEvidence.findOne({ workOrderId: workOrderId });
@@ -314,8 +344,13 @@ async function createFinancialTransaction(workOrderId) {
         }
 
         const technicianPrice = technicianPricing.pricesByCustomerStatus[evidence.customerStatus];
-        tech.earnings = technicianPrice;
-        totalTechnicianExpenses += technicianPrice;
+        // Umanjenje zbog vraćanja naloga na ispravku
+        const penalty = applyPenalty(technicianPrice, rejectionPenaltyPercent);
+        tech.grossEarnings = penalty.gross;
+        tech.penaltyPercent = penalty.percent;
+        tech.penaltyAmount = penalty.penaltyAmount;
+        tech.earnings = penalty.net;
+        totalTechnicianExpenses += penalty.net;
 
         // Nema dodatnih detalja za po_statusu
         tech.salaryDetails = undefined;
@@ -399,8 +434,9 @@ async function createFinancialTransaction(workOrderId) {
     // Prvo obradimo sve tehničare "po_statusu"
     for (const tech of sortedTechnicians) {
       if (tech.paymentType === 'po_statusu') {
-        // Tehničar po statusu dobija svoju cenu, a ta cena se oduzima od remainingRevenue
-        remainingRevenue -= tech.earnings;
+        // Tehničar po statusu dobija svoju cenu, a ta cena se oduzima od remainingRevenue.
+        // Oduzima se cena pre umanjenja — umanjenje ostaje firmi, ne prelazi na kolegu sa platom.
+        remainingRevenue -= (tech.grossEarnings !== undefined ? tech.grossEarnings : tech.earnings);
       }
     }
 
@@ -456,6 +492,21 @@ async function createFinancialTransaction(workOrderId) {
       }
     }
 
+    // Umanjenje zbog vraćanja naloga i za tehničare sa platom (umanjuje se iznos koji ide ka plati)
+    for (const tech of sortedTechnicians) {
+      if (tech.paymentType === 'plata') {
+        const penalty = applyPenalty(tech.earnings, rejectionPenaltyPercent);
+        tech.grossEarnings = penalty.gross;
+        tech.penaltyPercent = penalty.percent;
+        tech.penaltyAmount = penalty.penaltyAmount;
+        if (penalty.penaltyAmount > 0) {
+          tech.earnings = penalty.net;
+          tech.salaryDetails.earnedTowardsSalary = penalty.net;
+          totalTechnicianExpenses -= penalty.penaltyAmount;
+        }
+      }
+    }
+
     // Zamenjujemo nazad u originalni niz
     technicians.length = 0;
     technicians.push(...sortedTechnicians);
@@ -497,6 +548,7 @@ async function createFinancialTransaction(workOrderId) {
 
     const transaction = new FinancialTransaction({
       workOrderId: workOrderId,
+      entryType: 'standard',
       customerStatus: evidence.customerStatus,
       municipality: workOrder.municipality,
       basePrice: basePrice,
@@ -506,11 +558,24 @@ async function createFinancialTransaction(workOrderId) {
       technicians: technicians,
       totalTechnicianEarnings: totalExpenses, // Ovo je RASHOD
       companyProfit: companyProfit,
+      rejectionPenaltyPercent: rejectionPenaltyPercent,
+      rejectionCount: workOrder.rejectionPenaltyCount || 0,
+      tisJobId: workOrder.tisJobId,
       verifiedAt: transactionDate // Koristimo pravi datum završetka, ne datum verifikacije
     });
 
     await transaction.save();
     console.log('Financial transaction created successfully');
+    invalidateFinanceCache();
+
+    // Reklamacije prijavljene pre prvog obračuna: novi tehničar je upravo plaćen u ovoj transakciji
+    if (Array.isArray(workOrder.complaints) && workOrder.complaints.some(c => c.fixStatus === 'pending')) {
+      await WorkOrder.updateOne(
+        { _id: workOrderId },
+        { $set: { 'complaints.$[pendingFix].fixStatus': 'included' } },
+        { arrayFilters: [{ 'pendingFix.fixStatus': 'pending' }] }
+      );
+    }
 
     // Ukloni failed zapis ako postoji
     await removeFailedFinancialTransaction(workOrderId);
@@ -1553,6 +1618,7 @@ router.post('/upload', auth, isAdmin, logActivity('workorders', 'workorder_bulk_
         // Kreiranje novog radnog naloga
         const newWorkOrder = new WorkOrder({
           date,
+          originalDate: date,
           time: bulkWorkOrderTime,
           municipality: area,
           address,
@@ -1803,6 +1869,7 @@ router.post('/', auth, isAdmin, logActivity('workorders', 'workorder_add', {
     // Kreiranje novog radnog naloga
     const newWorkOrder = new WorkOrder({
       date,
+      originalDate: date,
       time: workOrderTime,
       municipality,
       address,
@@ -2494,7 +2561,7 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
 }), async (req, res) => {
   try {
     const { id } = req.params;
-    const { comment, status, postponeDate, postponeTime, postponeComment, cancelComment, technicianId, customerEmail } = req.body;
+    const { comment, status, postponeDate, postponeTime, postponeComment, cancelComment, technicianId, customerEmail, missingPhotosComment } = req.body;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
@@ -2527,6 +2594,11 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
     // Sačuvaj email korisnika ako je poslat
     if (customerEmail !== undefined) {
       workOrder.customerEmail = customerEmail.trim();
+    }
+
+    // Razlog zašto neka od obaveznih fotografija nedostaje
+    if (typeof missingPhotosComment === 'string') {
+      workOrder.missingPhotosComment = missingPhotosComment.trim();
     }
 
     // Tehničar može da ažurira samo komentar, status i vreme odlaganja
@@ -2637,6 +2709,10 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
             });
           }
           
+          // Prvobitni datum naloga ostaje zapamćen za mesečni obračun
+          if (!workOrder.originalDate) {
+            workOrder.originalDate = workOrder.date;
+          }
           workOrder.date = postponeDate;
           workOrder.time = postponeTime;
           workOrder.postponedUntil = postponedDateTime;
@@ -3040,21 +3116,28 @@ router.put('/:id/return-incorrect', auth, isAdmin, logActivity('workorders', 'wo
   },
   getDetails: async (req, responseData) => {
     const adminComment = responseData?.adminComment || req.body?.adminComment || 'Nije naveden';
-    console.log('🔍 [getDetails] adminComment:', adminComment);
+    const changes = [
+      'Radni nalog vraćen kao neispravno popunjen',
+      `Razlog: ${adminComment}`
+    ];
+    if (responseData?.penaltyApplied) {
+      changes.push(`Umanjenje zarade: ${responseData.penaltyPercentBefore}% → ${responseData.penaltyPercentAfter}%`);
+    } else if (responseData) {
+      changes.push(`Bez umanjenja zarade (trenutni minus: ${responseData.penaltyPercentAfter || 0}%)`);
+    }
     return {
       action: 'updated',
-      changes: [
-        'Radni nalog vraćen kao neispravno popunjen',
-        `Razlog: ${adminComment}`
-      ],
-      changeCount: 2,
-      summary: 'Vraćen kao neispravno popunjen'
+      changes,
+      changeCount: changes.length,
+      summary: responseData?.penaltyApplied
+        ? `Vraćen kao neispravno popunjen, minus ${responseData.penaltyPercentAfter}%`
+        : 'Vraćen kao neispravno popunjen'
     };
   }
 }), async (req, res) => {
   try {
     const { id } = req.params;
-    const { adminComment } = req.body;
+    const { adminComment, applyPenalty: applyPenaltyRaw, source } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ error: 'Neispravan ID format' });
@@ -3064,7 +3147,9 @@ router.put('/:id/return-incorrect', auth, isAdmin, logActivity('workorders', 'wo
       return res.status(400).json({ error: 'Admin komentar je obavezan' });
     }
 
-    const workOrder = await WorkOrder.findById(id);
+    const workOrder = await WorkOrder.findById(id)
+      .populate('technicianId technician2Id', 'name')
+      .lean();
 
     if (!workOrder) {
       return res.status(404).json({ error: 'Radni nalog nije pronađen' });
@@ -3074,32 +3159,341 @@ router.put('/:id/return-incorrect', auth, isAdmin, logActivity('workorders', 'wo
       return res.status(400).json({ error: 'Samo završeni radni nalozi mogu biti vraćeni' });
     }
 
-    // Ažuriraj radni nalog - postavi status na nezavrsen i dodaj admin komentar
-    const updatedWorkOrder = await WorkOrder.findByIdAndUpdate(
-      id,
+    // Umanjenje je podrazumevano uključeno (checkbox u potvrdi je već označen) — admin ga može isključiti
+    const penaltyApplied = applyPenaltyRaw !== false && applyPenaltyRaw !== 'false';
+    const penaltyPercentBefore = workOrder.rejectionPenaltyPercent || 0;
+    const penaltyCount = (workOrder.rejectionPenaltyCount || 0) + (penaltyApplied ? 1 : 0);
+    const penaltyPercentAfter = penaltyApplied ? penaltyPercentForCount(penaltyCount) : penaltyPercentBefore;
+    const technicianRefs = [workOrder.technicianId, workOrder.technician2Id].filter(Boolean);
+
+    const rejectionEntry = {
+      rejectedAt: new Date(),
+      rejectedBy: req.user?._id,
+      rejectedByName: req.user?.name || '',
+      comment: adminComment.trim(),
+      source: source === 'ai' ? 'ai' : 'manual',
+      penaltyApplied,
+      penaltyPercentBefore,
+      penaltyPercentAfter,
+      cycle: workOrder.penaltyCycle || 0,
+      technicianIds: technicianRefs.map(t => t._id || t),
+      technicianNames: technicianRefs.map(t => t.name).filter(Boolean)
+    };
+
+    // Ažuriraj radni nalog - postavi status na nezavrsen, dodaj admin komentar i upiši vraćanje u istoriju.
+    // Uslov status: 'zavrsen' sprečava da se isti nalog vrati dvaput (npr. dva admina istovremeno).
+    const updatedWorkOrder = await WorkOrder.findOneAndUpdate(
+      { _id: id, status: 'zavrsen' },
       {
-        status: 'nezavrsen',
-        adminComment: adminComment.trim(),
-        verified: false,
-        verifiedAt: null
+        $set: {
+          status: 'nezavrsen',
+          adminComment: adminComment.trim(),
+          verified: false,
+          verifiedAt: null,
+          rejectionPenaltyCount: penaltyCount,
+          rejectionPenaltyPercent: penaltyPercentAfter
+        },
+        $push: { rejectionHistory: rejectionEntry }
       },
       { new: true }
     ).populate('technicianId technician2Id', 'name');
 
-    console.log('🔍 [return-incorrect] Sending response with:', {
-      tisJobId: updatedWorkOrder.tisJobId,
-      adminComment: adminComment.trim()
-    });
+    if (!updatedWorkOrder) {
+      return res.status(409).json({ error: 'Radni nalog je u međuvremenu već vraćen ili izmenjen. Osvežite stranicu.' });
+    }
+
+    const cycle = updatedWorkOrder.penaltyCycle || 0;
+    const rejectionCount = (updatedWorkOrder.rejectionHistory || []).filter(r => (r.cycle || 0) === cycle).length;
 
     res.json({
       message: 'Radni nalog je vraćen tehničaru',
       workOrder: updatedWorkOrder,
       tisJobId: updatedWorkOrder.tisJobId,
-      adminComment: adminComment.trim()
+      adminComment: adminComment.trim(),
+      penaltyApplied,
+      penaltyPercentBefore,
+      penaltyPercentAfter,
+      rejectionCount
     });
   } catch (error) {
     console.error('Greška pri vraćanju radnog naloga:', error);
     res.status(500).json({ error: 'Greška pri vraćanju radnog naloga' });
+  }
+});
+
+// Tehničari na nalogu (redosled slotova) i provera da li je izabrani korisnik tehničar
+const ADMIN_ROLES = ['admin', 'superadmin', 'supervisor'];
+const getAssignedTechnicianIds = (workOrder) => [workOrder.technicianId, workOrder.technician2Id]
+  .filter(Boolean)
+  .map(t => (t._id || t).toString());
+
+// GET - Pregled reklamacije pre potvrde: koliko će se kome skinuti i koliko dobija novi tehničar
+router.get('/:id/complaint-preview', auth, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const workOrder = await WorkOrder.findById(id).lean();
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    const removeIds = (req.query.remove || '').split(',').map(s => s.trim()).filter(s => mongoose.Types.ObjectId.isValid(s));
+    const newTechnicianId = mongoose.Types.ObjectId.isValid(req.query.newTechnicianId) ? req.query.newTechnicianId : null;
+
+    const plan = await buildComplaintPlan(workOrder, removeIds, newTechnicianId);
+    res.json(plan);
+  } catch (error) {
+    console.error('Greška pri pripremi pregleda reklamacije:', error);
+    res.status(500).json({ error: 'Greška pri pripremi pregleda reklamacije' });
+  }
+});
+
+// POST - Reklamacija: radovi kod korisnika loše izvedeni. Izabrani tehničari se sklanjaju sa naloga
+// (nalog im se ne plaća i skida im se iznos dva takva naloga), a nalog se dodeljuje novom tehničaru
+// kome se plaća kada ispravka bude verifikovana.
+router.post('/:id/complaint', auth, isAdmin, logActivity('workorders', 'workorder_complaint', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.tisJobId || responseData?.workOrder?.tisJobId || 'WorkOrder',
+  getDetails: async (req, responseData) => {
+    const complaint = responseData?.complaint;
+    if (!complaint) {
+      return { action: 'updated', changes: ['Pokušaj reklamacije'], changeCount: 1, summary: 'Reklamacija' };
+    }
+    const changes = [
+      `Reklamacija: ${complaint.reason || 'bez opisa'}`,
+      ...complaint.removedTechnicians.map(t =>
+        `Sklonjen tehničar: ${t.name}${t.deductionAmount > 0 ? ` (odbitak ${t.deductionAmount} RSD)` : ''}`
+      ),
+      `Dodeljen tehničar za ispravku: ${complaint.newTechnicianName}`
+    ];
+    return {
+      action: 'updated',
+      changes,
+      changeCount: changes.length,
+      summary: `Reklamacija — nalog dodeljen tehničaru ${complaint.newTechnicianName}`
+    };
+  }
+}), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason = '', removeTechnicianIds = [], newTechnicianId, fixDate, fixTime } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+    if (!newTechnicianId || !mongoose.Types.ObjectId.isValid(newTechnicianId)) {
+      return res.status(400).json({ error: 'Izaberite tehničara koji će ispraviti nalog' });
+    }
+    if (!fixDate || !/^\d{4}-\d{2}-\d{2}$/.test(fixDate)) {
+      return res.status(400).json({ error: 'Unesite datum ispravke' });
+    }
+    const normalizedFixTime = /^\d{1,2}:\d{2}$/.test(fixTime || '') ? fixTime : '09:00';
+
+    const workOrder = await WorkOrder.findById(id).populate('technicianId technician2Id', 'name').lean();
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    const assignedIds = getAssignedTechnicianIds(workOrder);
+    if (assignedIds.length === 0) {
+      return res.status(400).json({ error: 'Radni nalog nema dodeljenog tehničara — reklamacija nije moguća' });
+    }
+
+    const requestedRemovals = Array.isArray(removeTechnicianIds) ? removeTechnicianIds.map(String) : [];
+    const removeIds = assignedIds.filter(techId => requestedRemovals.includes(techId));
+    if (removeIds.length === 0) {
+      return res.status(400).json({ error: 'Izaberite tehničara kog sklanjate sa naloga' });
+    }
+
+    const newTechnician = await Technician.findById(newTechnicianId).select('name role').lean();
+    if (!newTechnician) {
+      return res.status(400).json({ error: 'Izabrani tehničar ne postoji' });
+    }
+    if (ADMIN_ROLES.includes(newTechnician.role)) {
+      return res.status(400).json({ error: 'Izabrani korisnik nije tehničar' });
+    }
+    if (assignedIds.includes(newTechnician._id.toString())) {
+      return res.status(400).json({ error: 'Izabrani tehničar je već na ovom nalogu' });
+    }
+
+    const plan = await buildComplaintPlan(workOrder, removeIds, newTechnician._id);
+    const standardTx = await FinancialTransaction.findOne({ workOrderId: id, ...STANDARD_ENTRY_FILTER }).lean();
+
+    // Odbici za sklonjene tehničare — posebne finansijske stavke datirane danom reklamacije:
+    // 1) reklamirani nalog se ne plaća, 2) skida se i poslednji plaćeni nalog iste kategorije
+    const removedTechnicians = [];
+    for (const tech of plan.technicians.filter(t => t.willBeRemoved)) {
+      let orderTx = null;
+      if (tech.orderDeductionAmount > 0) {
+        orderTx = await createComplaintDeductionEntry({
+          kind: 'complaint_order',
+          workOrder,
+          relatedWorkOrder: workOrder,
+          customerStatus: standardTx?.customerStatus || plan.customerStatus,
+          technician: tech,
+          amount: tech.orderDeductionAmount,
+          grossEarnings: tech.paidAmount,
+          createdBy: req.user?._id
+        });
+      }
+
+      const extra = tech.extraDeduction || {};
+      const isExtraOrder = extra.kind === 'complaint_extra';
+      let extraTx = null;
+      if (extra.amount > 0) {
+        extraTx = await createComplaintDeductionEntry({
+          kind: extra.kind,
+          workOrder: isExtraOrder
+            ? { _id: extra.workOrderId, municipality: extra.municipality, tisJobId: extra.tisJobId }
+            : workOrder,
+          relatedWorkOrder: workOrder,
+          customerStatus: isExtraOrder ? extra.customerStatus : (standardTx?.customerStatus || plan.customerStatus),
+          technician: tech,
+          amount: extra.amount,
+          grossEarnings: extra.amount,
+          createdBy: req.user?._id
+        });
+      }
+
+      const orderAmount = orderTx ? tech.orderDeductionAmount : 0;
+      const extraAmount = extraTx ? extra.amount : 0;
+      removedTechnicians.push({
+        technicianId: tech.technicianId,
+        name: tech.name,
+        paidAmount: tech.paidAmount,
+        deductionAmount: round2(orderAmount + extraAmount),
+        orderDeductionAmount: orderAmount,
+        deductionTransactionId: orderTx?._id,
+        extraDeductionKind: extra.kind,
+        extraDeductionAmount: extraAmount,
+        extraDeductionTransactionId: extraTx?._id,
+        extraWorkOrderId: isExtraOrder ? extra.workOrderId : undefined,
+        extraTisId: isExtraOrder ? extra.tisId : undefined,
+        extraTisJobId: isExtraOrder ? extra.tisJobId : undefined,
+        extraAddress: isExtraOrder ? extra.address : undefined,
+        note: tech.note
+      });
+    }
+
+    // Novi tehničar dolazi na mesto sklonjenog tehničara (ako su sklonjena oba, ostaje sam na nalogu)
+    const newTechnicianIdStr = newTechnician._id.toString();
+    const slots = {
+      technicianId: workOrder.technicianId ? (workOrder.technicianId._id || workOrder.technicianId).toString() : null,
+      technician2Id: workOrder.technician2Id ? (workOrder.technician2Id._id || workOrder.technician2Id).toString() : null
+    };
+    const removeFirst = !!slots.technicianId && removeIds.includes(slots.technicianId);
+    const removeSecond = !!slots.technician2Id && removeIds.includes(slots.technician2Id);
+    if (removeFirst) {
+      slots.technicianId = newTechnicianIdStr;
+      if (removeSecond) slots.technician2Id = null;
+    } else if (removeSecond) {
+      slots.technician2Id = newTechnicianIdStr;
+    }
+    if (!slots.technicianId && slots.technician2Id) {
+      slots.technicianId = slots.technician2Id;
+      slots.technician2Id = null;
+    }
+
+    // Termin ispravke — bez novog termina nalog bi odmah bio "prekoračen" i zaključao aplikaciju tehničaru
+    const fixDateObj = new Date(fixDate);
+    const [fixHours, fixMinutes] = normalizedFixTime.split(':').map(n => parseInt(n, 10));
+    const appointmentDateTime = new Date(fixDateObj);
+    appointmentDateTime.setHours(fixHours || 9, fixMinutes || 0, 0, 0);
+
+    const trimmedReason = (reason || '').toString().trim();
+    const complaintEntry = {
+      createdAt: new Date(),
+      createdBy: req.user?._id,
+      createdByName: req.user?.name || '',
+      reason: trimmedReason,
+      wasVerified: !!standardTx,
+      removedTechnicians,
+      keptTechnicians: plan.technicians
+        .filter(t => !t.willBeRemoved)
+        .map(t => ({ technicianId: t.technicianId, name: t.name })),
+      newTechnicianId: newTechnician._id,
+      newTechnicianName: newTechnician.name,
+      fixDate: fixDateObj,
+      fixTime: normalizedFixTime,
+      // Ako je nalog već plaćen, novi tehničar se plaća posebnom stavkom kada ispravka bude verifikovana;
+      // u suprotnom ulazi u redovan obračun naloga
+      fixStatus: standardTx ? 'pending' : 'included',
+      penaltyPercentBefore: workOrder.rejectionPenaltyPercent || 0
+    };
+
+    const setFields = {
+      technicianId: slots.technicianId,
+      technician2Id: slots.technician2Id,
+      status: 'nezavrsen',
+      verified: false,
+      verifiedAt: null,
+      adminComment: `REKLAMACIJA: ${trimmedReason || 'radovi kod korisnika su loše izvedeni — potrebna je ispravka.'}`,
+      date: fixDateObj,
+      time: normalizedFixTime,
+      appointmentDateTime,
+      postponedUntil: null,
+      isOverdue: false,
+      overdueMarkedAt: null,
+      // Novi ciklus umanjenja: novi tehničar kreće od 0%
+      rejectionPenaltyCount: 0,
+      rejectionPenaltyPercent: 0,
+      penaltyCycle: (workOrder.penaltyCycle || 0) + 1
+    };
+    if (!workOrder.originalDate && workOrder.date) {
+      setFields.originalDate = workOrder.date;
+    }
+
+    const updatedWorkOrder = await WorkOrder.findByIdAndUpdate(
+      id,
+      { $set: setFields, $push: { complaints: complaintEntry } },
+      { new: true }
+    ).populate('technicianId technician2Id', 'name');
+
+    // Evidencija prati nova imena tehničara i status
+    try {
+      const names = [updatedWorkOrder.technicianId?.name || '', updatedWorkOrder.technician2Id?.name || ''];
+      await updateWorkOrderEvidence(updatedWorkOrder._id, {
+        technician1: names[0],
+        technician2: names[1],
+        status: 'U TOKU',
+        verified: false
+      });
+    } catch (evidenceError) {
+      console.error('Greška pri ažuriranju evidencije posle reklamacije:', evidenceError);
+    }
+
+    invalidateFinanceCache();
+
+    // Push notifikacija novom tehničaru (kao pri dodeli novog naloga)
+    setImmediate(async () => {
+      try {
+        const androidNotificationService = require('../services/androidNotificationService');
+        await androidNotificationService.createWorkOrderNotification(newTechnician._id, {
+          address: updatedWorkOrder.address,
+          municipality: updatedWorkOrder.municipality,
+          date: updatedWorkOrder.date,
+          time: updatedWorkOrder.time,
+          orderId: updatedWorkOrder._id
+        });
+      } catch (notifError) {
+        console.error('Greška pri slanju notifikacije za reklamaciju:', notifError.message);
+      }
+    });
+
+    const savedComplaint = updatedWorkOrder.complaints[updatedWorkOrder.complaints.length - 1];
+
+    res.json({
+      message: `Reklamacija je evidentirana, nalog je dodeljen tehničaru ${newTechnician.name}`,
+      workOrder: updatedWorkOrder,
+      complaint: savedComplaint,
+      tisJobId: updatedWorkOrder.tisJobId
+    });
+  } catch (error) {
+    console.error('Greška pri evidentiranju reklamacije:', error);
+    res.status(500).json({ error: 'Greška pri evidentiranju reklamacije' });
   }
 });
 

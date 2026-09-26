@@ -33,8 +33,132 @@ const createInventorySummary = (inventory) => {
   };
 };
 
+const escapeHtml = (value) => String(value === undefined || value === null ? '' : value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
+
+const formatRsd = (value) => {
+  const amount = Math.round((Number(value) || 0) * 100) / 100;
+  return `${amount.toLocaleString('sr-RS', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} RSD`;
+};
+
+const formatStatementDate = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Belgrade' });
+};
+
+// Mesečni obračun zarade tehničara — ista tabela kao na stranici "Mesečni obračun"
+const buildTechnicianStatementHtml = (data) => {
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  const summary = data.summary || {};
+  const technicianName = data.technician?.name || '';
+
+  const rowTypeLabel = (row) => {
+    if (row.entryType === 'complaint_deduction') return row.label || 'Reklamacija — odbitak';
+    if (row.entryType === 'complaint_fix') return row.label || 'Ispravka po reklamaciji';
+    return '';
+  };
+  // Kratka oznaka u koloni "Minus" za odbitke po reklamaciji
+  const deductionMinusLabel = (row) => {
+    if (row.deductionKind === 'complaint_order') return 'ne plaća se';
+    if (row.deductionKind === 'complaint_extra') return 'skinut';
+    return 'odbitak';
+  };
+
+  const bodyRows = rows.length === 0
+    ? `<tr><td colspan="6" style="padding:18px 10px;text-align:center;color:#6b7280;font-size:13px;">Nema obračunatih naloga za izabrani period.</td></tr>`
+    : rows.map((row, index) => {
+      const isDeduction = row.entryType === 'complaint_deduction';
+      const background = isDeduction ? '#fef2f2' : (index % 2 === 0 ? '#ffffff' : '#f9fafb');
+      const label = rowTypeLabel(row);
+      const minusCell = isDeduction
+        ? `<span style="color:#b91c1c;font-weight:bold;">${deductionMinusLabel(row)}</span>`
+        : (row.penaltyPercent > 0
+          ? `<span style="color:#b91c1c;font-weight:bold;">-${row.penaltyPercent}%</span>`
+          : '<span style="color:#9ca3af;">—</span>');
+      const earningsColor = row.earnings < 0 ? '#b91c1c' : '#111827';
+      return `
+        <tr style="background:${background};">
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">${escapeHtml(row.tisId || '—')}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">${escapeHtml(row.tisJobId || '—')}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;white-space:nowrap;">${formatStatementDate(row.workOrderDate)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">
+            ${escapeHtml(row.address || '—')}
+            ${label ? `<div style="font-size:11px;color:${isDeduction ? '#b91c1c' : '#1d4ed8'};font-weight:bold;margin-top:2px;">${label}</div>` : ''}
+          </td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:${earningsColor};text-align:right;white-space:nowrap;font-weight:bold;">${formatRsd(row.earnings)}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;text-align:center;white-space:nowrap;">${minusCell}</td>
+        </tr>`;
+    }).join('');
+
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 760px; margin: 0 auto; color: #111827;">
+      <div style="background:#1e40af;color:#ffffff;padding:22px 24px;border-radius:10px 10px 0 0;">
+        <h2 style="margin:0;font-size:20px;">Obračun zarade</h2>
+        <p style="margin:6px 0 0 0;font-size:14px;color:#dbeafe;">Period: <strong>${escapeHtml(data.periodLabel || '')}</strong></p>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-top:none;padding:20px 24px;border-radius:0 0 10px 10px;">
+        <p style="margin:0 0 14px 0;font-size:15px;">Poštovani/a <strong>${escapeHtml(technicianName)}</strong>,</p>
+        <p style="margin:0 0 16px 0;font-size:14px;color:#374151;">u nastavku je obračun Vaše zarade za navedeni period, sa svim umanjenjima zbog vraćanja naloga na ispravku i odbicima po reklamacijama.</p>
+
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin:0 0 18px 0;">
+          <tr>
+            <td style="padding:10px 12px;background:#eff6ff;border-radius:8px;font-size:13px;color:#1e3a8a;">
+              Naloga: <strong>${summary.ordersCount || 0}</strong>
+              &nbsp;·&nbsp; Ukupno za isplatu: <strong>${formatRsd(summary.totalEarnings)}</strong>
+              ${summary.totalPenalties > 0 ? `&nbsp;·&nbsp; Umanjenja zbog vraćanja: <strong style="color:#b91c1c;">-${formatRsd(summary.totalPenalties)}</strong>` : ''}
+              ${summary.complaintDeductionsCount > 0 ? `&nbsp;·&nbsp; Odbici po reklamacijama: <strong style="color:#b91c1c;">${formatRsd(summary.complaintDeductions)}</strong>` : ''}
+            </td>
+          </tr>
+        </table>
+
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;border:1px solid #e5e7eb;">
+          <thead>
+            <tr style="background:#f3f4f6;">
+              <th style="padding:9px 10px;text-align:left;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;">TIS ID</th>
+              <th style="padding:9px 10px;text-align:left;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;">Job ID</th>
+              <th style="padding:9px 10px;text-align:left;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;">Datum</th>
+              <th style="padding:9px 10px;text-align:left;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;">Adresa</th>
+              <th style="padding:9px 10px;text-align:right;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;">Zarada</th>
+              <th style="padding:9px 10px;text-align:center;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;">Minus</th>
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+          <tfoot>
+            <tr style="background:#f3f4f6;">
+              <td colspan="4" style="padding:10px;font-size:13px;font-weight:bold;text-align:right;">Ukupno:</td>
+              <td style="padding:10px;font-size:14px;font-weight:bold;text-align:right;white-space:nowrap;">${formatRsd(summary.totalEarnings)}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <p style="margin:16px 0 0 0;font-size:12px;color:#6b7280;">
+          Minus se obračunava po vraćanju naloga na ispravku: 1. vraćanje -10%, 2. -20% … 5. -50%, a nalog vraćen 6. put se ne plaća.
+          Kod reklamacije za loše izvedene radove reklamirani nalog se ne plaća, a skida se i poslednji plaćeni nalog iste kategorije
+          (u tabeli je označen sa „Skinut zbog reklamacije naloga …“).
+        </p>
+        <hr style="margin:18px 0;border:none;border-top:1px solid #e5e7eb;">
+        <p style="font-size:12px;color:#6b7280;margin:0;">
+          Ova poruka je automatski generisana od strane Robotik sistema.<br>
+          Vreme slanja: ${new Date().toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}
+        </p>
+      </div>
+    </div>
+  `;
+};
+
 const createEmailTemplate = (type, data) => {
   const templates = {
+    technicianStatement: type === 'technicianStatement' ? {
+      subject: `Obračun zarade — ${data.periodLabel || ''}`,
+      html: buildTechnicianStatementHtml(data)
+    } : null,
+
     customerNotContacted: {
       subject: `⚠️ Korisnik nije kontaktiran — ${data.address || ''} (termin u ${data.time || '?'})`,
       html: `

@@ -36,8 +36,11 @@ const corsOptions = {
       'https://administracija.robotik.rs'
     ];
 
+    // Dodatni origini iz env-a (npr. lokalni pre-prod web na drugom portu)
+    const extraOrigins = (process.env.CORS_EXTRA_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean);
+
     // Dozvoli undefined origin (mobilna aplikacija)
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin) || extraOrigins.includes(origin)) {
       callback(null, true);
     }
     // Dozvoli sve lokalne IP adrese (192.168.x.x, 10.x.x.x, itd.)

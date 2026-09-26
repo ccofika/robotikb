@@ -8,8 +8,22 @@ const MunicipalityDiscountConfirmation = require('../models/MunicipalityDiscount
 const WorkOrder = require('../models/WorkOrder');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const Technician = require('../models/Technician');
-const { auth, isSupervisorOrSuperAdmin } = require('../middleware/auth');
+const { auth, isSupervisorOrSuperAdmin, isSuperAdmin } = require('../middleware/auth');
 const { logActivity } = require('../middleware/activityLogger');
+const {
+  ADJUSTMENT_ENTRY_TYPES,
+  STANDARD_ENTRY_FILTER,
+  buildTechnicianStatement
+} = require('../services/workOrderFinanceService');
+
+// Stavke za reklamacije (odbitak/ispravka) nisu novi nalozi — ne ulaze u broj transakcija,
+// a odbitak ne ulazi ni u broj naloga tehničara
+const TRANSACTION_COUNT_EXPR = {
+  $cond: [{ $in: [{ $ifNull: ['$entryType', 'standard'] }, ADJUSTMENT_ENTRY_TYPES] }, 0, 1]
+};
+const WORK_ORDER_COUNT_EXPR = {
+  $cond: [{ $eq: [{ $ifNull: ['$entryType', 'standard'] }, 'complaint_deduction'] }, 0, 1]
+};
 
 // Cache for financial reports
 let financialReportsCache = new Map();
@@ -302,7 +316,7 @@ router.get('/reports', auth, isSupervisorOrSuperAdmin, async (req, res) => {
             totalRevenue: { $sum: '$finalPrice' },
             totalPayouts: { $sum: '$totalTechnicianEarnings' },
             totalProfit: { $sum: '$companyProfit' },
-            transactionsCount: { $sum: 1 }
+            transactionsCount: { $sum: TRANSACTION_COUNT_EXPR }
           }
         }
       ]);
@@ -372,7 +386,7 @@ router.get('/reports', auth, isSupervisorOrSuperAdmin, async (req, res) => {
                 totalRevenue: { $sum: '$finalPrice' },
                 totalPayouts: { $sum: '$totalTechnicianEarnings' },
                 totalProfit: { $sum: '$companyProfit' },
-                transactionsCount: { $sum: 1 }
+                transactionsCount: { $sum: TRANSACTION_COUNT_EXPR }
               }
             }
           ]) :
@@ -385,7 +399,7 @@ router.get('/reports', auth, isSupervisorOrSuperAdmin, async (req, res) => {
                 totalRevenue: { $sum: '$finalPrice' },
                 totalPayouts: { $sum: '$totalTechnicianEarnings' },
                 totalProfit: { $sum: '$companyProfit' },
-                transactionsCount: { $sum: 1 }
+                transactionsCount: { $sum: TRANSACTION_COUNT_EXPR }
               }
             }
           ])
@@ -438,7 +452,7 @@ router.get('/reports', auth, isSupervisorOrSuperAdmin, async (req, res) => {
               $group: {
                 _id: '$technicians.technicianId',
                 totalEarnings: { $sum: '$technicians.earnings' },
-                workOrdersCount: { $sum: 1 }
+                workOrdersCount: { $sum: WORK_ORDER_COUNT_EXPR }
               }
             },
             {
@@ -473,7 +487,7 @@ router.get('/reports', auth, isSupervisorOrSuperAdmin, async (req, res) => {
               $group: {
                 _id: '$technicians.technicianId',
                 totalEarnings: { $sum: '$technicians.earnings' },
-                workOrdersCount: { $sum: 1 }
+                workOrdersCount: { $sum: WORK_ORDER_COUNT_EXPR }
               }
             },
             {
@@ -708,11 +722,15 @@ router.post('/retry-failed-transaction/:workOrderId', auth, isSupervisorOrSuperA
     // Pokušaj ponovo da kreiraš finansijsku transakciju
     await createFinancialTransaction(workOrderId);
 
-    // Proveri da li je transakcija uspešno kreirana
-    const successfulTransaction = await FinancialTransaction.findOne({ workOrderId });
+    // Proveri da li je transakcija uspešno kreirana. Failed zapis ima prednost: kod naloga posle
+    // reklamacije redovna transakcija postoji, a neuspeh može biti u isplati za ispravku.
     const failedTransaction = await FailedFinancialTransaction.findOne({ workOrderId });
+    const successfulTransaction = failedTransaction
+      ? null
+      : await FinancialTransaction.findOne({ workOrderId, ...STANDARD_ENTRY_FILTER });
 
     if (successfulTransaction) {
+      invalidateFinancialReportsCache();
       res.json({
         success: true,
         message: 'Finansijska transakcija je uspešno kreirana',
@@ -969,13 +987,18 @@ router.post('/retry-all-failed-transactions', auth, isSupervisorOrSuperAdmin, as
       const workOrderId = ft.workOrderId;
       try {
         // Obriši postojeću FinancialTransaction (ako postoji) i FailedFinancialTransaction
-        // tako da createFinancialTransaction može iznova da odluči
-        await FinancialTransaction.deleteOne({ workOrderId });
+        // tako da createFinancialTransaction može iznova da odluči.
+        // Nalozi sa reklamacijom se NE brišu: redovna stavka je osnova za odbitke i isplatu ispravke.
+        const hasComplaint = await WorkOrder.exists({ _id: workOrderId, 'complaints.0': { $exists: true } });
+        if (!hasComplaint) {
+          await FinancialTransaction.deleteOne({ workOrderId, ...STANDARD_ENTRY_FILTER });
+        }
         await FailedFinancialTransaction.deleteMany({ workOrderId });
 
         await createFinancialTransaction(workOrderId);
 
-        const created = await FinancialTransaction.findOne({ workOrderId });
+        const stillFailing = await FailedFinancialTransaction.exists({ workOrderId });
+        const created = stillFailing ? null : await FinancialTransaction.findOne({ workOrderId, ...STANDARD_ENTRY_FILTER });
         if (created) {
           summary.succeeded++;
           details.push({ workOrderId, status: 'succeeded' });
@@ -1008,6 +1031,133 @@ router.post('/retry-all-failed-transactions', auth, isSupervisorOrSuperAdmin, as
   } catch (error) {
     console.error('Greška pri bulk retry-u failed transakcija:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== MESEČNI OBRAČUN TEHNIČARA ====================
+
+const DATE_PARAM_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MONTH_NAMES = ['januar', 'februar', 'mart', 'april', 'maj', 'jun', 'jul', 'avgust', 'septembar', 'oktobar', 'novembar', 'decembar'];
+
+const validateStatementPeriod = (dateFrom, dateTo) => {
+  if (!DATE_PARAM_REGEX.test(dateFrom || '') || !DATE_PARAM_REGEX.test(dateTo || '')) {
+    return 'Period mora imati datum od i do (YYYY-MM-DD)';
+  }
+  if (dateFrom > dateTo) {
+    return 'Datum "od" ne može biti posle datuma "do"';
+  }
+  return null;
+};
+
+// "septembar 2026" za ceo kalendarski mesec, inače "01.09.2026. – 15.09.2026."
+const formatStatementPeriod = (dateFrom, dateTo) => {
+  const [fy, fm, fd] = dateFrom.split('-').map(Number);
+  const [ty, tm, td] = dateTo.split('-').map(Number);
+  const lastDayOfMonth = new Date(Date.UTC(fy, fm, 0)).getUTCDate();
+  if (fy === ty && fm === tm && fd === 1 && td === lastDayOfMonth) {
+    return `${MONTH_NAMES[fm - 1]} ${fy}`;
+  }
+  const fmt = (y, m, d) => `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}.`;
+  return `${fmt(fy, fm, fd)} – ${fmt(ty, tm, td)}`;
+};
+
+// GET /api/finances/technician-statement/:technicianId?dateFrom=&dateTo= - Obračun za period
+router.get('/technician-statement/:technicianId', auth, isSupervisorOrSuperAdmin, async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+    const { dateFrom, dateTo } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(technicianId)) {
+      return res.status(400).json({ error: 'Neispravan ID tehničara' });
+    }
+    const periodError = validateStatementPeriod(dateFrom, dateTo);
+    if (periodError) {
+      return res.status(400).json({ error: periodError });
+    }
+
+    const statement = await buildTechnicianStatement(technicianId, dateFrom, dateTo);
+    if (!statement) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    res.json({ ...statement, periodLabel: formatStatementPeriod(dateFrom, dateTo) });
+  } catch (error) {
+    console.error('Greška pri generisanju obračuna tehničara:', error);
+    res.status(500).json({ error: 'Greška pri generisanju obračuna tehničara' });
+  }
+});
+
+// POST /api/finances/technician-statement/:technicianId/send - Slanje obračuna tehničaru na email.
+// Tehničar dobija obračun samo kada ga superadmin pošalje.
+router.post('/technician-statement/:technicianId/send', auth, isSuperAdmin, logActivity('finances', 'technician_statement_sent', {
+  getEntityId: (req) => req.params.technicianId,
+  getEntityName: (req, responseData) => responseData?.technicianName || 'Tehničar',
+  getDetails: async (req, responseData) => ({
+    action: 'sent',
+    changes: [
+      `Poslat obračun za period ${responseData?.periodLabel || ''} na ${responseData?.recipient || ''}`,
+      ...(responseData?.savedAsDefault ? [`Email ${responseData.recipient} postavljen kao podrazumevani`] : [])
+    ],
+    summary: `Obračun poslat: ${responseData?.technicianName || ''} (${responseData?.periodLabel || ''})`
+  })
+}), async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+    const { dateFrom, dateTo, email, saveAsDefault } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(technicianId)) {
+      return res.status(400).json({ error: 'Neispravan ID tehničara' });
+    }
+    const periodError = validateStatementPeriod(dateFrom, dateTo);
+    if (periodError) {
+      return res.status(400).json({ error: periodError });
+    }
+
+    const technician = await Technician.findById(technicianId).select('name gmail').lean();
+    if (!technician) {
+      return res.status(404).json({ error: 'Tehničar nije pronađen' });
+    }
+
+    const overrideEmail = typeof email === 'string' ? email.trim() : '';
+    const recipient = overrideEmail || (technician.gmail || '').trim();
+    if (!recipient) {
+      return res.status(400).json({ error: 'Tehničar nema unet email', code: 'NO_EMAIL' });
+    }
+    if (!EMAIL_REGEX.test(recipient)) {
+      return res.status(400).json({ error: 'Email nije u ispravnom formatu (npr. ime@domen.com)' });
+    }
+
+    const savedAsDefault = !!(saveAsDefault && overrideEmail);
+    if (savedAsDefault) {
+      await Technician.updateOne({ _id: technicianId }, { $set: { gmail: recipient } });
+    }
+
+    const statement = await buildTechnicianStatement(technicianId, dateFrom, dateTo);
+    const periodLabel = formatStatementPeriod(dateFrom, dateTo);
+
+    const emailService = require('../services/emailService');
+    const result = await emailService.sendEmailToAddress(recipient, 'technicianStatement', {
+      ...statement,
+      periodLabel
+    });
+
+    if (!result.success) {
+      return res.status(502).json({ error: `Slanje email-a nije uspelo: ${result.error}` });
+    }
+
+    res.json({
+      success: true,
+      message: `Obračun je poslat na ${recipient}`,
+      recipient,
+      savedAsDefault,
+      technicianName: technician.name,
+      periodLabel,
+      summary: statement.summary
+    });
+  } catch (error) {
+    console.error('Greška pri slanju obračuna tehničaru:', error);
+    res.status(500).json({ error: 'Greška pri slanju obračuna tehničaru' });
   }
 });
 

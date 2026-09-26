@@ -15,6 +15,37 @@ const FinancialTransactionSchema = new Schema({
     ref: 'WorkOrderEvidence'
   },
 
+  // Vrsta stavke: 'standard' = redovan obračun pri verifikaciji (jedan po nalogu),
+  // 'complaint_deduction' = odbitak tehničaru zbog reklamacije (negativna zarada),
+  // 'complaint_fix' = isplata tehničaru koji je ispravio nalog posle reklamacije
+  entryType: {
+    type: String,
+    enum: ['standard', 'complaint_deduction', 'complaint_fix'],
+    default: 'standard'
+  },
+
+  // Vrsta odbitka za reklamaciju:
+  // 'complaint_order' = reklamirani nalog se ne plaća (poništava se isplata za njega),
+  // 'complaint_extra' = skida se i poslednji plaćeni nalog iste kategorije (workOrderId je taj nalog),
+  // 'complaint_extra_fallback' = nema drugog naloga iste kategorije, skida se iznos jednog takvog naloga
+  deductionKind: {
+    type: String,
+    enum: ['complaint_order', 'complaint_extra', 'complaint_extra_fallback', null],
+    default: null
+  },
+
+  // Reklamirani nalog zbog kog je nastao odbitak (kod 'complaint_extra' se razlikuje od workOrderId)
+  relatedWorkOrderId: {
+    type: Schema.Types.ObjectId,
+    ref: 'WorkOrder'
+  },
+  relatedTisJobId: {
+    type: String
+  },
+  relatedTisId: {
+    type: String
+  },
+
   // Tehničari koji su radili na radnom nalogu
   technicians: [{
     technicianId: {
@@ -26,10 +57,23 @@ const FinancialTransactionSchema = new Schema({
       type: String,
       required: true
     },
+    // Neto zarada za ovu stavku (posle umanjenja). Negativna je samo kod odbitka za reklamaciju.
     earnings: {
       type: Number,
-      required: true,
-      min: 0
+      required: true
+    },
+    // Zarada pre umanjenja zbog vraćanja naloga
+    grossEarnings: {
+      type: Number
+    },
+    // Umanjenje zbog vraćanja naloga na ispravku (procenat i iznos)
+    penaltyPercent: {
+      type: Number,
+      default: 0
+    },
+    penaltyAmount: {
+      type: Number,
+      default: 0
     },
     // Tip plaćanja tehničara
     paymentType: {
@@ -109,11 +153,20 @@ const FinancialTransactionSchema = new Schema({
     min: 0
   },
 
-  // Ukupne isplate tehničarima
+  // Ukupne isplate tehničarima (negativne kod odbitka za reklamaciju)
   totalTechnicianEarnings: {
     type: Number,
-    required: true,
-    min: 0
+    required: true
+  },
+
+  // Minus zbog vraćanja naloga u trenutku obračuna (0–100%) i broj vraćanja u tom ciklusu
+  rejectionPenaltyPercent: {
+    type: Number,
+    default: 0
+  },
+  rejectionCount: {
+    type: Number,
+    default: 0
   },
 
   // Profit kompanije
@@ -151,6 +204,7 @@ const FinancialTransactionSchema = new Schema({
 
 // Indeksi za optimizaciju
 FinancialTransactionSchema.index({ workOrderId: 1 });
+FinancialTransactionSchema.index({ workOrderId: 1, entryType: 1 });
 FinancialTransactionSchema.index({ 'technicians.technicianId': 1 });
 FinancialTransactionSchema.index({ municipality: 1 });
 FinancialTransactionSchema.index({ customerStatus: 1 });
