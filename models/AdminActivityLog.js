@@ -41,7 +41,7 @@ const AdminActivityLogSchema = new Schema({
       // WorkOrder actions
       'workorder_add', 'workorder_create', 'workorder_assign', 'workorder_edit', 'workorder_update',
       'workorder_delete', 'workorder_upload', 'workorder_bulk_add', 'workorder_return_incorrect',
-      'workorder_complaint',
+      'workorder_complaint', 'workorder_penalty_adjusted',
 
       // Finance actions
       'technician_statement_sent',

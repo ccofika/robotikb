@@ -168,6 +168,16 @@ const FinancialTransactionSchema = new Schema({
     type: Number,
     default: 0
   },
+  // Superadmin je naknadno promenio minus (npr. poništio umanjenje): minus u trenutku obračuna i ko je menjao
+  penaltyPercentOriginal: {
+    type: Number
+  },
+  penaltyAdjustedAt: {
+    type: Date
+  },
+  penaltyAdjustedByName: {
+    type: String
+  },
 
   // Profit kompanije
   companyProfit: {

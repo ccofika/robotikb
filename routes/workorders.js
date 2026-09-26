@@ -18,7 +18,7 @@ const { uploadImage, deleteImage, uploadVoiceRecording, deleteVoiceRecording } =
 const convert = require('heic-convert');
 const { parseBuffer } = require('music-metadata');
 const { logActivity } = require('../middleware/activityLogger');
-const { auth, isAdmin, isTechnicianOwner } = require('../middleware/auth');
+const { auth, isAdmin, isSuperAdmin, isTechnicianOwner } = require('../middleware/auth');
 const { looseTextRegex, digitsLooseVariants } = require('../utils/searchRegex');
 const {
   STANDARD_ENTRY_FILTER,
@@ -27,7 +27,9 @@ const {
   applyPenalty,
   buildComplaintPlan,
   createComplaintDeductionEntry,
-  processPendingComplaintFixes
+  processPendingComplaintFixes,
+  getPenaltyAdjustmentPreview,
+  adjustWorkOrderPenalty
 } = require('../services/workOrderFinanceService');
 
 // Keš izveštaja na stranici Finansije treba osvežiti posle svake nove finansijske stavke
@@ -3218,6 +3220,79 @@ router.put('/:id/return-incorrect', auth, isAdmin, logActivity('workorders', 'wo
   } catch (error) {
     console.error('Greška pri vraćanju radnog naloga:', error);
     res.status(500).json({ error: 'Greška pri vraćanju radnog naloga' });
+  }
+});
+
+// GET - Stanje za promenu minusa (superadmin): trenutni minus i isplata na koju se odnosi
+router.get('/:id/rejection-penalty', auth, isSuperAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const workOrder = await WorkOrder.findById(id).lean();
+    if (!workOrder) {
+      return res.status(404).json({ error: 'Radni nalog nije pronađen' });
+    }
+
+    res.json(await getPenaltyAdjustmentPreview(workOrder));
+  } catch (error) {
+    console.error('Greška pri učitavanju minusa naloga:', error);
+    res.status(500).json({ error: 'Greška pri učitavanju minusa naloga' });
+  }
+});
+
+// PUT - Superadmin poništava ili menja minus (i na verifikovanom nalogu; preračunava se i isplata)
+router.put('/:id/rejection-penalty', auth, isSuperAdmin, logActivity('workorders', 'workorder_penalty_adjusted', {
+  getEntityId: (req) => req.params.id,
+  getEntityName: (req, responseData) => responseData?.workOrder?.tisJobId || 'WorkOrder',
+  getDetails: async (req, responseData) => {
+    if (!responseData?.workOrder) {
+      return { action: 'updated', changes: ['Pokušaj promene minusa'], changeCount: 1, summary: 'Promena minusa' };
+    }
+    const changes = [`Minus: ${responseData.percentBefore}% → ${responseData.percentAfter}%`];
+    if (req.body?.reason) changes.push(`Razlog: ${req.body.reason}`);
+    changes.push(responseData.financeUpdated
+      ? 'Preračunata isplata tehničarima (finansije i mesečni obračun)'
+      : 'Nalog još nije plaćen — minus će se primeniti pri verifikaciji');
+    return {
+      action: 'updated',
+      changes,
+      changeCount: changes.length,
+      summary: `Minus promenjen sa ${responseData.percentBefore}% na ${responseData.percentAfter}%`
+    };
+  }
+}), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Neispravan ID format' });
+    }
+
+    const { status, error, result } = await adjustWorkOrderPenalty({
+      workOrderId: id,
+      percent: req.body?.percent,
+      reason: req.body?.reason,
+      user: req.user
+    });
+    if (error) {
+      return res.status(status).json({ error });
+    }
+
+    if (result.financeUpdated) {
+      invalidateFinanceCache();
+    }
+
+    res.json({
+      message: result.financeUpdated
+        ? 'Minus je promenjen i isplata je preračunata'
+        : 'Minus je promenjen — primeniće se pri verifikaciji',
+      ...result
+    });
+  } catch (error) {
+    console.error('Greška pri promeni minusa naloga:', error);
+    res.status(500).json({ error: 'Greška pri promeni minusa naloga' });
   }
 });
 
