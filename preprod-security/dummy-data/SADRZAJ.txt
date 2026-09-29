@@ -1,0 +1,12 @@
+Izvoz robotik_preprod_security, 2026-09-29T17:28:41.709Z
+    34  nfctags
+     4  notifications
+    12  securitydossiers
+     6  securityfacilities
+     6  securityobservations
+   516  securityscans
+     1  securitysettings
+   138  securityshifts
+     5  securitytasks
+    19  securityworkers
+     3  technicians

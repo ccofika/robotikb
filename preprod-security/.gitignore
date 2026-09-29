@@ -1,0 +1,8 @@
+# Lokalno stanje pre-prod okruženja: nikad na git
+env/backend.env
+data/
+logs/
+scripts/redizajn-provera/auth*.json
+scripts/redizajn-provera/snimci/
+scripts/redizajn-provera/shots/
+scripts/redizajn-provera/final/

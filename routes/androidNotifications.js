@@ -3,9 +3,29 @@ const router = express.Router();
 const AndroidNotification = require('../models/AndroidNotification');
 const Technician = require('../models/Technician');
 const { auth } = require('../middleware/auth');
+const SecurityWorker = require('../models/SecurityWorker');
+
+// Robotik Security: radnik obezbeđenja nema inbox tehničara, ali ima push token
+async function securityTokenRoute(req, res, register) {
+  const worker = await SecurityWorker.findById(req.user.id);
+  if (!worker) return res.status(403).json({ success: false, message: 'Nalog nije pronađen' });
+  if (register) {
+    const { pushToken } = req.body;
+    if (!pushToken) return res.status(400).json({ success: false, message: 'Push token je obavezan' });
+    // Isti telefon ne sme da prima alarme za dva radnika (službeni telefon koji se deli)
+    await SecurityWorker.updateMany({ pushToken, _id: { $ne: worker._id } }, { $set: { pushToken: null } });
+    worker.pushToken = pushToken;
+    worker.pushEnabled = true;
+  } else {
+    worker.pushToken = null;
+  }
+  await worker.save();
+  return res.json({ success: true, message: register ? 'Push token uspešno registrovan' : 'Push token uspešno odjavljen', pushToken: register ? worker.pushToken : undefined });
+}
 
 // GET /api/android-notifications - Sve notifikacije za trenutnog tehničara
 router.get('/', auth, async (req, res) => {
+  if (req.user.kind === 'security') return res.json({ success: true, notifications: [], totalCount: 0, unreadCount: 0 });
   try {
     // Proveri da li je korisnik tehničar
     const technician = await Technician.findById(req.user.id);
@@ -58,6 +78,7 @@ router.get('/', auth, async (req, res) => {
 
 // GET /api/android-notifications/unread-count - Broj nepročitanih notifikacija
 router.get('/unread-count', auth, async (req, res) => {
+  if (req.user.kind === 'security') return res.json({ success: true, unreadCount: 0 });
   try {
     // Proveri da li je korisnik tehničar
     const technician = await Technician.findById(req.user.id);
@@ -161,6 +182,7 @@ router.put('/mark-all-read', auth, async (req, res) => {
 // DELETE /api/android-notifications/unregister-token - Odjavi push notification token
 // MORA biti IZNAD /:id rute, inače Express matchuje "unregister-token" kao :id parametar
 router.delete('/unregister-token', auth, async (req, res) => {
+  if (req.user.kind === 'security') return securityTokenRoute(req, res, false).catch(() => res.status(500).json({ success: false }));
   try {
     const technician = await Technician.findById(req.user.id);
     if (!technician) {
@@ -239,6 +261,7 @@ router.post('/debug-register', auth, async (req, res) => {
 
 // POST /api/android-notifications/register-token - Registruj push notification token
 router.post('/register-token', auth, async (req, res) => {
+  if (req.user.kind === 'security') return securityTokenRoute(req, res, true).catch(() => res.status(500).json({ success: false }));
   try {
     console.log('=== REGISTER PUSH TOKEN REQUEST ===');
     console.log('User from auth:', {

@@ -259,6 +259,8 @@ app.use('/api/gps', gpsRoutes);
 app.use('/api/reviews', reviewsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/support-calls', supportCallsRoutes);
+// Robotik Security (objekti, smene, NFC, alarmi, izveštaji, satnica)
+app.use('/api/security', require('./routes/security'));
 
 // Error logging middleware - dodato za Backend Logs
 app.use(errorLogger);
@@ -282,6 +284,9 @@ app.listen(PORT, '0.0.0.0', () => {
 
   // Pokretanje AI Technician Analysis schedulera (svaki dan u 13:00)
   startAITechnicianAnalysisScheduler();
+
+  // Robotik Security: alarmi svakog minuta i dnevna provera ugovora/licenci
+  require('./services/security/scheduler').startSecurityScheduler();
 
   // Log performance stats every 10 minutes
   setInterval(() => {

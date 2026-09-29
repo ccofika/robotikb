@@ -19,7 +19,13 @@ const NotificationSchema = new mongoose.Schema({
       'technician_employment_expiry',  // Isticanje ugovora tehničara
       'low_review_rating',             // Loša ocena korisnika
       'customer_not_contacted',        // Tehničar nije pozvao korisnika pred termin
-      'duplicate_address'              // Novi (importovan) nalog na adresi ranije otkazanog naloga
+      'duplicate_address',             // Novi (importovan) nalog na adresi ranije otkazanog naloga
+      // Robotik Security
+      'security_alarm',                // MASTER ALARM, propušten obilazak, nema odjave
+      'security_contract_expiry',      // Ističe ugovor radnika obezbeđenja
+      'security_license_expiry',       // Ističe licenca radnika obezbeđenja
+      'security_unknown_tag',          // Radnik je očitao nepoznat NFC tag
+      'security_report'                // Izveštaj o primeni ovlašćenja
     ],
     required: true,
   },

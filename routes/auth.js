@@ -3,6 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { Technician } = require('../models');
+const SecurityWorker = require('../models/SecurityWorker');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -18,6 +19,17 @@ const foldName = (s) => (s || '')
   .normalize('NFD')
   .replace(/[̀-ͯ]/g, '')
   .replace(/đ/g, 'd');
+
+// Radnik obezbeđenja po imenu: tačno (bez obzira na velika slova), pa bez dijakritika ako je jedinstveno
+async function findSecurityWorker(name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const exact = await SecurityWorker.findOne({ name: { $regex: new RegExp(`^${escaped}$`, 'i') } });
+  if (exact) return exact;
+  const target = foldName(name);
+  const all = await SecurityWorker.find({}).select('name');
+  const matches = all.filter((w) => foldName(w.name) === target);
+  return matches.length === 1 ? SecurityWorker.findById(matches[0]._id) : null;
+}
 
 // POST - Login za tehničara
 router.post('/login', async (req, res) => {
@@ -45,15 +57,28 @@ router.post('/login', async (req, res) => {
       }
     }
 
-    if (!technician) {
-      console.log('Technician not found');
-      return res.status(401).json({ error: 'Neispravno korisničko ime ili lozinka' });
-    }
+    const validPassword = technician ? await bcrypt.compare(password, technician.password) : false;
 
-    // Provera lozinke
-    const validPassword = await bcrypt.compare(password, technician.password);
     if (!validPassword) {
-      console.log('Invalid password');
+      // Robotik Security: radnik obezbeđenja ili koordinator (posebna kolekcija)
+      const worker = await findSecurityWorker(name);
+      if (worker && await bcrypt.compare(password, worker.password)) {
+        if (!worker.isActive) {
+          return res.status(403).json({ error: 'Nalog je deaktiviran. Javi se administratoru.' });
+        }
+        const token = jwt.sign(
+          { id: worker._id, name: worker.name, role: worker.role, kind: 'security' },
+          JWT_SECRET,
+          { expiresIn: '24h' }
+        );
+        console.log(`Login successful for ${worker.name} with role: ${worker.role} (security)`);
+        return res.json({
+          message: 'Uspešno prijavljivanje',
+          user: { ...worker.toSafe(), role: worker.role, kind: 'security' },
+          token
+        });
+      }
+      console.log(technician ? 'Invalid password' : 'Technician not found');
       return res.status(401).json({ error: 'Neispravno korisničko ime ili lozinka' });
     }
 
@@ -127,8 +152,21 @@ router.post('/refresh-token', async (req, res) => {
     let newToken;
     let userData;
 
+    // Robotik Security refresh (radnik obezbeđenja / koordinator)
+    if (decoded.kind === 'security' || decoded.role === 'guard' || decoded.role === 'coordinator') {
+      const worker = await SecurityWorker.findById(decoded.id);
+      if (!worker || !worker.isActive) {
+        return res.status(401).json({ error: 'Nalog nije aktivan' });
+      }
+      newToken = jwt.sign(
+        { id: worker._id, name: worker.name, role: worker.role, kind: 'security' },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+      userData = { ...worker.toSafe(), role: worker.role, kind: 'security' };
+    }
     // SuperAdmin refresh
-    if (decoded.role === 'superadmin') {
+    else if (decoded.role === 'superadmin') {
       const superadmin = await Technician.findById(decoded._id);
       if (!superadmin || superadmin.role !== 'superadmin') {
         return res.status(401).json({ error: 'SuperAdmin nije pronađen' });

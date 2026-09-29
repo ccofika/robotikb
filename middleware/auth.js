@@ -1,5 +1,11 @@
 const jwt = require('jsonwebtoken');
 const { Technician } = require('../models');
+const SecurityWorker = require('../models/SecurityWorker');
+
+// Radnici obezbeđenja i koordinatori smeju samo na Security rute (i na obaveštenja/push),
+// nikad na podatke Montaže (nalozi, oprema, tehničari, finansije)
+const SECURITY_ROLES = ['guard', 'coordinator'];
+const SECURITY_ALLOWED_PREFIXES = ['/api/security', '/api/auth', '/api/android-notifications', '/api/notifications', '/api/push'];
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -38,6 +44,29 @@ const auth = async (req, res, next) => {
       }
     }
     
+    // Robotik Security: radnik obezbeđenja ili koordinator objekta (posebna kolekcija)
+    if (decoded.kind === 'security' || SECURITY_ROLES.includes(decoded.role)) {
+      const worker = await SecurityWorker.findById(decoded.id).select('_id name role isActive');
+      if (!worker) {
+        return res.status(401).json({ error: 'Pristup odbijen. Nalog nije pronađen.' });
+      }
+      if (!worker.isActive) {
+        return res.status(401).json({ error: 'Nalog je deaktiviran. Javi se administratoru.' });
+      }
+      const url = req.originalUrl || '';
+      if (!SECURITY_ALLOWED_PREFIXES.some((p) => url.startsWith(p))) {
+        return res.status(403).json({ error: 'Nemate dozvolu za pristup ovom resursu.' });
+      }
+      req.user = {
+        _id: worker._id.toString(),
+        id: worker._id.toString(),
+        name: worker.name,
+        role: worker.role,
+        kind: 'security'
+      };
+      return next();
+    }
+
     // Ako je admin, superadmin ili supervisor, propusti dalje
     if (decoded.role === 'admin' || decoded.role === 'superadmin' || decoded.role === 'supervisor') {
       req.user = {

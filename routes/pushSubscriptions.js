@@ -13,7 +13,10 @@ router.get('/vapid-public-key', auth, (req, res) => {
 });
 
 // Registruj/osveži pretplatu browsera za ulogovanog admina
-router.post('/subscribe', auth, isAdmin, async (req, res) => {
+// Koordinator objekta (Robotik Security) takođe dobija web push za MASTER ALARM
+const isAdminOrCoordinator = (req, res, next) => (req.user && req.user.role === 'coordinator' ? next() : isAdmin(req, res, next));
+
+router.post('/subscribe', auth, isAdminOrCoordinator, async (req, res) => {
   try {
     const { subscription } = req.body;
     if (!subscription || !subscription.endpoint || !subscription.keys) {
