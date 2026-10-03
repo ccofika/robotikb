@@ -1,0 +1,20 @@
+# Bez interneta, korak 2 (backend nedostupan): očitavanje se čuva na telefonu sa tačnim vremenom
+# Promenljive: SIM_INDEX. Aplikacija se NE otvara ponovo (bez veze ne bi učitala smenu).
+appId: com.robotik.mobile
+---
+- runFlow:
+    file: sim-scan.yaml
+    env:
+      SIM_INDEX: ${SIM_INDEX}
+- assertVisible:
+    id: "scan-result-title"
+    text: "Sačuvano bez interneta"
+- takeScreenshot: g11-sacuvano-bez-interneta
+- runFlow: close-result.yaml
+- extendedWaitUntil:
+    visible:
+      id: "queue-banner"
+    timeout: 15000
+- assertVisible: "1 očitavanje čeka slanje"
+- assertVisible: "bez interneta"
+- takeScreenshot: g11-ceka-slanje

@@ -1,0 +1,112 @@
+# Upis u dnevnik: zapažanje, primena ovlašćenja (izbor ovlašćenja, lice, opis) i primopredaja opreme sa kvarom
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- scrollUntilVisible:
+    element:
+      id: "act-observation"
+- tapOn:
+    id: "act-observation"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "note-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: "note-text"
+    retryTapIfNoChange: false
+- inputText: "Otvoren prozor na drugom spratu, zatvoren"
+- hideKeyboard
+- tapOn:
+    id: "note-save"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "guard-toast-title"
+      text: "Zapažanje je upisano"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: "act-authority"
+- tapOn:
+    id: "act-authority"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "note-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: "power-Provera identiteta"
+    retryTapIfNoChange: false
+- tapOn:
+    id: "note-subject"
+    retryTapIfNoChange: false
+- inputText: "Nepoznato lice na ulazu"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "note-text"
+- tapOn:
+    id: "note-text"
+    retryTapIfNoChange: false
+- inputText: "Provera licne karte, lice udaljeno sa objekta"
+- hideKeyboard
+- takeScreenshot: g07-ovlascenje
+- tapOn:
+    id: "note-save"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "guard-toast-title"
+      text: "Izveštaj o primeni ovlašćenja je poslat"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: "notes-section"
+- assertVisible: ".*Otvoren prozor na drugom spratu.*"
+- assertVisible: ".*Provera identiteta: Provera licne karte.*"
+- scrollUntilVisible:
+    element:
+      id: "act-handover"
+    direction: UP
+- tapOn:
+    id: "act-handover"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "handover-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: "item-Ključevi"
+    retryTapIfNoChange: false
+- tapOn:
+    id: "item-Radio stanica"
+    retryTapIfNoChange: false
+- tapOn:
+    id: "cond-damaged"
+    retryTapIfNoChange: false
+- scrollUntilVisible:
+    element:
+      id: "handover-note"
+- tapOn:
+    id: "handover-note"
+    retryTapIfNoChange: false
+- inputText: "Lampa ne radi"
+- hideKeyboard
+- takeScreenshot: g07-primopredaja
+- tapOn:
+    id: "handover-save"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "guard-toast-title"
+      text: "Primopredaja je upisana"
+    timeout: 15000
+- extendedWaitUntil:
+    visible: "Oprema upisana u .*"
+    timeout: 15000
+- assertNotVisible:
+    id: "handover-banner"

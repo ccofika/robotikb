@@ -1,0 +1,9 @@
+# Brza provera da Maestro vidi testID-jeve aplikacije (bez izmena stanja)
+appId: com.robotik.mobile
+---
+- assertVisible:
+    id: "guard-shift-screen"
+- assertVisible:
+    id: "status-card"
+- assertVisible:
+    id: "status-title"

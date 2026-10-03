@@ -1,0 +1,28 @@
+# Radnik obezbeđenja se prijavljuje u Android aplikaciju (čisto stanje aplikacije, sve dozvole odobrene)
+# Promenljive: GUARD_NAME, GUARD_PASSWORD
+appId: com.robotik.mobile
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- extendedWaitUntil:
+    visible: "Unesite korisničko ime"
+    timeout: 180000
+- tapOn:
+    text: "Unesite korisničko ime"
+    retryTapIfNoChange: false
+- inputText: ${GUARD_NAME}
+- tapOn:
+    text: "Unesite lozinku"
+    retryTapIfNoChange: false
+- inputText: ${GUARD_PASSWORD}
+- hideKeyboard
+- tapOn:
+    text: "Prijavi se"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "status-card"
+    timeout: 90000
+- runFlow: dismiss-dev-warnings.yaml

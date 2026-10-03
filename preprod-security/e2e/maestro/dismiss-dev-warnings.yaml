@@ -1,0 +1,13 @@
+# Zatvara React Native dev obaveštenje "Open debugger to view warnings." (postoji samo u debug buildu).
+# Obaveštenje stoji pri dnu ekrana i prekriva dugmad, pa se zatvara na "x" desno.
+appId: com.robotik.mobile
+---
+- runFlow:
+    when:
+      visible: "Open debugger to view warnings."
+    commands:
+      - tapOn:
+          point: "92%,92%"
+      - extendedWaitUntil:
+          notVisible: "Open debugger to view warnings."
+          timeout: 5000

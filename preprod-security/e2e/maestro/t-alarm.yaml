@@ -1,0 +1,24 @@
+# Kroz vreme: posle skoka sata aplikacija pri otvaranju prikaže alarm preko celog ekrana
+# Promenljive: TITLE (regex), ACTION (hide = sakrij, stay = ostavi otvoren), SHOT
+appId: com.robotik.mobile
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "alarm-overlay"
+    timeout: 120000
+- assertVisible:
+    id: "alarm-title"
+    text: ${TITLE}
+- takeScreenshot: ${SHOT}
+- runFlow:
+    when:
+      true: ${ACTION == 'hide'}
+    commands:
+      - tapOn:
+          id: "alarm-hide"
+          retryTapIfNoChange: false
+      - extendedWaitUntil:
+          notVisible:
+            id: "alarm-overlay"
+          timeout: 10000

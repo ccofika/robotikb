@@ -31,6 +31,8 @@ if (fs.existsSync(path.join(BACKEND_DIR, '.env'))) {
 }
 
 for (const [k, v] of Object.entries(preprod)) process.env[k] = v;
+// Virtuelni sat za E2E "smena kroz vreme" (samo uz SECURITY_TEST_HOOKS=1): mora pre učitavanja backenda
+if (process.env.SECURITY_TEST_HOOKS === '1') require('./test-clock').install();
 process.chdir(BACKEND_DIR);
 console.log(`[preprod-security] robotikb (worktree) -> ${uri} | port ${process.env.PORT}`);
 require(path.join(BACKEND_DIR, 'server.js'));

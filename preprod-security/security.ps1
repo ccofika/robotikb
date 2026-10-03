@@ -15,8 +15,11 @@
     env      napravi env\backend.env iz env\backend.env.example (lokalni ključevi, bez produkcionih vrednosti)
     export   izvezi Security pre-prod bazu u dummy-data\ (EJSON, jedna datoteka po kolekciji)
     import   obriši Security pre-prod bazu i uvezi dummy-data\ (baza mora da radi: posle "start web")
-    build    Android debug APK iz worktree-a i instalacija na emulator-5556
-    test     E2E testovi (Playwright + Maestro); "test web" ili "test cross" za jedan deo
+    build    Android debug APK iz worktree-a i instalacija na emulator-5556 (ili telefon iz SECURITY_DEVICE)
+    test     NFC unit testovi (Jest) + E2E (Maestro na emulatoru preko Playwright-a, web); "test unit", "test android" ili "test web" za jedan deo
+
+  Pravi telefon sa NFC-om umesto emulatora (USB debugging): $env:SECURITY_DEVICE = '<serijski broj iz adb devices>'
+  pa "build" (arm64 APK na telefon) i "start" (adb reverse na telefon, emulator se ne pali).
 #>
 param(
   [Parameter(Position = 0)] [string] $Command = 'status',
@@ -65,6 +68,9 @@ function Find-OurSerial {
 }
 $found = Find-OurSerial
 if ($found) { $Serial = $found }
+# Pravi telefon sa NFC-om (adb devices) umesto emulatora
+$Phone = [bool]$env:SECURITY_DEVICE
+if ($Phone) { $Serial = $env:SECURITY_DEVICE }
 # Uvek samo naš emulator
 function Adb {
   $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
@@ -131,7 +137,8 @@ function Set-AdbReverse {
   foreach ($p in 8082, 5300, 3300) { Adb reverse "tcp:$p" "tcp:$p" | Out-Null }
   Write-Host "  adb reverse ($Serial): 8082 Metro, 5300 backend, 3300 web"
   Adb shell settings put secure stylus_handwriting_enabled 0 | Out-Null
-  foreach ($s in 'window_animation_scale', 'transition_animation_scale', 'animator_duration_scale') { Adb shell settings put global $s 0 | Out-Null }
+  # Animacije uključene za pregled; E2E ih isključuje sam (e2e\global-setup.js) i vraća posle testova
+  if (-not $Phone) { foreach ($s in 'window_animation_scale', 'transition_animation_scale', 'animator_duration_scale') { Adb shell settings put global $s 1 | Out-Null } }
 }
 
 switch ($Command) {
@@ -142,7 +149,7 @@ switch ($Command) {
     Start-Bg 'backend' 'node' @("`"$Pre\scripts\start-backend.js`"") $Root
     Start-Bg 'web' 'cmd.exe' @('/c', 'npm', 'start') (Join-Path $Wt 'robotikf') @{ PORT = '3300'; BROWSER = 'none'; REACT_APP_API_URL = 'http://localhost:5300' }
     if ($Arg -ne 'web') {
-      Start-Emulator
+      if ($Phone) { Write-Host "  telefon $Serial (SECURITY_DEVICE), emulator se ne pali" } else { Start-Emulator }
       Set-AdbReverse
       Start-Bg 'metro' 'cmd.exe' @('/c', 'npx', 'expo', 'start', '--port', '8082') (Join-Path $Wt 'robotikm') @{ EXPO_PUBLIC_API_URL = 'http://localhost:5300'; EXPO_PUBLIC_NFC_SIMULATION = '1' }
     }
@@ -171,7 +178,8 @@ switch ($Command) {
       if ($cmdLine -match $Owners[$name]) { & taskkill /T /F /PID $conn.OwningProcess | Out-Null; Write-Host "  ugašen $name (port $($Services[$name].Port))" }
       else { Write-Host "  port $($Services[$name].Port) drži tuđi proces ($($conn.OwningProcess)), ne diram ga" -ForegroundColor Yellow }
     }
-    if (Find-OurSerial) { Adb emu kill | Out-Null; Write-Host "  ugašen emulator robotik_sec ($Serial)" }
+    $emuSerial = Find-OurSerial
+    if ($emuSerial) { AdbAny -s $emuSerial emu kill | Out-Null; Write-Host "  ugašen emulator robotik_sec ($emuSerial)" }
     Remove-Item $PidFile -ErrorAction SilentlyContinue
   }
   'status' {
@@ -201,18 +209,29 @@ switch ($Command) {
       $env:EXPO_PUBLIC_API_URL = 'http://localhost:5300'
       $env:EXPO_PUBLIC_NFC_SIMULATION = '1'
       # Port 8082 je upisan u aplikaciju: emulator tada učitava JS sa našeg Metro-a (10.0.2.2:8082), ne sa tuđeg na 8081
-      & .\gradlew.bat app:assembleDebug '-PreactNativeArchitectures=x86_64' '-PreactNativeDevServerPort=8082'
+      # Emulator je x86_64, pravi telefon arm64
+      $arch = if ($Phone) { 'arm64-v8a' } else { 'x86_64' }
+      & .\gradlew.bat app:assembleDebug "-PreactNativeArchitectures=$arch" '-PreactNativeDevServerPort=8082'
       if ($LASTEXITCODE -ne 0) { throw 'Gradle build nije prošao' }
       Adb install -r 'app\build\outputs\apk\debug\app-debug.apk'
       Set-AdbReverse
     } finally { Pop-Location }
   }
   'test' {
-    Push-Location (Join-Path $Pre 'e2e')
-    try {
-      $env:ANDROID_SERIAL = $Serial
-      if ($Arg) { & npx playwright test "--project=$Arg" } else { & npx playwright test }
-    } finally { Pop-Location }
+    $env:ANDROID_SERIAL = $Serial
+    # NFC sloj bez telefona i taga (lažna NFC biblioteka)
+    if (-not $Arg -or $Arg -eq 'unit') {
+      Push-Location (Join-Path $Wt 'robotikm')
+      try { & npx jest src/security } finally { Pop-Location }
+    }
+    # Android (Maestro na emulatoru, poziva ga Playwright) i web
+    if ($Arg -ne 'unit') {
+      Push-Location (Join-Path $Pre 'e2e')
+      try {
+        if (-not (Test-Path 'node_modules')) { & npm install --no-audit --no-fund }
+        if ($Arg) { & npx playwright test "--project=$Arg" } else { & npx playwright test }
+      } finally { Pop-Location }
+    }
   }
   default { Write-Host "Nepoznata komanda: $Command (start | stop | status | seed | build | test)" }
 }

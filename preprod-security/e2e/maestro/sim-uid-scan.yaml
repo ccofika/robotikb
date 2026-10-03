@@ -1,0 +1,31 @@
+# Simulirano očitavanje upisanog broja taga (kao kartica koju aplikacija još ne zna)
+# Promenljive: TAG_UID, RESULT (očekivani naslov rezultata)
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- tapOn:
+    id: "sim-open"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "sim-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "sim-uid"
+- tapOn:
+    id: "sim-uid"
+    retryTapIfNoChange: false
+- inputText: ${TAG_UID}
+- hideKeyboard
+- tapOn:
+    id: "sim-uid-go"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "scan-result-title"
+      text: ${RESULT}
+    timeout: 30000
+- takeScreenshot: rezultat
+- runFlow: close-result.yaml

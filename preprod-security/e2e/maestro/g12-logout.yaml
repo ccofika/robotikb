@@ -1,0 +1,26 @@
+# Odjava iz aplikacije sa profila (uz potvrdu)
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- tapOn:
+    id: "tab-profil"
+    retryTapIfNoChange: false
+- scrollUntilVisible:
+    element:
+      id: "guard-logout"
+- tapOn:
+    id: "guard-logout"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "logout-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- assertVisible: "Odjaviti se?"
+- takeScreenshot: g12-odjava
+- tapOn:
+    id: "logout-confirm"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "Unesite korisničko ime"
+    timeout: 30000

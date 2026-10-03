@@ -1,0 +1,43 @@
+# Kašnjenje: smena je počela pre 20 min, upaljen je alarm "Kasniš na smenu"; radnik se prijavljuje sa ekrana alarma
+appId: com.robotik.mobile
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "alarm-overlay"
+    timeout: 120000
+- assertVisible:
+    id: "alarm-title"
+    text: "Kasniš na smenu"
+- assertVisible: "Prisloni telefon na tag radnog mesta"
+- takeScreenshot: g03-alarm-kasnjenje
+- tapOn:
+    id: "alarm-sim"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "sim-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: "sim-tag-0"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "scan-result-title"
+      text: "Prijavljen na smenu"
+    timeout: 30000
+- assertVisible:
+    id: "scan-result-msg"
+    text: "Prijavljen u .*, kašnjenje .* min"
+- takeScreenshot: g03-prijava-sa-kasnjenjem
+- runFlow: close-result.yaml
+- extendedWaitUntil:
+    notVisible:
+      id: "alarm-overlay"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: "status-pill"
+      text: "u smeni"
+    timeout: 30000

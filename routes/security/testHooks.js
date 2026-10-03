@@ -33,6 +33,16 @@ router.post('/shift-times', ah(async (req, res) => {
   res.json(sh);
 }));
 
+// Virtuelni sat procesa (uključuje ga samo preprod-security/scripts/start-backend.js): { at } ili { reset: true }
+const testClock = () => global.__securityTestClock || null;
+router.get('/clock', (req, res) => res.json(testClock() ? testClock().state() : { installed: false }));
+router.post('/clock', ah(async (req, res) => {
+  const c = testClock();
+  if (!c) throw httpError(501, 'Virtuelni sat nije uključen (backend nije pokrenut preko preprod-security).');
+  if (req.body.reset) return res.json(c.reset());
+  try { return res.json(c.set(req.body.at)); } catch (e) { throw httpError(400, e.message); }
+}));
+
 // Pomeri planirano vreme jedne tačke obilaska (offsetMin od sada)
 router.post('/round-due', ah(async (req, res) => {
   requireId(req.body.shiftId, 'smena');

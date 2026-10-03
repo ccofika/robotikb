@@ -1,0 +1,20 @@
+# Bez interneta, korak 3 (veza vraćena): dodir na traku šalje sačuvano očitavanje
+appId: com.robotik.mobile
+---
+- tapOn:
+    id: "queue-banner"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    notVisible:
+      id: "queue-banner"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "povezano"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "rounds-section"
+- extendedWaitUntil:
+    visible: "očitano u .*"
+    timeout: 20000
+- takeScreenshot: g11-poslato

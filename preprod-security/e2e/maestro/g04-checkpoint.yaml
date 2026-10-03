@@ -1,0 +1,47 @@
+# Obilazak: očitavanje prve tačke plana, pa ponovni dodir istog taga (server vraća "Već očitano")
+# Promenljive: SIM_INDEX (red taga prve tačke u listi simulatora)
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- extendedWaitUntil:
+    visible:
+      id: "status-pill"
+      text: "u smeni"
+    timeout: 20000
+- assertVisible:
+    id: "status-hint"
+    text: "Sledeći checkpoint: .*"
+- scrollUntilVisible:
+    element:
+      id: "rounds-section"
+- assertVisible: "sledeća, za .*"
+- takeScreenshot: g04-obilazak-pre
+- scrollUntilVisible:
+    element:
+      id: "sim-open"
+    direction: UP
+- runFlow:
+    file: sim-scan.yaml
+    env:
+      SIM_INDEX: ${SIM_INDEX}
+- assertVisible:
+    id: "scan-result-title"
+    text: "Checkpoint očitan"
+- takeScreenshot: g04-checkpoint-ocitan
+- runFlow: close-result.yaml
+- runFlow:
+    file: sim-scan.yaml
+    env:
+      SIM_INDEX: ${SIM_INDEX}
+- assertVisible:
+    id: "scan-result-title"
+    text: "Već očitano"
+- takeScreenshot: g04-vec-ocitano
+- runFlow: close-result.yaml
+- scrollUntilVisible:
+    element:
+      id: "rounds-section"
+- extendedWaitUntil:
+    visible: "očitano u .*"
+    timeout: 20000
+- takeScreenshot: g04-obilazak-posle

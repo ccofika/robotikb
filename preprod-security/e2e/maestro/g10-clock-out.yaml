@@ -1,0 +1,22 @@
+# Odjava na kraju smene (manje od 30 min do kraja): bez pitanja za ranu odjavu
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- assertVisible:
+    id: "status-title"
+    text: "U smeni si od .*"
+- runFlow:
+    file: sim-scan.yaml
+    env:
+      SIM_INDEX: "0"
+- assertVisible:
+    id: "scan-result-title"
+    text: "Odjavljen sa smene"
+- assertNotVisible:
+    id: "confirm-early"
+- runFlow: close-result.yaml
+- extendedWaitUntil:
+    visible:
+      id: "status-pill"
+      text: "završena"
+    timeout: 20000

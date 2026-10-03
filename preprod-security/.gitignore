@@ -6,3 +6,10 @@ scripts/redizajn-provera/auth*.json
 scripts/redizajn-provera/snimci/
 scripts/redizajn-provera/shots/
 scripts/redizajn-provera/final/
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+e2e/*.log
+# robotikb/.gitignore ignoriše *.json; paketi E2E testova idu na git
+!e2e/package.json
+!e2e/package-lock.json

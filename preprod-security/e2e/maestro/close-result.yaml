@@ -1,0 +1,15 @@
+# Zatvara rezultat očitavanja ako je još otvoren (uspešno očitavanje se samo zatvara posle 3,5 s)
+appId: com.robotik.mobile
+---
+- runFlow:
+    when:
+      visible:
+        id: "scan-result-ok"
+    commands:
+      - tapOn:
+          id: "scan-result-ok"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    notVisible:
+      id: "scan-result"
+    timeout: 10000

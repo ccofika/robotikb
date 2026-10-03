@@ -1,0 +1,26 @@
+# Kroz vreme: kartica smene posle skoka sata (aplikacija se ponovo otvori i učita stanje)
+# Promenljive: PILL, TITLE, HINT (regex; za bilo šta ".*"), SHOT
+appId: com.robotik.mobile
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "status-card"
+    timeout: 120000
+- runFlow: hide-alarm.yaml
+- extendedWaitUntil:
+    visible:
+      id: "status-pill"
+      text: ${PILL}
+    timeout: 20000
+- assertVisible:
+    id: "status-title"
+    text: ${TITLE}
+- runFlow:
+    when:
+      true: ${HINT != '.*'}
+    commands:
+      - assertVisible:
+          id: "status-hint"
+          text: ${HINT}
+- takeScreenshot: ${SHOT}

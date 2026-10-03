@@ -1,0 +1,55 @@
+# Nepoznat tag (nasumičan broj) i ručno upisan broj taga u simulatoru
+# Promenljive: TAG_UID (broj taga druge tačke plana, npr. 04:5E:00:05:A1:3C:80)
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- tapOn:
+    id: "sim-open"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "sim-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "sim-unknown"
+- tapOn:
+    id: "sim-unknown"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "scan-result-title"
+      text: "Nepoznat tag"
+    timeout: 30000
+- assertVisible:
+    id: "scan-result-msg"
+    text: "Tag nije registrovan.*"
+- takeScreenshot: g05-nepoznat-tag
+- runFlow: close-result.yaml
+- tapOn:
+    id: "sim-open"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "sim-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element:
+      id: "sim-uid"
+- tapOn:
+    id: "sim-uid"
+    retryTapIfNoChange: false
+- inputText: ${TAG_UID}
+- hideKeyboard
+- tapOn:
+    id: "sim-uid-go"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "scan-result-title"
+      text: "Checkpoint očitan"
+    timeout: 30000
+- takeScreenshot: g05-rucno-upisan-tag
+- runFlow: close-result.yaml

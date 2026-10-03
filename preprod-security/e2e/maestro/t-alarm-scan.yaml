@@ -1,0 +1,30 @@
+# Kroz vreme: alarm preko celog ekrana, pa očitavanje taga sa ekrana alarma
+# Promenljive: TITLE, SIM_INDEX, RESULT, MSG (regex), SHOT
+appId: com.robotik.mobile
+---
+- runFlow:
+    file: t-alarm.yaml
+    env:
+      TITLE: ${TITLE}
+      ACTION: "stay"
+      SHOT: ${SHOT}
+- tapOn:
+    id: "alarm-sim"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "sim-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: "sim-tag-${SIM_INDEX}"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "scan-result-title"
+      text: ${RESULT}
+    timeout: 30000
+- assertVisible:
+    id: "scan-result-msg"
+    text: ${MSG}
+- runFlow: close-result.yaml

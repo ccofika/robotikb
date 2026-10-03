@@ -1,0 +1,38 @@
+# Prijava na smenu: smena počinje uskoro (prijava otvorena), radnik očita tag radnog mesta
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- extendedWaitUntil:
+    visible:
+      id: "status-pill"
+      text: "prijava otvorena"
+    timeout: 20000
+- assertVisible:
+    id: "status-title"
+    text: "Smena počinje za .*"
+- assertVisible:
+    id: "status-hint"
+    text: "Prisloni telefon na tag radnog mesta"
+- takeScreenshot: g02-pre-prijave
+- runFlow:
+    file: sim-scan.yaml
+    env:
+      SIM_INDEX: "0"
+- assertVisible:
+    id: "scan-result-title"
+    text: "Prijavljen na smenu"
+- assertVisible:
+    id: "scan-result-msg"
+    text: "Prijavljen na smenu u .*"
+- takeScreenshot: g02-prijavljen
+- runFlow: close-result.yaml
+- extendedWaitUntil:
+    visible:
+      id: "status-pill"
+      text: "u smeni"
+    timeout: 20000
+- assertVisible:
+    id: "status-title"
+    text: "U smeni si od .*"
+- assertVisible:
+    id: "handover-banner"

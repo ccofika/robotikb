@@ -1,0 +1,22 @@
+# Kroz vreme: simulirano očitavanje taga i očekivan rezultat
+# Promenljive: SIM_INDEX, RESULT, MSG (regex), SHOT
+appId: com.robotik.mobile
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "status-card"
+    timeout: 120000
+- runFlow: hide-alarm.yaml
+- runFlow:
+    file: sim-scan.yaml
+    env:
+      SIM_INDEX: ${SIM_INDEX}
+- assertVisible:
+    id: "scan-result-title"
+    text: ${RESULT}
+- assertVisible:
+    id: "scan-result-msg"
+    text: ${MSG}
+- takeScreenshot: ${SHOT}
+- runFlow: close-result.yaml

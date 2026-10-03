@@ -1,0 +1,14 @@
+{
+  "name": "robotik-security-e2e",
+  "private": true,
+  "description": "E2E testovi za Security pre-prod: Android aplikacija radnika (Maestro na emulatoru robotik_sec) + web (Playwright)",
+  "scripts": {
+    "test": "playwright test",
+    "test:android": "playwright test --project=android",
+    "test:web": "playwright test --project=web",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

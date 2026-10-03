@@ -1,0 +1,15 @@
+# Sakrij alarm preko celog ekrana ako je otvoren (aplikacija pri otvaranju prikaže nov alarm)
+appId: com.robotik.mobile
+---
+- runFlow:
+    when:
+      visible:
+        id: "alarm-overlay"
+    commands:
+      - tapOn:
+          id: "alarm-hide"
+          retryTapIfNoChange: false
+      - extendedWaitUntil:
+          notVisible:
+            id: "alarm-overlay"
+          timeout: 10000

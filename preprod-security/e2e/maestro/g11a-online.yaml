@@ -1,0 +1,9 @@
+# Bez interneta, korak 1: aplikacija je otvorena i učitala smenu dok veza radi
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- extendedWaitUntil:
+    visible:
+      id: "status-pill"
+      text: "u smeni"
+    timeout: 20000

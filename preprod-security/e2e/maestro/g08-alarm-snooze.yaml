@@ -1,0 +1,60 @@
+# Alarm za checkpoint: prikaz preko celog ekrana, odlaganje uz razlog, pa očitavanje kasne tačke
+# Promenljive: SIM_INDEX (red taga tačke koja kasni u listi simulatora)
+appId: com.robotik.mobile
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "alarm-overlay"
+    timeout: 120000
+- assertVisible:
+    id: "alarm-title"
+    text: "Checkpoint nije očitan"
+- takeScreenshot: g08-alarm
+- tapOn:
+    id: "alarm-snooze"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "snooze-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: "reason-Intervencija u toku"
+    retryTapIfNoChange: false
+- tapOn:
+    id: "snooze-reason"
+    retryTapIfNoChange: false
+- inputText: "stizem za 5 minuta"
+- hideKeyboard
+- takeScreenshot: g08-odlaganje
+- tapOn:
+    id: "snooze-save"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    notVisible:
+      id: "alarm-overlay"
+    timeout: 20000
+- extendedWaitUntil:
+    visible:
+      id: "alarm-banner"
+    timeout: 20000
+- takeScreenshot: g08-posle-odlaganja
+- scrollUntilVisible:
+    element: "odloženo do .*"
+- scrollUntilVisible:
+    element:
+      id: "sim-open"
+    direction: UP
+- runFlow:
+    file: sim-scan.yaml
+    env:
+      SIM_INDEX: ${SIM_INDEX}
+- assertVisible:
+    id: "scan-result-title"
+    text: "Checkpoint očitan"
+- runFlow: close-result.yaml
+- extendedWaitUntil:
+    notVisible:
+      id: "alarm-banner"
+    timeout: 30000

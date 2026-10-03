@@ -1,0 +1,20 @@
+# Kroz vreme: dva različita checkpointa jedan za drugim (manje od 15 s), za oznaku "brz obilazak"
+# Promenljive: SIM_A, SIM_B
+appId: com.robotik.mobile
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "status-card"
+    timeout: 120000
+- runFlow: hide-alarm.yaml
+- runFlow:
+    file: sim-scan.yaml
+    env:
+      SIM_INDEX: ${SIM_A}
+- runFlow: close-result.yaml
+- runFlow:
+    file: sim-scan.yaml
+    env:
+      SIM_INDEX: ${SIM_B}
+- runFlow: close-result.yaml

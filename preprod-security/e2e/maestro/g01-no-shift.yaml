@@ -1,0 +1,41 @@
+# Bez smene: kartica kaže da nema smene; raspored i profil se otvaraju; NFC je u test modu
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- extendedWaitUntil:
+    visible:
+      id: "status-title"
+      text: "Nemaš smenu sada"
+    timeout: 20000
+- takeScreenshot: g01-bez-smene
+- tapOn:
+    id: "tab-raspored"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "guard-schedule"
+    timeout: 20000
+- assertVisible: "Raspored"
+- assertVisible: "Nema zakazanih smena"
+- tapOn:
+    id: "sched-past"
+    retryTapIfNoChange: false
+- assertVisible: "Nema prethodnih smena"
+- tapOn:
+    id: "sched-upcoming"
+    retryTapIfNoChange: false
+- tapOn:
+    id: "tab-profil"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "E2E Cuvar"
+    timeout: 10000
+- assertVisible:
+    id: "profile-nfc"
+- assertVisible: "Simulacija (emulator ili test build)"
+- takeScreenshot: g01-profil
+- tapOn:
+    id: "tab-smena"
+    retryTapIfNoChange: false
+- assertVisible:
+    id: "status-card"

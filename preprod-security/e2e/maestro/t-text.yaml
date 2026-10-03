@@ -1,0 +1,14 @@
+# Kroz vreme: tekst na ekranu smene (npr. stanje tačke obilaska), uz pomeranje do njega
+# Promenljive: TEXT (regex), SHOT
+appId: com.robotik.mobile
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "status-card"
+    timeout: 120000
+- runFlow: hide-alarm.yaml
+- scrollUntilVisible:
+    element: ${TEXT}
+    timeout: 20000
+- takeScreenshot: ${SHOT}

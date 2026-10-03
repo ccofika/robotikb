@@ -1,0 +1,84 @@
+# Snimci ekrana za pregled izgleda (aktivna smena): smena, listovi za unos, raspored, profil.
+# Ne menja stanje na serveru (svaki list se zatvara bez čuvanja).
+appId: com.robotik.mobile
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "status-card"
+    timeout: 90000
+- runFlow: dismiss-dev-warnings.yaml
+- waitForAnimationToEnd
+- takeScreenshot: a1-smena
+- scroll
+- takeScreenshot: a2-smena
+- scroll
+- takeScreenshot: a3-smena
+- scroll
+- takeScreenshot: a4-smena
+- scrollUntilVisible:
+    element:
+      id: "act-handover"
+    direction: UP
+- tapOn:
+    id: "act-handover"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "handover-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: b1-oprema
+- tapOn:
+    id: "sheet-close"
+    retryTapIfNoChange: false
+- scrollUntilVisible:
+    element:
+      id: "act-authority"
+    direction: UP
+- tapOn:
+    id: "act-authority"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "note-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: b2-ovlascenje
+- tapOn:
+    id: "sheet-close"
+    retryTapIfNoChange: false
+- scrollUntilVisible:
+    element:
+      id: "occasional-task"
+    direction: UP
+- tapOn:
+    id: "occasional-task"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "task-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: b3-zadatak
+- hideKeyboard
+- tapOn:
+    id: "sheet-close"
+    retryTapIfNoChange: false
+- tapOn:
+    id: "tab-raspored"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "guard-schedule"
+    timeout: 20000
+- waitForAnimationToEnd
+- takeScreenshot: c1-raspored
+- tapOn:
+    id: "tab-profil"
+    retryTapIfNoChange: false
+- waitForAnimationToEnd
+- takeScreenshot: c2-profil
+- tapOn:
+    id: "tab-smena"
+    retryTapIfNoChange: false

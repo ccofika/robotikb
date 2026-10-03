@@ -1,0 +1,9 @@
+# Ponovo otvori aplikaciju (prijava ostaje) i sačekaj ekran smene; stanje se učita sa servera
+appId: com.robotik.mobile
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "status-card"
+    timeout: 120000
+- runFlow: dismiss-dev-warnings.yaml

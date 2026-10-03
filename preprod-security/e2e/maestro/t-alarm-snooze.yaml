@@ -1,0 +1,28 @@
+# Kroz vreme: alarm za checkpoint, odlaganje uz razlog
+# Promenljive: TITLE, REASON (npr. "Kontrola ulaza"), SHOT
+appId: com.robotik.mobile
+---
+- runFlow:
+    file: t-alarm.yaml
+    env:
+      TITLE: ${TITLE}
+      ACTION: "stay"
+      SHOT: ${SHOT}
+- tapOn:
+    id: "alarm-snooze"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "snooze-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: "reason-${REASON}"
+    retryTapIfNoChange: false
+- tapOn:
+    id: "snooze-save"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    notVisible:
+      id: "alarm-overlay"
+    timeout: 20000

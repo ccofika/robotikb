@@ -1,0 +1,68 @@
+# Rana odjava: smena traje još satima; prvi put radnik odustane ("Ostajem"), drugi put potvrdi
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- tapOn:
+    id: "sim-open"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "sim-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: "sim-tag-0"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "confirm-early"
+    timeout: 30000
+- waitForAnimationToEnd
+- assertVisible: "Odlaziš ranije?"
+- assertVisible: "do kraja smene"
+- takeScreenshot: g09-potvrda-rane-odjave
+- tapOn:
+    id: "early-stay"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    notVisible:
+      id: "confirm-early"
+    timeout: 10000
+- assertVisible:
+    id: "status-pill"
+    text: "u smeni"
+- tapOn:
+    id: "sim-open"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "sim-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: "sim-tag-0"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "confirm-early"
+    timeout: 30000
+- waitForAnimationToEnd
+- tapOn:
+    id: "early-confirm"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "scan-result-title"
+      text: "Odjavljen sa smene"
+    timeout: 30000
+- assertVisible:
+    id: "scan-result-msg"
+    text: "Odjavljen u .*, .* min pre kraja smene"
+- takeScreenshot: g09-odjavljen-ranije
+- runFlow: close-result.yaml
+- extendedWaitUntil:
+    visible:
+      id: "status-pill"
+      text: "završena"
+    timeout: 20000
+- takeScreenshot: g09-smena-zavrsena

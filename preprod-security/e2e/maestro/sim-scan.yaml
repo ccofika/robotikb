@@ -1,0 +1,19 @@
+# Simulirano očitavanje taga iz liste (SIM_INDEX = red u listi: 0 je radno mesto, pa checkpointi po nazivu).
+# Tag ide istim putem kao pravi: kroz NFC čitač aplikacije.
+appId: com.robotik.mobile
+---
+- tapOn:
+    id: "sim-open"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "sim-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: "sim-tag-${SIM_INDEX}"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "scan-result-title"
+    timeout: 30000
