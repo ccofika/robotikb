@@ -155,9 +155,9 @@ router.post('/refresh-token', async (req, res) => {
     // Robotik Security refresh (radnik obezbeđenja / koordinator)
     if (decoded.kind === 'security' || decoded.role === 'guard' || decoded.role === 'coordinator') {
       const worker = await SecurityWorker.findById(decoded.id);
-      if (!worker || !worker.isActive) {
-        return res.status(401).json({ error: 'Nalog nije aktivan' });
-      }
+      // ista poruka kao u proveri prijave (middleware/auth.js): aplikacija je prikazuje radniku pri odjavi
+      if (!worker) return res.status(401).json({ error: 'Nalog nije pronađen. Javi se administratoru.' });
+      if (!worker.isActive) return res.status(401).json({ error: 'Nalog je deaktiviran. Javi se administratoru.' });
       newToken = jwt.sign(
         { id: worker._id, name: worker.name, role: worker.role, kind: 'security' },
         JWT_SECRET,

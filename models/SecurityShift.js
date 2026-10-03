@@ -104,5 +104,7 @@ const SecurityShiftSchema = new Schema({
 SecurityShiftSchema.index({ facilityId: 1, plannedStart: 1 });
 SecurityShiftSchema.index({ workerId: 1, plannedStart: 1 });
 SecurityShiftSchema.index({ status: 1, plannedStart: 1 });
+// Radnik ima najviše jednu dnevnu i jednu noćnu smenu po datumu (dvostruki klik ili dva admina u istoj sekundi)
+SecurityShiftSchema.index({ workerId: 1, date: 1, type: 1 }, { unique: true });
 
 module.exports = mongoose.models.SecurityShift || mongoose.model('SecurityShift', SecurityShiftSchema);

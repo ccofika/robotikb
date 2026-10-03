@@ -11,9 +11,9 @@ const NfcTag = require('../../models/NfcTag');
 const { isGuard } = require('../../middleware/securityAuth');
 const { processScan } = require('../../services/security/scanService');
 const { getSettings, rulesFor } = require('../../services/security/settings');
-const { shiftLabel } = require('../../services/security/shiftService');
+const { shiftLabel, roundIs } = require('../../services/security/shiftService');
 const { saveFile } = require('../../services/security/storage');
-const { addDossier, hm } = require('../../services/security/events');
+const { addDossier, claimOnce, hm } = require('../../services/security/events');
 const { adminRecipients, coordinatorsOf, webNotify } = require('../../services/security/notify');
 const { localToInstant, addDaysYmd, todayYmd } = require('../../services/security/time');
 const { ah, httpError, requireId, str } = require('./helpers');
@@ -130,17 +130,24 @@ router.post('/shifts/:id/standing/:taskId', ah(async (req, res) => {
   if (!task) throw httpError(404, 'Zadatak nije pronađen.');
   const comment = str(req.body.comment, 1000);
   if (task.requireComment && comment.length < 2) throw httpError(400, 'Za ovaj zadatak je komentar obavezan.');
-  sh.standingDone = (sh.standingDone || []).filter((d) => String(d.taskId) !== String(task._id));
-  sh.standingDone.push({ taskId: task._id, text: task.text, doneAt: new Date(), comment });
-  await sh.save();
+  // Jedan atomski upis koji menja samo oznaku ovog zadatka: radnik na telefonu i na webu u istoj sekundi
+  // ne brišu jedan drugom oznake (ranije se čuvao ceo spisak, pa je jedna oznaka mogla da nestane)
+  const entry = { taskId: task._id, text: task.text, doneAt: new Date(), comment };
+  const r = await SecurityShift.collection.updateOne({ _id: sh._id, status: 'active' }, [
+    { $set: { standingDone: { $concatArrays: [
+      { $filter: { input: { $ifNull: ['$standingDone', []] }, cond: { $ne: ['$$this.taskId', task._id] } } },
+      [entry]
+    ] } } }
+  ]);
+  if (!r.matchedCount) throw httpError(409, 'Zadaci se označavaju tokom smene.');
   res.json({ ok: true });
 }));
 
 router.delete('/shifts/:id/standing/:taskId', ah(async (req, res) => {
   const sh = await myShift(req, req.params.id);
   if (sh.status !== 'active') throw httpError(409, 'Smena nije aktivna.');
-  sh.standingDone = (sh.standingDone || []).filter((d) => String(d.taskId) !== String(req.params.taskId));
-  await sh.save();
+  requireId(req.params.taskId, 'zadatak');
+  await SecurityShift.updateOne({ _id: sh._id, status: 'active' }, { $pull: { standingDone: { taskId: req.params.taskId } } });
   res.json({ ok: true });
 }));
 
@@ -152,13 +159,22 @@ router.post('/tasks/:id/done', upload.array('photos', 4), ah(async (req, res) =>
   const w = await me(req);
   if (!w.facilityIds.some((f) => String(f) === String(task.facilityId))) throw httpError(403, 'Zadatak nije za tvoj objekat.');
   if (task.status === 'done') throw httpError(409, 'Zadatak je već urađen.');
+  if (task.status === 'cancelled') throw httpError(409, 'Koordinator je otkazao ovaj zadatak.');
   const comment = str(req.body.comment, 1000);
   if (comment.length < 3) throw httpError(400, 'Upiši kratak komentar: šta je urađeno.');
   const photos = [];
   for (const f of req.files || []) photos.push(await saveFile(f, 'photos'));
-  task.status = 'done'; task.doneAt = new Date(); task.doneById = w._id; task.doneByName = w.name; task.comment = comment; task.photos = photos;
-  await task.save();
-  res.json(task);
+  // Atomski: samo otvoren zadatak (koordinator ga je možda upravo otkazao, ili ga je radnik zatvorio na drugom uređaju)
+  const upd = await SecurityTask.findOneAndUpdate(
+    { _id: task._id, status: 'open' },
+    { $set: { status: 'done', doneAt: new Date(), doneById: w._id, doneByName: w.name, comment, photos } },
+    { new: true }
+  );
+  if (!upd) {
+    const cur = await SecurityTask.findById(task._id).select('status');
+    throw httpError(409, cur && cur.status === 'cancelled' ? 'Koordinator je upravo otkazao ovaj zadatak.' : 'Zadatak je već urađen.');
+  }
+  res.json(upd);
 }));
 
 // POST /api/security/me/shifts/:id/notes  (zapažanje ili izveštaj o primeni ovlašćenja, sa fotografijama)
@@ -166,8 +182,10 @@ router.post('/shifts/:id/notes', upload.array('photos', 6), ah(async (req, res) 
   const sh = await myShift(req, req.params.id);
   const w = await me(req);
   const b = req.body || {};
-  if (b.clientId) {
-    const prev = await SecurityObservation.findOne({ clientId: b.clientId });
+  // clientId je uvek tekst (objekat bi postao upit nad bazom)
+  const clientId = typeof b.clientId === 'string' && b.clientId.length <= 100 ? b.clientId : null;
+  if (clientId) {
+    const prev = await SecurityObservation.findOne({ clientId });
     if (prev) return res.json(prev);
   }
   const kind = b.kind === 'authority' ? 'authority' : 'observation';
@@ -175,6 +193,15 @@ router.post('/shifts/:id/notes', upload.array('photos', 6), ah(async (req, res) 
   if (text.length < 3) throw httpError(400, kind === 'authority' ? 'Opiši šta se desilo.' : 'Upiši zapažanje.');
   const power = kind === 'authority' ? str(b.power, 120) : '';
   if (kind === 'authority' && !power) throw httpError(400, 'Izaberi vrstu ovlašćenja.');
+  // Isti zapis poslat dva puta u istoj sekundi (ponovno slanje): upisuje ga samo prvi zahtev, drugi vraća taj zapis
+  if (clientId && !(await claimOnce(`note:${clientId}`))) {
+    for (let i = 0; i < 30; i++) {
+      const prev = await SecurityObservation.findOne({ clientId });
+      if (prev) return res.json(prev);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw httpError(409, 'Ovaj zapis se upravo čuva. Osveži ekran.');
+  }
   const photos = [];
   for (const f of req.files || []) photos.push(await saveFile(f, 'photos'));
   const at = b.at && !isNaN(new Date(b.at).getTime()) && new Date(b.at) <= new Date() ? new Date(b.at) : new Date();
@@ -227,14 +254,17 @@ router.post('/alarms/:id/snooze', ah(async (req, res) => {
   const now = new Date();
   const until = new Date(now.getTime() + rules.snoozeMin * 60000);
   const i = alarm.roundIndex;
+  // Atomski nad baš tom tačkom: neočitana, bez drugog alarma i sa manje od dozvoljenog broja odlaganja
+  // (telefon i web radnika u istoj sekundi ne mogu da odlože dva puta, a eskalacija ne može da "prođe" kroz odlaganje)
   const upd = await SecurityShift.updateOne(
-    { _id: sh._id, [`rounds.${i}.scannedAt`]: null, [`rounds.${i}.alarm2At`]: null },
+    { _id: sh._id, ...roundIs(i, { scannedAt: null, alarm2At: null, snoozes: { sizeLt: rules.maxSnoozes } }) },
     { $set: { [`rounds.${i}.snoozedUntil`]: until }, $push: { [`rounds.${i}.snoozes`]: { at: now, until, reason } } }
   );
   if (!upd.modifiedCount) throw httpError(409, 'Alarm se u međuvremenu promenio. Osveži ekran.');
-  alarm.state = 'snoozed';
-  alarm.snoozes.push({ at: now, until, reason });
-  await alarm.save();
+  await SecurityAlarm.updateOne(
+    { _id: alarm._id, state: { $in: ['open', 'snoozed'] } },
+    { $set: { state: 'snoozed' }, $push: { snoozes: { at: now, until, reason } } }
+  );
   await addDossier({ workerId: req.user.id, kind: 'cp_snooze', level: 'warn', facility, shiftId: sh._id, alarmId: alarm._id, text: `Odložen alarm za ${round.tagName} (plan ${hm(round.dueAt)}) za ${rules.snoozeMin} min. Razlog: ${reason}.` });
   res.json({ ok: true, until });
 }));

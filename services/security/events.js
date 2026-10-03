@@ -23,7 +23,15 @@ async function addDossier({ workerId, kind, level = 'warn', text, facility, faci
   }
 }
 
+// Samo pre-prod E2E (test kuka /_test/delays, SECURITY_TEST_HOOKS=1): veštačko kašnjenje pre upisa alarma,
+// da trka "mehanizam alarma i očitavanje u istoj sekundi" može da se ponovi u testu. U produkciji ne postoji.
+async function testDelay(name) {
+  const ms = global.__securityTestDelays && global.__securityTestDelays[name];
+  if (ms) await new Promise((r) => setTimeout(r, ms));
+}
+
 async function raiseAlarm({ kind, level, title, message, facility, shift, worker, roundIndex = null, tagName = '', recipients = [], channels = [], firedAt }) {
+  await testDelay('raiseAlarm');
   return SecurityAlarm.create({
     kind, level, title, message,
     facilityId: facility ? facility._id : null,
@@ -38,6 +46,18 @@ async function raiseAlarm({ kind, level, title, message, facility, shift, worker
   });
 }
 
+// true samo za prvi poziv sa tim ključem (i kad dva zahteva stignu u istoj sekundi)
+async function claimOnce(key) {
+  const SecurityOnce = require('../../models/SecurityOnce');
+  try {
+    await SecurityOnce.create({ key });
+    return true;
+  } catch (e) {
+    if (e && e.code === 11000) return false;
+    throw e;
+  }
+}
+
 // Zatvara otvorene alarme koji su se rešili sami (prijava, očitan checkpoint, odjava)
 async function resolveAlarms(filter, resolution) {
   return SecurityAlarm.updateMany(
@@ -46,4 +66,4 @@ async function resolveAlarms(filter, resolution) {
   );
 }
 
-module.exports = { addDossier, raiseAlarm, resolveAlarms, hm };
+module.exports = { addDossier, raiseAlarm, resolveAlarms, claimOnce, hm };

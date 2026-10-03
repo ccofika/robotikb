@@ -1,0 +1,11 @@
+# Dodir na element sa tekstom na trenutnom ekranu (bez ponovnog pokretanja), npr. stalni zadatak
+# Promenljive: TEXT, SHOT
+appId: com.robotik.mobile
+---
+- scrollUntilVisible:
+    element: ${TEXT}
+    timeout: 20000
+- tapOn:
+    text: ${TEXT}
+    retryTapIfNoChange: false
+- takeScreenshot: ${SHOT}

@@ -43,6 +43,12 @@ router.post('/clock', ah(async (req, res) => {
   try { return res.json(c.set(req.body.at)); } catch (e) { throw httpError(400, e.message); }
 }));
 
+// Veštačka kašnjenja u ms za testove trka ({ raiseAlarm: 40 }, prazno telo = bez kašnjenja)
+router.post('/delays', (req, res) => {
+  global.__securityTestDelays = { ...(req.body || {}) };
+  res.json(global.__securityTestDelays);
+});
+
 // Pomeri planirano vreme jedne tačke obilaska (offsetMin od sada)
 router.post('/round-due', ah(async (req, res) => {
   requireId(req.body.shiftId, 'smena');

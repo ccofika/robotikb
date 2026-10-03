@@ -1,0 +1,20 @@
+# Raspored u aplikaciji (posle ponovnog pokretanja): red sa datumom i smenom
+# Promenljive: ROW (regex, npr. "sub 10.10. · Noćna 19-07"), SHOT
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- runFlow: hide-alarm.yaml
+- tapOn:
+    id: "tab-raspored"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "guard-schedule"
+    timeout: 20000
+- extendedWaitUntil:
+    visible: ${ROW}
+    timeout: 30000
+- takeScreenshot: ${SHOT}
+- tapOn:
+    id: "tab-smena"
+    retryTapIfNoChange: false

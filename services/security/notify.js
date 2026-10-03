@@ -13,10 +13,12 @@ async function pushToWorker(worker, { title, body, data = {}, channelId = 'secur
     if (!String(w.pushToken).startsWith('ExponentPushToken[')) return { sent: false, reason: 'bad_token' };
     const message = { to: w.pushToken, sound: 'default', title, body, data, priority: 'high', channelId };
     if (ttl) message.ttl = ttl;
+    // ograničeno vreme: mehanizam alarma šalje redom, pa spor Expo server ne sme da zadrži alarme ostalih objekata
     const res = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify(message)
+      body: JSON.stringify(message),
+      signal: AbortSignal.timeout(10000)
     });
     const json = await res.json().catch(() => ({}));
     const ticket = Array.isArray(json.data) ? json.data[0] : json.data;
@@ -58,13 +60,19 @@ async function sendMail({ to, subject, html, attachments }) {
   const list = [...new Set((to || []).map((e) => String(e || '').trim().toLowerCase()).filter(Boolean))];
   if (!list.length) return { sent: false, reason: 'no_recipients' };
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER || 'izvestaji@robotik.rs',
-      to: list.join(', '),
-      subject,
-      html,
-      attachments
-    });
+    // ograničeno vreme (mehanizam alarma šalje redom): spor SMTP ne sme da zadrži alarme ostalih objekata.
+    // Slanje se ne prekida, samo se na njega ne čeka duže od 20 s; izveštaj se tada ponovo šalje (do 3 pokušaja).
+    let timer;
+    await Promise.race([
+      transporter.sendMail({
+        from: process.env.EMAIL_USER || 'izvestaji@robotik.rs',
+        to: list.join(', '),
+        subject,
+        html,
+        attachments
+      }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('SMTP ne odgovara 20 s')), 20000); })
+    ]).finally(() => clearTimeout(timer));
     return { sent: true, to: list };
   } catch (e) {
     console.error('[Security] email nije poslat:', e.message);

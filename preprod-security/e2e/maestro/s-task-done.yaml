@@ -1,0 +1,33 @@
+# Povremeni zadatak (stigao sa weba) se zatvara u aplikaciji uz komentar
+# Promenljive: TEXT (tekst zadatka; red u aplikaciji počinje vremenom, pa se traži deo teksta), COMMENT, SHOT
+appId: com.robotik.mobile
+---
+- runFlow: start.yaml
+- runFlow: hide-alarm.yaml
+- scrollUntilVisible:
+    element: ".*${TEXT}.*"
+    timeout: 30000
+- tapOn:
+    text: ".*${TEXT}.*"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible:
+      id: "task-sheet"
+    timeout: 10000
+- waitForAnimationToEnd
+- tapOn:
+    id: "task-comment"
+    retryTapIfNoChange: false
+- inputText: ${COMMENT}
+- hideKeyboard
+- tapOn:
+    id: "task-save"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    notVisible:
+      id: "task-sheet"
+    timeout: 15000
+- scrollUntilVisible:
+    element: ".*${COMMENT}.*"
+    timeout: 20000
+- takeScreenshot: ${SHOT}

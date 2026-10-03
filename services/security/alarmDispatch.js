@@ -7,6 +7,19 @@ const SecurityAlarm = require('../../models/SecurityAlarm');
 
 const extraAlertEmails = () => (process.env.SECURITY_ALERT_EMAILS || '').split(',').map((e) => e.trim()).filter(Boolean);
 
+// Mehanizam je atomski "rezervisao" alarm, ali je radnik u istoj sekundi možda uradio ono zbog čega alarm ide
+// (prijava, očitavanje, odjava). Posle upisa alarma uslov se proverava još jednom: ako više ne važi, alarm se
+// odmah zatvara i niko ne dobija obaveštenje. Očitavanje zatvara alarme posle svog upisa, pa uvek jedna strana
+// vidi drugu: alarm nikad ne ostaje otvoren posle prijave ili očitavanja.
+async function stillNeeded(alarm, check) {
+  if (!check || (await check())) return true;
+  await SecurityAlarm.updateOne(
+    { _id: alarm._id, state: { $ne: 'resolved' } },
+    { $set: { state: 'resolved', resolvedAt: new Date(), resolution: 'Radnik je reagovao u istom trenutku' } }
+  );
+  return false;
+}
+
 async function load(shift) {
   const [worker, facility] = await Promise.all([
     SecurityWorker.findById(shift.workerId),
@@ -16,7 +29,7 @@ async function load(shift) {
 }
 
 // Alarm radniku: nije se prijavio posle lateMin minuta
-async function fireLate(shift, rules) {
+async function fireLate(shift, rules, check) {
   const { worker, facility } = await load(shift);
   if (!worker || !facility) return null;
   const alarm = await raiseAlarm({
@@ -25,6 +38,7 @@ async function fireLate(shift, rules) {
     message: `${worker.name} se nije prijavio ${rules.lateMin} min posle početka smene (${hm(shift.plannedStart)}).`,
     recipients: [{ name: worker.name, role: 'guard' }], channels: ['push']
   });
+  if (!(await stillNeeded(alarm, check))) return null;
   await pushToWorker(worker, {
     title: 'Nisi prijavljen na smenu',
     body: `${facility.name}: smena je počela u ${hm(shift.plannedStart)}. Prisloni telefon na tag radnog mesta.`,
@@ -34,7 +48,7 @@ async function fireLate(shift, rules) {
 }
 
 // MASTER ALARM: koordinator objekta i administratori
-async function fireMaster(shift, rules) {
+async function fireMaster(shift, rules, check) {
   const { worker, facility } = await load(shift);
   if (!worker || !facility) return null;
   const [admins, coords] = await Promise.all([adminRecipients(), coordinatorsOf(facility._id)]);
@@ -45,6 +59,7 @@ async function fireMaster(shift, rules) {
     message: `${worker.name} nije prijavljen ${rules.masterMin} min. Smena na objektu ${facility.name} je počela u ${hm(shift.plannedStart)}.`,
     recipients, channels: ['web', 'push', 'email']
   });
+  if (!(await stillNeeded(alarm, check))) return null;
   await webNotify([...admins, ...coords], {
     title: `MASTER ALARM · ${facility.name}`,
     message: `${worker.name} nije prijavljen ${rules.masterMin} min (smena od ${hm(shift.plannedStart)}).`,
@@ -70,7 +85,7 @@ async function fireMaster(shift, rules) {
   return alarm;
 }
 
-async function fireCheckpoint1(shift, index, rules) {
+async function fireCheckpoint1(shift, index, rules, check) {
   const { worker, facility } = await load(shift);
   const round = shift.rounds[index];
   if (!worker || !facility || !round) return null;
@@ -80,6 +95,7 @@ async function fireCheckpoint1(shift, index, rules) {
     message: `Planirano ${hm(round.dueAt)}, tolerancija ${rules.checkpointTolMin} min. Prvi alarm radniku.`,
     recipients: [{ name: worker.name, role: 'guard' }], channels: ['push']
   });
+  if (!(await stillNeeded(alarm, check))) return null;
   await pushToWorker(worker, {
     title: 'Kasniš na checkpoint',
     body: `${round.tagName}, plan ${hm(round.dueAt)}. Očitaj tag ili odloži alarm uz razlog.`,
@@ -89,7 +105,7 @@ async function fireCheckpoint1(shift, index, rules) {
 }
 
 // Drugi alarm za checkpoint: automatski ide i administratoru
-async function fireCheckpoint2(shift, index, rules) {
+async function fireCheckpoint2(shift, index, rules, check) {
   const { worker, facility } = await load(shift);
   const round = shift.rounds[index];
   if (!worker || !facility || !round) return null;
@@ -103,6 +119,7 @@ async function fireCheckpoint2(shift, index, rules) {
     recipients: [{ name: worker.name, role: 'guard' }, ...admins.map((a) => ({ name: a.name, role: a.role })), ...coords.map((c) => ({ name: c.name, role: 'coordinator' }))],
     channels: ['push', 'web', 'email']
   });
+  if (!(await stillNeeded(alarm, check))) return null;
   await pushToWorker(worker, {
     title: 'Drugi alarm: obavešten admin',
     body: `${round.tagName} i dalje nije očitan. Očitaj tag što pre.`,
@@ -125,7 +142,7 @@ async function fireCheckpoint2(shift, index, rules) {
   return alarm;
 }
 
-async function fireNoClockOut(shift, rules) {
+async function fireNoClockOut(shift, rules, check) {
   const { worker, facility } = await load(shift);
   if (!worker || !facility) return null;
   const [admins, coords] = await Promise.all([adminRecipients(), coordinatorsOf(facility._id)]);
@@ -136,6 +153,7 @@ async function fireNoClockOut(shift, rules) {
     recipients: [...coords.map((c) => ({ name: c.name, role: 'coordinator' })), ...admins.map((a) => ({ name: a.name, role: a.role }))],
     channels: ['web', 'push']
   });
+  if (!(await stillNeeded(alarm, check))) return null;
   await webNotify([...coords, ...admins], {
     title: `Nema odjave · ${facility.name}`,
     message: `${worker.name} se nije odjavio posle smene koja je trajala do ${hm(shift.plannedEnd)}.`,

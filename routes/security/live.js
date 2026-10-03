@@ -58,8 +58,10 @@ router.get('/', ah(async (req, res) => {
 
   // Za tablu obilazaka: zadaci i poslednje očitavanje svake smene
   const shiftIds = shifts.map((x) => x._id);
-  const [shiftTasks, lastScans] = await Promise.all([
+  const [shiftTasks, freeTasks, lastScans] = await Promise.all([
     SecurityTask.find({ shiftId: { $in: shiftIds }, status: { $ne: 'cancelled' } }).sort({ dueAt: 1 }).lean(),
+    // zadaci za objekat bez smene (više radnika u smeni u to vreme): prikazuju se kod svake smene koja ih pokriva
+    SecurityTask.find({ shiftId: null, facilityId: { $in: fids }, status: { $ne: 'cancelled' }, dueAt: { $gte: new Date(now.getTime() - 26 * 3600000), $lte: new Date(now.getTime() + 16 * 3600000) } }).sort({ dueAt: 1 }).lean(),
     SecurityScan.aggregate([
       { $match: { shiftId: { $in: shiftIds }, result: { $in: ['clock_in', 'clock_out', 'checkpoint', 'extra'] } } },
       { $sort: { at: -1 } },
@@ -67,7 +69,11 @@ router.get('/', ah(async (req, res) => {
     ])
   ]);
   const tasksByShift = new Map();
-  shiftTasks.forEach((t) => { const k = String(t.shiftId); if (!tasksByShift.has(k)) tasksByShift.set(k, []); tasksByShift.get(k).push(t); });
+  const addTask = (k, t) => { if (!tasksByShift.has(k)) tasksByShift.set(k, []); tasksByShift.get(k).push(t); };
+  shiftTasks.forEach((t) => addTask(String(t.shiftId), t));
+  freeTasks.forEach((t) => shifts
+    .filter((x) => String(x.facilityId) === String(t.facilityId) && t.dueAt >= x.plannedStart && t.dueAt <= x.plannedEnd)
+    .forEach((x) => addTask(String(x._id), t)));
   const lastByShift = new Map(lastScans.map((l) => [String(l._id), l]));
 
   // Trenutna smena (dnevna ili noćna) po podešavanjima: osa table obilazaka

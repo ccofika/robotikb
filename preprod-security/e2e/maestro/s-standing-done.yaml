@@ -1,0 +1,15 @@
+# Stalni zadatak koji je radnik označio na webu je i na telefonu urađen (ispod naziva stoji vreme, ne
+# "stalni zadatak"), BEZ ponovnog pokretanja aplikacije (osvežavanje na 20 s). Promenljive: TEXT (naziv), SHOT
+appId: com.robotik.mobile
+---
+- scrollUntilVisible:
+    element:
+      text: ${TEXT}
+    timeout: 20000
+- extendedWaitUntil:
+    visible:
+      text: "[0-9]{2}:[0-9]{2}"
+      below:
+        text: ${TEXT}
+    timeout: 60000
+- takeScreenshot: ${SHOT}

@@ -7,7 +7,7 @@ const SecurityScan = require('../../models/SecurityScan');
 const SecurityAlarm = require('../../models/SecurityAlarm');
 const SecurityObservation = require('../../models/SecurityObservation');
 const SecurityTask = require('../../models/SecurityTask');
-const { isSecurityStaff, facilityScope, canAccessFacility } = require('../../middleware/securityAuth');
+const { isSecurityStaff, facilityScope, canAccessFacility, isAdminRole } = require('../../middleware/securityAuth');
 const { getSettings, rulesFor } = require('../../services/security/settings');
 const { shiftWindow, localToInstant, addDaysYmd, instantToLocal } = require('../../services/security/time');
 const { checkConflicts, describeConflict, buildRounds, shiftLabel } = require('../../services/security/shiftService');
@@ -52,7 +52,8 @@ router.get('/', ah(async (req, res) => {
 }));
 
 // Pravi jednu smenu (sa proverom preklapanja i odmora). Vraća { shift } ili baca grešku.
-async function createShift(req, { facilityId, workerId, date, type, force, note }, settings) {
+// assign: true (samo admin) radnika dodaje objektu na serveru, bez slanja celog spiska radnika sa weba.
+async function createShift(req, { facilityId, workerId, date, type, force, note, assign }, settings) {
   const facility = await assertFacility(req, facilityId);
   requireId(workerId, 'radnik');
   if (!isYmd(date)) throw httpError(400, 'Neispravan datum.');
@@ -61,17 +62,25 @@ async function createShift(req, { facilityId, workerId, date, type, force, note 
   if (!worker || worker.role !== 'guard') throw httpError(404, 'Radnik nije pronađen.');
   if (!worker.isActive) throw httpError(400, `${worker.name} je deaktiviran.`);
   if (!worker.facilityIds.some((f) => String(f) === String(facility._id))) {
-    throw httpError(409, `${worker.name} nije dodeljen objektu ${facility.name}.`, { code: 'not_assigned', workerName: worker.name, facilityName: facility.name });
+    if (assign !== true || !isAdminRole(req.user.role)) {
+      throw httpError(409, `${worker.name} nije dodeljen objektu ${facility.name}.`, { code: 'not_assigned', workerName: worker.name, facilityName: facility.name });
+    }
+    await SecurityWorker.updateOne({ _id: worker._id }, { $addToSet: { facilityIds: facility._id } });
   }
   const { start, end } = shiftWindow(date, type, settings);
   const conf = await checkConflicts({ workerId, start, end });
   if (conf.overlap) throw httpError(409, describeConflict(conf, worker.name).message, { code: 'overlap' });
   if (conf.rest.length && !force) throw httpError(409, describeConflict(conf, worker.name).message, { code: 'rest', canForce: true });
-  const shift = await SecurityShift.create({
-    facilityId, workerId, date, type, plannedStart: start, plannedEnd: end, note: str(note, 300),
-    createdById: req.user._id, createdByName: req.user.name
-  });
-  return shift;
+  try {
+    return await SecurityShift.create({
+      facilityId, workerId, date, type, plannedStart: start, plannedEnd: end, note: str(note, 300),
+      createdById: req.user._id, createdByName: req.user.name
+    });
+  } catch (e) {
+    // jedinstven indeks radnik + datum + vrsta: dvostruki klik (ili dva admina) ne pravi dve iste smene
+    if (e && e.code === 11000) throw httpError(409, `${worker.name} već ima ${type === 'day' ? 'dnevnu' : 'noćnu'} smenu ${date.split('-').reverse().join('.')}.`, { code: 'overlap' });
+    throw e;
+  }
 }
 
 // POST /api/security/shifts { facilityId, workerId, date, type, force? }
@@ -143,7 +152,8 @@ router.get('/:id', ah(async (req, res) => {
 router.put('/:id', ah(async (req, res) => {
   const sh = await loadShift(req);
   const b = req.body || {};
-  if (b.note !== undefined) sh.note = str(b.note, 300);
+  const set = {};
+  if (b.note !== undefined) set.note = str(b.note, 300);
   if (b.workerId && String(b.workerId) !== String(sh.workerId)) {
     if (sh.status !== 'planned') throw httpError(409, 'Smena je već počela. Zamena više nije moguća, zatvori smenu ručno.');
     requireId(b.workerId, 'radnik');
@@ -156,17 +166,25 @@ router.put('/:id', ah(async (req, res) => {
     const conf = await checkConflicts({ workerId: to._id, start: sh.plannedStart, end: sh.plannedEnd, excludeId: sh._id });
     if (conf.overlap) throw httpError(409, describeConflict(conf, to.name).message, { code: 'overlap' });
     if (conf.rest.length && !b.force) throw httpError(409, describeConflict(conf, to.name).message, { code: 'rest', canForce: true });
-    sh.replaced.push({ fromWorkerId: sh.workerId, fromName: from ? from.name : '', toName: to.name, at: new Date(), byName: req.user.name });
-    sh.workerId = to._id;
-    sh.alarms = { lateAt: null, masterAt: null, noClockOutAt: null };
+    // Atomski: samo ako se prvi radnik u međuvremenu nije prijavio tagom i niko drugi nije promenio radnika
+    const upd = await SecurityShift.findOneAndUpdate(
+      { _id: sh._id, status: 'planned', clockIn: null, workerId: sh.workerId },
+      {
+        $set: { ...set, workerId: to._id, alarms: { lateAt: null, masterAt: null, noClockOutAt: null } },
+        $push: { replaced: { fromWorkerId: sh.workerId, fromName: from ? from.name : '', toName: to.name, at: new Date(), byName: req.user.name } }
+      },
+      { new: true }
+    );
+    if (!upd) throw httpError(409, `Smena se u međuvremenu promenila${from ? ` (${from.name} se možda upravo prijavio)` : ''}. Osveži i pokušaj ponovo.`, { code: 'changed' });
     await resolveAlarms({ shiftId: sh._id, kind: { $in: ['late', 'master'] } }, `Zamena: ${to.name}`);
-    if (sh.published) {
-      await pushToWorker(to, { title: 'Nova smena (zamena)', body: `${facility.name}: ${shiftLabel(sh)}, ${sh.date.split('-').reverse().join('.')}.`, data: { type: 'security_schedule' }, channelId: 'default' });
-      if (from) await pushToWorker(from, { title: 'Smena je promenjena', body: `${facility.name}: ${shiftLabel(sh)}, ${sh.date.split('-').reverse().join('.')} preuzima ${to.name}.`, data: { type: 'security_schedule' }, channelId: 'default' });
+    if (upd.published) {
+      await pushToWorker(to, { title: 'Nova smena (zamena)', body: `${facility.name}: ${shiftLabel(upd)}, ${upd.date.split('-').reverse().join('.')}.`, data: { type: 'security_schedule' }, channelId: 'default' });
+      if (from) await pushToWorker(from, { title: 'Smena je promenjena', body: `${facility.name}: ${shiftLabel(upd)}, ${upd.date.split('-').reverse().join('.')} preuzima ${to.name}.`, data: { type: 'security_schedule' }, channelId: 'default' });
     }
+    return res.json(upd);
   }
-  await sh.save();
-  res.json(sh);
+  if (!Object.keys(set).length) return res.json(sh);
+  res.json(await SecurityShift.findByIdAndUpdate(sh._id, { $set: set }, { new: true }));
 }));
 
 // DELETE /api/security/shifts/:id  (samo smena koja nije počela)
@@ -175,8 +193,12 @@ router.delete('/:id', ah(async (req, res) => {
   if (sh.clockIn) throw httpError(409, 'Smena je već počela i ne može se obrisati.');
   const worker = await SecurityWorker.findById(sh.workerId);
   const facility = await SecurityFacility.findById(sh.facilityId);
+  // Atomski: samo ako se radnik u međuvremenu nije prijavio (inače bi njegova prijava i sati nestali)
+  const del = await SecurityShift.findOneAndDelete({ _id: sh._id, clockIn: null, status: { $in: ['planned', 'missed'] } });
+  if (!del) throw httpError(409, 'Radnik se upravo prijavio na ovu smenu, pa ne može da se obriše. Zatvori je ručnom odjavom.');
   await resolveAlarms({ shiftId: sh._id }, 'Smena obrisana');
-  await sh.deleteOne();
+  // Zadaci vezani za smenu ostaju za objekat i vidi ih radnik čija smena pokriva to vreme
+  await SecurityTask.updateMany({ shiftId: sh._id, status: 'open' }, { $set: { shiftId: null } });
   if (sh.published && worker) {
     await pushToWorker(worker, { title: 'Smena je otkazana', body: `${facility ? facility.name : ''}: ${shiftLabel(sh)}, ${sh.date.split('-').reverse().join('.')}.`, data: { type: 'security_schedule' }, channelId: 'default' });
   }
@@ -202,25 +224,38 @@ router.post('/:id/manual', ah(async (req, res) => {
   }
   if (at.getTime() > Date.now() + 5 * 60000) throw httpError(400, 'Vreme ne može biti u budućnosti.');
   const punch = { at, receivedAt: new Date(), source: 'manual', byName: req.user.name };
+  // Upis je atomski: ako se radnik u istoj sekundi prijavi ili odjavi tagom (ili drugi koordinator upiše isto),
+  // prolazi samo jedan upis, a drugi dobija jasnu poruku (nema dve prijave ni dva izveštaja).
+  let out;
   if (b.type === 'in') {
     if (sh.clockIn) throw httpError(409, 'Radnik je već prijavljen.');
+    if (!sh.published) throw httpError(409, 'Smena nije objavljena: radnik je ne vidi i ne može da očitava tagove. Objavi raspored, pa upiši prijavu.');
     const lateMin = Math.max(0, Math.floor((at - sh.plannedStart) / 60000));
-    sh.clockIn = punch; sh.status = 'active'; sh.lateMin = lateMin;
-    sh.rounds = await buildRounds(sh, facility, s);
-    await sh.save();
+    const rounds = await buildRounds(sh, facility, s);
+    out = await SecurityShift.findOneAndUpdate(
+      { _id: sh._id, clockIn: null, status: { $in: ['planned', 'missed'] } },
+      { $set: { clockIn: punch, status: 'active', lateMin, rounds } },
+      { new: true }
+    );
+    if (!out) throw httpError(409, 'Radnik se upravo prijavio (tagom ili ga je prijavio neko drugi).');
     await resolveAlarms({ shiftId: sh._id, kind: { $in: ['late', 'master'] } }, `Ručna prijava (${req.user.name})`);
     await addDossier({ workerId: sh.workerId, kind: lateMin ? 'late' : 'note', level: lateMin ? 'warn' : 'info', facility, shiftId: sh._id, byName: req.user.name, text: `Ručna prijava u ${hm(at)} (${req.user.name}): ${note}${lateMin ? `. Kašnjenje ${lateMin} min.` : ''}` });
   } else if (b.type === 'out') {
     if (!sh.clockIn) throw httpError(409, 'Radnik nije prijavljen.');
     if (sh.clockOut) throw httpError(409, 'Radnik je već odjavljen.');
+    if (at < new Date(sh.clockIn.at)) throw httpError(400, `Odjava ne može biti pre prijave (${hm(sh.clockIn.at)}).`);
     const early = at.getTime() < sh.plannedEnd.getTime() - 30 * 60000;
-    sh.clockOut = { ...punch, early }; sh.status = 'done'; sh.earlyLeaveMin = early ? Math.floor((sh.plannedEnd - at) / 60000) : 0;
-    await sh.save();
+    out = await SecurityShift.findOneAndUpdate(
+      { _id: sh._id, status: 'active', clockOut: null },
+      { $set: { clockOut: { ...punch, early }, status: 'done', earlyLeaveMin: early ? Math.floor((sh.plannedEnd - at) / 60000) : 0 } },
+      { new: true }
+    );
+    if (!out) throw httpError(409, 'Radnik se upravo odjavio (tagom ili ga je odjavio neko drugi).');
     await resolveAlarms({ shiftId: sh._id, kind: 'no_clock_out' }, `Ručna odjava (${req.user.name})`);
     await addDossier({ workerId: sh.workerId, kind: 'note', level: 'info', facility, shiftId: sh._id, byName: req.user.name, text: `Ručna odjava u ${hm(at)} (${req.user.name}): ${note}` });
     setImmediate(() => require('../../services/security/reportService').sendShiftReport(sh._id, { reason: 'manual' }).catch(() => {}));
   } else throw httpError(400, 'Izaberi prijavu ili odjavu.');
-  res.json(sh);
+  res.json(out);
 }));
 
 // PUT /api/security/shifts/:id/review { remark, note }  (kontrola izveštaja)

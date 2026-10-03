@@ -27,7 +27,9 @@ async function runDailyChecks(now = new Date()) {
     if (w.contract && w.contract.until) {
       const untilYmd = instantToLocal(w.contract.until).ymd;
       const daysLeft = Math.ceil((w.contract.until.getTime() - now.getTime()) / DAY);
-      for (const th of (s.expiry.contractDays || [30]).slice().sort((a, b) => b - a)) {
+      // najbliži dostignut prag je NAJMANJI (npr. za [30, 7] i 5 dana: 7). Opadajući redosled je stajao na 30, koje
+      // je već poslato, pa upozorenje za 7 dana nikad nije išlo.
+      for (const th of (s.expiry.contractDays || [30]).slice().sort((a, b) => a - b)) {
         if (daysLeft <= th && daysLeft >= 0) {
           const ok = await alertOnce(w, `contract:${untilYmd}:${th}`, async () => {
             const text = daysLeft === 0 ? `Ugovor ističe danas (${fmtDateSr(untilYmd)}).` : `Ugovor ističe za ${daysLeft} ${daysLeft === 1 ? 'dan' : 'dana'} (${fmtDateSr(untilYmd)}).`;
@@ -47,7 +49,7 @@ async function runDailyChecks(now = new Date()) {
         if (!l.validUntil) continue;
         const ymd = instantToLocal(l.validUntil).ymd;
         const daysLeft = Math.ceil((l.validUntil.getTime() - now.getTime()) / DAY);
-        for (const th of (s.expiry.licenseDays || [60]).slice().sort((a, b) => b - a)) {
+        for (const th of (s.expiry.licenseDays || [60]).slice().sort((a, b) => a - b)) {
           if (daysLeft <= th && daysLeft >= 0) {
             const ok = await alertOnce(w, `license:${l._id}:${ymd}:${th}`, async () => {
               const text = `Licenca "${l.type}" ističe za ${daysLeft} ${daysLeft === 1 ? 'dan' : 'dana'} (${fmtDateSr(ymd)}).`;

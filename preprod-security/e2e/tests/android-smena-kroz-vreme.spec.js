@@ -18,7 +18,7 @@ const { setup } = require('../helpers/api');
 const db = require('../helpers/db');
 const clock = require('../helpers/clock');
 const mail = require('../helpers/mailpit');
-const { GUARD, PASSWORD, BACKEND_DIR } = require('../helpers/env');
+const { GUARD, PASSWORD, BACKEND_DIR, TARGET } = require('../helpers/env');
 
 const T = require(path.join(BACKEND_DIR, 'services', 'security', 'time'));
 
@@ -67,7 +67,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await clock.reset();
-  execFileSync(process.execPath, [path.join(__dirname, '..', '..', 'scripts', 'seed.js'), '--reset'], { stdio: 'inherit' });
+  execFileSync(process.execPath, [path.join(__dirname, '..', '..', 'scripts', 'seed.js'), '--reset'], { stdio: 'inherit', env: { ...process.env, SECURITY_INSTANCE: TARGET === 'e2e' ? 'e2e' : '' } });
 });
 
 test('A dnevna smena kroz vreme: od prerane prijave do izveštaja', async () => {

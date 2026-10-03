@@ -1,5 +1,7 @@
-// E2E za Security pre-prod: Android (Maestro, pozvan iz testova) i web (Playwright).
-// Pokretanje: security.ps1 test (ili npx playwright test u ovom folderu, pre-prod mora da radi: security.ps1 start).
+// E2E za Security pre-prod: Android (Maestro, pozvan iz testova), web (Playwright) i ceo sistem zajedno.
+// Uvek na instanci za testove (backend 5301, web 3301, Mailpit 8027, baza robotik_preprod_security_e2e).
+// Pokretanje: security.ps1 test (podiže instancu za testove), ili npx playwright test u ovom folderu posle
+// security.ps1 start (emulator, Metro) i security.ps1 start e2e.
 const { defineConfig } = require('@playwright/test');
 const { WEB_URL } = require('./helpers/env');
 
@@ -20,5 +22,7 @@ module.exports = defineConfig({
   projects: [
     { name: 'android', testMatch: /android-.*\.spec\.js/ },
     { name: 'web', testMatch: /web-.*\.spec\.js/ },
+    // Android i web zajedno: tokovi admin/koordinator na webu + radnik na telefonu, istovremeni događaji
+    { name: 'sistem', testMatch: /sistem-.*\.spec\.js/ },
   ],
 });

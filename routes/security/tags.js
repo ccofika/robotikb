@@ -18,6 +18,29 @@ async function removeFromPlans(tagId) {
   await SecurityFacility.updateMany({}, { $pull: { 'roundPlan.day': { tagId }, 'roundPlan.night': { tagId } } });
 }
 
+// Tag je uklonjen usred smene: tekuće smene ga više ne traže (inače bi alarm, pa drugi alarm adminu išli za tag
+// koji radnik više ne može da očita). Buduće tačke tog taga izlaze iz smene; tačka koja već kasni se zatvara bez
+// eskalacije, a njen alarm se rešava. Plan objekta za sledeće smene se menja u removeFromPlans.
+async function releaseFromActiveShifts(tag, byName) {
+  const SecurityShift = require('../../models/SecurityShift');
+  const { resolveAlarms } = require('../../services/security/events');
+  // samo tačke bez alarma: posle njih u nizu nema tačaka sa alarmom, pa indeksi alarma ostaju tačni
+  await SecurityShift.updateMany(
+    { status: 'active', 'rounds.tagId': tag._id },
+    { $pull: { rounds: { tagId: tag._id, scannedAt: null, alarm1At: null } } }
+  );
+  const shifts = await SecurityShift.find({ status: 'active', 'rounds.tagId': tag._id }).select('rounds');
+  for (const sh of shifts) {
+    const now = new Date();
+    for (let i = 0; i < sh.rounds.length; i++) {
+      const r = sh.rounds[i];
+      if (String(r.tagId) !== String(tag._id) || r.scannedAt) continue;
+      if (!r.alarm2At) await SecurityShift.updateOne({ _id: sh._id }, { $set: { [`rounds.${i}.alarm2At`]: now } });
+      await resolveAlarms({ shiftId: sh._id, roundIndex: i, kind: { $in: ['checkpoint1', 'checkpoint2'] } }, `Tag je uklonjen iz upotrebe (${byName})`);
+    }
+  }
+}
+
 async function describeUid(uid, excludeId) {
   const active = await NfcTag.findOne({ uid, ...(excludeId ? { _id: { $ne: excludeId } } : {}) }).populate('facilityId', 'name');
   if (active) return { status: active.status, tag: active };
@@ -123,7 +146,7 @@ router.put('/:id', isSecurityAdmin, ah(async (req, res) => {
   if (b.note !== undefined) tag.note = str(b.note, 1000);
   if (b.category && b.category !== tag.category && ['workplace', 'checkpoint'].includes(b.category)) {
     tag.history.push(hist(req, 'category', `${CAT_LABEL[tag.category]} → ${CAT_LABEL[b.category]}`));
-    if (tag.category === 'checkpoint') await removeFromPlans(tag._id);
+    if (tag.category === 'checkpoint') { await removeFromPlans(tag._id); await releaseFromActiveShifts(tag, req.user.name); }
     tag.category = b.category;
   }
   if (b.facilityId && String(b.facilityId) !== String(tag.facilityId)) {
@@ -132,6 +155,7 @@ router.put('/:id', isSecurityAdmin, ah(async (req, res) => {
     if (!to) throw httpError(404, 'Objekat nije pronađen.');
     const from = await SecurityFacility.findById(tag.facilityId);
     await removeFromPlans(tag._id);
+    await releaseFromActiveShifts(tag, req.user.name);
     tag.history.push(hist(req, 'transferred', `${from ? from.name : '-'} → ${to.name}`));
     tag.facilityId = to._id;
   }
@@ -162,10 +186,17 @@ router.post('/:id/replace', isSecurityAdmin, ah(async (req, res) => {
 router.post('/:id/retire', isSecurityAdmin, ah(async (req, res) => {
   const tag = await loadTag(req);
   if (tag.status === 'retired') return res.json(tag);
+  // Radno mesto dok je neko u smeni: radnik ne bi mogao da se odjavi. Prvo zamena (novi čip), ili potvrda (force).
+  if (tag.category === 'workplace' && req.body.force !== true) {
+    const SecurityShift = require('../../models/SecurityShift');
+    const busy = await SecurityShift.countDocuments({ facilityId: tag.facilityId, status: 'active' });
+    if (busy) throw httpError(409, 'Na objektu je radnik u smeni i ovim tagom se odjavljuje. Zameni tag novim čipom (Zameni), ili ga ukloni posle smene.', { code: 'active_shift' });
+  }
   tag.status = 'retired';
   tag.history.push(hist(req, 'retired', str(req.body.reason, 300) || 'Uklonjen iz upotrebe'));
   await tag.save();
   await removeFromPlans(tag._id);
+  await releaseFromActiveShifts(tag, req.user.name);
   res.json(await tag.populate('facilityId', 'name'));
 }));
 
@@ -203,6 +234,7 @@ router.delete('/:id', isSecurityAdmin, ah(async (req, res) => {
   const used = await SecurityScan.countDocuments({ tagId: tag._id });
   if (used) throw httpError(409, 'Tag ima očitavanja u istoriji. Ukloni ga iz upotrebe umesto brisanja.', { code: 'has_scans' });
   await removeFromPlans(tag._id);
+  await releaseFromActiveShifts(tag, req.user.name);
   await tag.deleteOne();
   res.json({ ok: true });
 }));

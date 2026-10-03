@@ -10,7 +10,9 @@ const BACKEND_DIR = path.join(ROOT, '.wt', 'robotikb');
 const PREPROD_ENV = path.join(__dirname, '..', 'env', 'backend.env');
 
 const dotenv = require(require.resolve('dotenv', { paths: [BACKEND_DIR] }));
-const preprod = dotenv.parse(fs.readFileSync(PREPROD_ENV));
+const { forInstance, instanceName, DB_RE } = require('./instance');
+// SECURITY_INSTANCE=e2e: odvojena instanca za automatske testove (5301, baza robotik_preprod_security_e2e)
+const preprod = forInstance(dotenv.parse(fs.readFileSync(PREPROD_ENV)));
 
 // Svaki ključ iz produkcionog robotikb/.env mora postojati i ovde (da nijedna produkciona vrednost ne procuri)
 const prodEnvPath = path.join(ROOT, 'robotikb', '.env');
@@ -21,8 +23,8 @@ if (missing.length) {
   process.exit(1);
 }
 const uri = preprod.MONGODB_URI || '';
-if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/robotik_preprod_security$/.test(uri)) {
-  console.error('[preprod-security] STOP: MONGODB_URI mora biti lokalna baza robotik_preprod_security');
+if (!DB_RE.test(uri)) {
+  console.error('[preprod-security] STOP: MONGODB_URI mora biti lokalna baza robotik_preprod_security (ili _e2e)');
   process.exit(1);
 }
 if (fs.existsSync(path.join(BACKEND_DIR, '.env'))) {
@@ -34,5 +36,5 @@ for (const [k, v] of Object.entries(preprod)) process.env[k] = v;
 // Virtuelni sat za E2E "smena kroz vreme" (samo uz SECURITY_TEST_HOOKS=1): mora pre učitavanja backenda
 if (process.env.SECURITY_TEST_HOOKS === '1') require('./test-clock').install();
 process.chdir(BACKEND_DIR);
-console.log(`[preprod-security] robotikb (worktree) -> ${uri} | port ${process.env.PORT}`);
+console.log(`[preprod-security] robotikb (worktree, instanca ${instanceName()}) -> ${uri} | port ${process.env.PORT}`);
 require(path.join(BACKEND_DIR, 'server.js'));

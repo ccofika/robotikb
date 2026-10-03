@@ -1,0 +1,9 @@
+# Čeka da se na ekranu pojavi tekst BEZ ponovnog pokretanja aplikacije: provera da promena sa weba stigne
+# sama (osvežavanje na 20 s), kao kod radnika kome je aplikacija otvorena.
+# Promenljive: TEXT (regex), SHOT
+appId: com.robotik.mobile
+---
+- extendedWaitUntil:
+    visible: ${TEXT}
+    timeout: 60000
+- takeScreenshot: ${SHOT}

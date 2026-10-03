@@ -1,5 +1,5 @@
-// Mejlovi koje je Security pre-prod backend poslao u lokalni Mailpit (8026): izveštaji smene, MASTER alarm
-const MAILPIT_URL = process.env.MAILPIT_URL || 'http://localhost:8026';
+// Mejlovi koje je Security pre-prod backend poslao u lokalni Mailpit (instanca za testove: 8027): izveštaji smene, MASTER alarm
+const { MAILPIT_URL } = require('./env');
 if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(MAILPIT_URL)) throw new Error(`[e2e] MAILPIT_URL mora biti lokalan (dobio: ${MAILPIT_URL})`);
 
 async function getJson(p) {

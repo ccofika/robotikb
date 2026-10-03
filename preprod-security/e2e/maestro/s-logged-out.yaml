@@ -1,0 +1,15 @@
+# Server je odbio prijavu (npr. admin je isključio nalog): aplikacija odjavljuje radnika i kaže zašto,
+# umesto beskonačnog učitavanja. Promenljive: REASON (regex poruke sa servera), SHOT
+appId: com.robotik.mobile
+---
+- launchApp
+- extendedWaitUntil:
+    visible: ${REASON}
+    timeout: 90000
+- takeScreenshot: ${SHOT}
+- tapOn:
+    text: "U redu"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "Unesite korisničko ime"
+    timeout: 30000

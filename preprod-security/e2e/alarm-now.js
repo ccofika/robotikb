@@ -1,5 +1,7 @@
 // Ručno: upali alarm za prvi checkpoint aktivne smene test radnika (tačka 8 min posle plana, pa mehanizam alarma)
 //   node alarm-now.js [indeks tačke]
+// Radi na standardnoj instanci (5300), koju emulator gleda van testova; E2E_TARGET=e2e za instancu za testove.
+process.env.E2E_TARGET = process.env.E2E_TARGET || 'main';
 const { setup, runEngine } = require('./helpers/api');
 const { withDb } = require('./helpers/db');
 

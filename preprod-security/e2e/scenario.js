@@ -5,6 +5,8 @@
 //                             (prava smena 07-19 ili 19-07; kraj se pomera samo ako do njega nema mesta za obilazak)
 //   node scenario.js none     bez smene
 // Posle pripreme otvori aplikaciju ponovo (ili povuci ekran nadole) da se stanje osveži.
+// Radi na standardnoj instanci (5300), koju emulator gleda van testova; E2E_TARGET=e2e za instancu za testove.
+process.env.E2E_TARGET = process.env.E2E_TARGET || 'main';
 const { fresh, plannedSoon, plannedLate, active, addTask } = require('./helpers/scenarios');
 
 (async () => {

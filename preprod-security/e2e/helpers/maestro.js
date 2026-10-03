@@ -2,7 +2,7 @@
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { JAVA_HOME, ANDROID_HOME, MAESTRO_BIN, MAESTRO_DIR, OUT_DIR, SERIAL, ADB } = require('./env');
+const { JAVA_HOME, ANDROID_HOME, MAESTRO_BIN, MAESTRO_DIR, OUT_DIR, SERIAL, ADB, DEVICE_API_PORT, DEVICE_WEB_PORT, API_PORT, WEB_PORT } = require('./env');
 
 // Na Windows-u se .bat pokreće kroz shell, pa svaki argument ide pod navodnike
 const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
@@ -43,6 +43,18 @@ function adb(...args) {
   return res.stdout;
 }
 
+// Metro (8082) i backend/web koje aplikacija zove kao localhost:5300 / 3300 vode na instancu koja se testira
+function reverseAll() {
+  adb('reverse', 'tcp:8082', 'tcp:8082');
+  adb('reverse', `tcp:${DEVICE_API_PORT}`, `tcp:${API_PORT}`);
+  adb('reverse', `tcp:${DEVICE_WEB_PORT}`, `tcp:${WEB_PORT}`);
+}
+
+// Posle testova uređaj ponovo gleda standardnu instancu (ručni pregled na emulatoru)
+function reverseMain() {
+  for (const p of ['8082', '5300', '3300']) adb('reverse', `tcp:${p}`, `tcp:${p}`);
+}
+
 function screenshot(file) {
   const res = spawnSync(ADB, ['-s', SERIAL, 'exec-out', 'screencap', '-p'], { encoding: 'buffer', timeout: 60000, maxBuffer: 64 * 1024 * 1024 });
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -50,4 +62,4 @@ function screenshot(file) {
   return file;
 }
 
-module.exports = { runFlow, adb, screenshot };
+module.exports = { runFlow, adb, screenshot, reverseAll, reverseMain };

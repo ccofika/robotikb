@@ -1,0 +1,9 @@
+# Čeka da element nestane BEZ ponovnog pokretanja aplikacije (npr. alarm preko celog ekrana kad ga admin reši)
+# Promenljive: ID, SHOT
+appId: com.robotik.mobile
+---
+- extendedWaitUntil:
+    notVisible:
+      id: ${ID}
+    timeout: 60000
+- takeScreenshot: ${SHOT}

@@ -1,6 +1,6 @@
 // Virtuelni sat za E2E "smena kroz vreme": server (POST /api/security/_test/clock, uključuje ga start-backend.js)
 // i emulator (adb root + date) uvek u istom trenutku, pa aplikacija i mehanizam alarma vide isto vreme.
-const { adb } = require('./maestro');
+const { adb, reverseAll } = require('./maestro');
 const { login, client } = require('./api');
 const { ADMIN } = require('./env');
 
@@ -16,7 +16,7 @@ function deviceRoot() {
     try { if (/uid=0/.test(adb('shell', 'id'))) break; } catch (e) { /* adbd se ponovo pokreće */ }
     sleep(500);
   }
-  for (const p of ['8082', '5300', '3300']) adb('reverse', `tcp:${p}`, `tcp:${p}`);
+  reverseAll();
   adb('shell', 'settings', 'put', 'global', 'auto_time', '0');
   rooted = true;
 }

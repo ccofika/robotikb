@@ -149,9 +149,13 @@ router.put('/:id', isSecurityAdmin, ah(async (req, res) => {
     if (String(b.password).length < 6) throw httpError(400, 'Lozinka mora imati najmanje 6 znakova.');
     w.password = await bcrypt.hash(String(b.password), 10);
   }
+  const untilOf = () => (w.contract && w.contract.until ? new Date(w.contract.until).getTime() : null);
+  const prevUntil = untilOf();
   Object.assign(w, workerFields(b, false));
   if (Array.isArray(b.facilityIds)) w.facilityIds = b.facilityIds.filter((x) => /^[a-f0-9]{24}$/i.test(String(x)));
-  if (b.contract && b.contract.until !== undefined) w.alertsSent = (w.alertsSent || []).filter((a) => !a.key.startsWith('contract:'));
+  // Oznake poslatih upozorenja o isteku ugovora brišu se samo kad se datum isteka zaista promeni (produženje).
+  // Ranije se brisale na svako čuvanje (npr. promena telefona), pa je upozorenje o isteku stizalo ponovo.
+  if (untilOf() !== prevUntil) w.alertsSent = (w.alertsSent || []).filter((a) => !a.key.startsWith('contract:'));
   await w.save();
   res.json(w.toSafe());
 }));

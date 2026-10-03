@@ -125,7 +125,17 @@ router.post('/:id/restore', isSecurityAdmin, ah(async (req, res) => {
 router.put('/:id/people', isSecurityAdmin, ah(async (req, res) => {
   const f = await loadAccessible(req, req.params.id);
   const role = req.body.role === 'coordinator' ? 'coordinator' : 'guard';
-  const ids = (req.body.workerIds || []).filter((x) => /^[a-f0-9]{24}$/i.test(String(x)));
+  const isId = (x) => /^[a-f0-9]{24}$/i.test(String(x));
+  // { add, remove }: menjaju se samo navedeni radnici. Ceo spisak (workerIds) sa strane je mogao da zastari
+  // dok je drugi admin dodavao ili premeštao radnike, pa bi ih skinuo sa objekta.
+  if (Array.isArray(req.body.add) || Array.isArray(req.body.remove)) {
+    const add = (req.body.add || []).filter(isId);
+    const remove = (req.body.remove || []).filter(isId);
+    if (remove.length) await SecurityWorker.updateMany({ role, _id: { $in: remove } }, { $pull: { facilityIds: f._id } });
+    if (add.length) await SecurityWorker.updateMany({ role, _id: { $in: add } }, { $addToSet: { facilityIds: f._id } });
+    return res.json({ ok: true });
+  }
+  const ids = (req.body.workerIds || []).filter(isId);
   await SecurityWorker.updateMany({ role, facilityIds: f._id, _id: { $nin: ids } }, { $pull: { facilityIds: f._id } });
   await SecurityWorker.updateMany({ role, _id: { $in: ids } }, { $addToSet: { facilityIds: f._id } });
   res.json({ ok: true });

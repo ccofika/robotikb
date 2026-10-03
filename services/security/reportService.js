@@ -6,7 +6,7 @@ const SecurityAlarm = require('../../models/SecurityAlarm');
 const SecurityObservation = require('../../models/SecurityObservation');
 const SecurityTask = require('../../models/SecurityTask');
 const SecurityWorker = require('../../models/SecurityWorker');
-const { getSettings } = require('./settings');
+const { getSettings, rulesFor } = require('./settings');
 const { instantToLocal, fmtDateSr } = require('./time');
 const { shiftLabel } = require('./shiftService');
 const { shiftMinutes, payFor, holidaySetFor } = require('./payService');
@@ -50,10 +50,12 @@ async function buildReportData(shiftId) {
     const done = (shift.standingDone || []).find((d) => String(d.taskId) === String(t._id));
     return { text: t.text, done: !!done, doneAt: done ? hm(done.doneAt) : '', comment: done ? done.comment : '' };
   });
+  // tolerancija objekta (lokalno pravilo ima prednost), ista kao u mehanizmu alarma
+  const tol = rulesFor(s, facility).checkpointTolMin;
   const rounds = (shift.rounds || []).map((r) => ({
     tagName: r.tagName, due: hm(r.dueAt), scanned: r.scannedAt ? hm(r.scannedAt) : '', lateMin: r.lateMin || 0,
     snoozeReason: (r.snoozes || []).length ? r.snoozes[r.snoozes.length - 1].reason : '',
-    status: r.scannedAt ? (r.lateMin > (s.alarms.checkpointTolMin || 5) ? 'late' : 'ok') : (r.alarm2At ? 'missed' : r.alarm1At ? 'alarm' : 'open')
+    status: r.scannedAt ? (r.lateMin > tol ? 'late' : 'ok') : (r.alarm2At ? 'missed' : r.alarm1At ? 'alarm' : 'open')
   }));
 
   const worker2 = shift.workerId && shift.workerId._id ? await SecurityWorker.findById(shift.workerId._id).select('hourlyRate') : null;

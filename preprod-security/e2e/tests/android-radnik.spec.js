@@ -7,7 +7,7 @@ const S = require('../helpers/scenarios');
 const { runEngine, MIN } = require('../helpers/api');
 const db = require('../helpers/db');
 const { webLogin } = require('../helpers/web');
-const { GUARD, PASSWORD } = require('../helpers/env');
+const { GUARD, PASSWORD, API_PORT } = require('../helpers/env');
 
 test.describe.configure({ mode: 'serial' });
 
@@ -201,7 +201,7 @@ test('bez interneta: očitavanje se čuva sa tačnim vremenom i šalje kad se ve
     // nijedno očitavanje nije stiglo do servera dok veze nema
     expect((await db.shift(sh._id)).rounds[0].scannedAt).toBeFalsy();
   } finally {
-    adb('reverse', 'tcp:5300', 'tcp:5300');
+    adb('reverse', 'tcp:5300', `tcp:${API_PORT}`);
   }
   runFlow('g11c-back-online.yaml');
   const scans = (await db.lastScans(GUARD, 5)).filter((s) => s.result === 'checkpoint');

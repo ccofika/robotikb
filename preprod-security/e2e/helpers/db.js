@@ -1,11 +1,11 @@
-// Čišćenje test stanja direktno u lokalnoj bazi (samo robotik_preprod_security na 127.0.0.1:27118):
+// Čišćenje test stanja direktno u lokalnoj bazi (samo robotik_preprod_security(_e2e) na 127.0.0.1:27118):
 // smene, očitavanja, alarmi, zapažanja i zadaci test radnika, da svaki test krene od istog stanja.
 const { MONGO_URI, DB_NAME, BACKEND_DIR, GUARD } = require('./env');
 
 const { MongoClient } = require(require.resolve('mongodb', { paths: [BACKEND_DIR] }));
 
 async function withDb(fn) {
-  if (!/^mongodb:\/\/127\.0\.0\.1:27118$/.test(MONGO_URI) || DB_NAME !== 'robotik_preprod_security') throw new Error('[db] dozvoljena je samo lokalna Security pre-prod baza');
+  if (!/^mongodb:\/\/127\.0\.0\.1:27118$/.test(MONGO_URI) || !/^robotik_preprod_security(_e2e)?$/.test(DB_NAME)) throw new Error('[db] dozvoljena je samo lokalna Security pre-prod baza');
   const client = await MongoClient.connect(MONGO_URI, { serverSelectionTimeoutMS: 5000 });
   try { return await fn(client.db(DB_NAME)); } finally { await client.close(); }
 }

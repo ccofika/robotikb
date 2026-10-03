@@ -37,6 +37,22 @@ async function buildRounds(shift, facility, settings) {
   return rounds;
 }
 
+// Uslov nad jednom tačkom obilaska (po indeksu) za atomske upise u bazu.
+// NE koristiti { 'rounds.3.scannedAt': null }: MongoDB za putanju sa brojem kroz niz proverava i polje "3" u
+// svakom elementu niza; ono ne postoji, a null odgovara i polju koje ne postoji, pa je takav uslov UVEK tačan
+// (dva očitavanja su upisala istu tačku, odlaganje je prolazilo i posle eskalacije).
+// conds: { polje: null } = polje je prazno, { polje: Date } = baš ta vrednost, { polje: { sizeLt: n } } = niz kraći od n
+function roundIs(i, conds) {
+  const parts = Object.entries(conds).map(([field, v]) => {
+    const cur = { $ifNull: [`$$r.${field}`, null] };
+    if (v && typeof v === 'object' && !(v instanceof Date) && v.sizeLt != null) {
+      return { $lt: [{ $size: { $ifNull: [`$$r.${field}`, []] } }, v.sizeLt] };
+    }
+    return { $eq: [cur, v === undefined ? null : v] };
+  });
+  return { $expr: { $let: { vars: { r: { $arrayElemAt: ['$rounds', i] } }, in: parts.length === 1 ? parts[0] : { $and: parts } } } };
+}
+
 // Da li radnik u tom periodu već ima smenu (na bilo kom objektu) i koliko odmora ostaje
 async function checkConflicts({ workerId, start, end, excludeId }) {
   const q = { workerId, status: { $ne: 'cancelled' } };
@@ -81,4 +97,4 @@ function describeConflict(conf, workerName) {
   return null;
 }
 
-module.exports = { REST_MIN, TYPE_LABEL, shiftLabel, shiftSpanText, buildRounds, checkConflicts, describeConflict };
+module.exports = { REST_MIN, TYPE_LABEL, shiftLabel, shiftSpanText, buildRounds, checkConflicts, describeConflict, roundIs };

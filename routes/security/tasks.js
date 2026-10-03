@@ -46,18 +46,28 @@ router.post('/', ah(async (req, res) => {
     requireId(facilityId, 'objekat');
     if (!isYmd(b.date) || !isHHMM(b.time)) throw httpError(400, 'Izaberi datum i vreme zadatka.');
     dueAt = localToInstant(b.date, b.time);
+    // npr. u 23:10 "za 1 h" bez promene dana: 00:10 današnjeg dana je već prošlo, radnik zadatak nikad ne bi video
+    if (dueAt.getTime() < Date.now() - 5 * 60000) throw httpError(400, `Vreme ${b.time} za ${b.date.split('-').reverse().join('.')}. je već prošlo. Izaberi drugi dan ili kasnije vreme.`, { code: 'past' });
   }
   if (!(await canAccessFacility(req, facilityId))) throw httpError(403, 'Nemate pristup ovom objektu.');
   const facility = await SecurityFacility.findById(facilityId);
   if (!facility) throw httpError(404, 'Objekat nije pronađen.');
-  if (!shift) shift = await SecurityShift.findOne({ facilityId, status: { $in: ['planned', 'active'] }, plannedStart: { $lte: dueAt }, plannedEnd: { $gte: dueAt } });
+  // Zadatak za objekat: ako je u to vreme jedan radnik u smeni, zadatak je njegov. Ako ih je više (dva posta ili
+  // primopredaja), zadatak ostaje za objekat i vide ga svi (ko ga prvi zatvori, zatvorio ga je); ranije je išao
+  // jednom od njih nasumično, pa ga drugi radnik nikad nije video.
+  let covering = [];
+  if (!shift) {
+    covering = await SecurityShift.find({ facilityId, status: { $in: ['planned', 'active'] }, plannedStart: { $lte: dueAt }, plannedEnd: { $gte: dueAt } }).limit(5);
+    if (covering.length === 1) shift = covering[0];
+  }
   const task = await SecurityTask.create({ facilityId, shiftId: shift ? shift._id : null, dueAt, text, createdById: req.user._id, createdByName: req.user.name });
   let notified = false;
-  if (shift && shift.published) {
-    const w = await SecurityWorker.findById(shift.workerId);
-    if (w) { const r = await pushToWorker(w, { title: `Novi zadatak za ${hm(dueAt)}`, body: text, data: { type: 'security_task', taskId: String(task._id) }, channelId: 'default' }); notified = r.sent; }
+  for (const s of (shift ? [shift] : covering)) {
+    if (!s.published) continue;
+    const w = await SecurityWorker.findById(s.workerId);
+    if (w) { const r = await pushToWorker(w, { title: `Novi zadatak za ${hm(dueAt)}`, body: text, data: { type: 'security_task', taskId: String(task._id) }, channelId: 'default' }); notified = notified || r.sent; }
   }
-  res.status(201).json({ ...task.toObject(), shiftFound: !!shift, notified });
+  res.status(201).json({ ...task.toObject(), shiftFound: !!shift || covering.length > 0, notified });
 }));
 
 // PUT /api/security/tasks/:id { text }
@@ -69,9 +79,10 @@ router.put('/:id', ah(async (req, res) => {
   if (t.status !== 'open') throw httpError(409, 'Urađen zadatak se ne menja.');
   const text = str(req.body.text, 600);
   if (text.length < 3) throw httpError(400, 'Upiši zadatak.');
-  t.text = text;
-  await t.save();
-  res.json(t);
+  // atomski: radnik ga je možda upravo zatvorio
+  const upd = await SecurityTask.findOneAndUpdate({ _id: t._id, status: 'open' }, { $set: { text } }, { new: true });
+  if (!upd) throw httpError(409, 'Radnik je upravo zatvorio ovaj zadatak, pa se više ne menja.');
+  res.json(upd);
 }));
 
 // DELETE /api/security/tasks/:id  (otkazivanje)
@@ -81,8 +92,9 @@ router.delete('/:id', ah(async (req, res) => {
   if (!t) throw httpError(404, 'Zadatak nije pronađen.');
   if (!(await canAccessFacility(req, t.facilityId))) throw httpError(403, 'Nemate pristup.');
   if (t.status === 'done') throw httpError(409, 'Urađen zadatak ne može da se otkaže.');
-  t.status = 'cancelled';
-  await t.save();
+  // atomski: ako ga radnik zatvori u istoj sekundi, otkazivanje ne briše njegov komentar
+  const upd = await SecurityTask.findOneAndUpdate({ _id: t._id, status: { $in: ['open', 'cancelled'] } }, { $set: { status: 'cancelled' } });
+  if (!upd) throw httpError(409, 'Radnik je upravo zatvorio ovaj zadatak, pa ne može da se otkaže.');
   res.json({ ok: true });
 }));
 

@@ -1,6 +1,6 @@
 // Seed za Security pre-prod bazu: nalozi, objekti, radnici, NFC tagovi (NTAG215), plan obilaska,
 // raspored ±14 dana, odrađene smene sa očitavanjima i jedna aktivna smena po objektu.
-// Upotreba: node preprod-security/scripts/seed.js --reset
+// Upotreba: node preprod-security/scripts/seed.js --reset   (ili --if-empty; SECURITY_INSTANCE=e2e = baza za testove)
 const path = require('path');
 const fs = require('fs');
 
@@ -13,8 +13,10 @@ const dotenv = req('dotenv');
 const mongoose = req('mongoose');
 const bcrypt = req('bcrypt');
 
-const env = dotenv.parse(fs.readFileSync(path.join(__dirname, '..', 'env', 'backend.env')));
-if (!/robotik_preprod_security$/.test(env.MONGODB_URI || '')) { console.error('[seed] STOP: pogrešna baza'); process.exit(1); }
+const { forInstance, DB_RE } = require('./instance');
+// SECURITY_INSTANCE=e2e: baza robotik_preprod_security_e2e (instanca za automatske testove)
+const env = forInstance(dotenv.parse(fs.readFileSync(path.join(__dirname, '..', 'env', 'backend.env'))));
+if (!DB_RE.test(env.MONGODB_URI || '')) { console.error('[seed] STOP: pogrešna baza'); process.exit(1); }
 Object.assign(process.env, env);
 
 const Technician = require(path.join(B, 'models', 'Technician'));
@@ -35,6 +37,12 @@ const uid = () => { const n = (uidN++).toString(16).padStart(4, '0').toUpperCase
 
 (async () => {
   await mongoose.connect(env.MONGODB_URI);
+  // --if-empty: samo ako baza još nema podatke (security.ps1 test pri prvom pokretanju e2e instance)
+  if (process.argv.includes('--if-empty') && (await mongoose.connection.db.collection('securityworkers').countDocuments()) > 0) {
+    console.log('[seed] baza već ima podatke, preskačem');
+    await mongoose.disconnect();
+    return;
+  }
   if (process.argv.includes('--reset')) { await mongoose.connection.db.dropDatabase(); console.log('[seed] baza obrisana'); }
   const hash = await bcrypt.hash(PASSWORD, 10);
   const now = new Date();
@@ -214,5 +222,9 @@ const uid = () => { const n = (uidN++).toString(16).padStart(4, '0').toUpperCase
   console.log('[seed] nalozi (lozinka za sve: Preprod123!):');
   console.log('  web:  E2E Admin, E2E Superadmin, Milan Ilić / E2E Koordinator (koordinator)');
   console.log('  app:  Stefan Jovanović, E2E Cuvar (radnik obezbeđenja)');
+  // Indeksi odmah (jedinstveni ključevi štite od duplikata), ne tek pri sledećem pokretanju backenda
+  for (const name of ['SecurityShift', 'SecurityOnce', 'SecurityScan', 'SecurityAlarm', 'SecurityObservation', 'SecurityTask', 'SecurityDossier', 'NfcTag', 'SecurityWorker', 'SecurityFacility']) {
+    await require(path.join(B, 'models', name)).createIndexes().catch((e) => console.error(`[seed] indeksi ${name}:`, e.message));
+  }
   await mongoose.disconnect();
 })().catch(async (e) => { console.error('[seed] greška:', e); await mongoose.disconnect().catch(() => {}); process.exit(1); });
