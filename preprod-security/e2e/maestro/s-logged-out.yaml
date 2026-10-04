@@ -1,8 +1,11 @@
 # Server je odbio prijavu (npr. admin je isključio nalog): aplikacija odjavljuje radnika i kaže zašto,
 # umesto beskonačnog učitavanja. Promenljive: REASON (regex poruke sa servera), SHOT
+# Aplikacija se ne gasi (stopApp: false): ako je već sama dobila odbijanje (provera na ~20 s), poruka je na ekranu,
+# a ponovno pokretanje bi je sklonilo i ostavilo samo ekran za prijavu.
 appId: com.robotik.mobile
 ---
-- launchApp
+- launchApp:
+    stopApp: false
 - extendedWaitUntil:
     visible: ${REASON}
     timeout: 90000

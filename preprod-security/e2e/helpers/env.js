@@ -18,10 +18,13 @@ if (/:(5000|3000|5100|3100)$/.test(API_URL) || /:(5000|3000|5100|3100)$/.test(WE
 if (TARGET === 'e2e' && (/:(5300|3300)$/.test(API_URL) || /:(5300|3300)$/.test(WEB_URL))) throw new Error('[e2e] testovi ne rade na standardnoj instanci (3300/5300, tu radi čovek), samo na 3301/5301');
 
 const LOCALAPP = process.env.LOCALAPPDATA || path.join(require('os').homedir(), 'AppData', 'Local');
+// Windows (security.ps1) ili macOS (security.sh): JDK, Android SDK i Maestro su na različitim mestima
+const WIN = process.platform === 'win32';
+const HOME = require('os').homedir();
 // Koren projekta: <koren>/.wt/robotikb/preprod-security/e2e ili <koren>/preprod-security/e2e
 const PRE_DIR = path.resolve(__dirname, '..', '..');
 const ROOT = fs.existsSync(path.join(PRE_DIR, '..', '.wt', 'robotikb')) ? path.resolve(PRE_DIR, '..') : path.resolve(PRE_DIR, '..', '..', '..');
-const ANDROID_HOME = process.env.ANDROID_HOME || path.join(LOCALAPP, 'Android', 'Sdk');
+const ANDROID_HOME = process.env.ANDROID_HOME || (WIN ? path.join(LOCALAPP, 'Android', 'Sdk') : path.join(HOME, 'Library', 'Android', 'sdk'));
 
 module.exports = {
   TARGET,
@@ -44,10 +47,10 @@ module.exports = {
   SERIAL: process.env.ANDROID_SERIAL || 'emulator-5556',
   ROOT,
   BACKEND_DIR: path.join(ROOT, '.wt', 'robotikb'),
-  JAVA_HOME: process.env.JAVA_HOME || path.join(LOCALAPP, 'Programs', 'Java', 'jdk-17'),
+  JAVA_HOME: process.env.JAVA_HOME || (WIN ? path.join(LOCALAPP, 'Programs', 'Java', 'jdk-17') : path.join(HOME, '.local', 'opt', 'jdk-17', 'Contents', 'Home')),
   ANDROID_HOME,
-  ADB: path.join(ANDROID_HOME, 'platform-tools', 'adb.exe'),
-  MAESTRO_BIN: path.join(LOCALAPP, 'Programs', 'maestro', 'bin', 'maestro.bat'),
+  ADB: path.join(ANDROID_HOME, 'platform-tools', WIN ? 'adb.exe' : 'adb'),
+  MAESTRO_BIN: process.env.MAESTRO_BIN || (WIN ? path.join(LOCALAPP, 'Programs', 'maestro', 'bin', 'maestro.bat') : path.join(HOME, '.maestro', 'bin', 'maestro')),
   MAESTRO_DIR: path.join(__dirname, '..', 'maestro'),
   OUT_DIR: path.join(__dirname, '..', 'test-results'),
 };

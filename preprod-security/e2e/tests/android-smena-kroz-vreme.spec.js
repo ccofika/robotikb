@@ -96,36 +96,48 @@ test('A dnevna smena kroz vreme: od prerane prijave do izveštaja', async () => 
   // tagovi čije su sve tačke plana daleko (više od 60 min): očitavanje je "van plana"
   const earliest = (tagId) => Math.min(...R.filter((r) => String(r.tagId) === String(tagId)).map((r) => new Date(r.dueAt).getTime()));
   const far = ctx.checkpoints.filter((t) => earliest(t._id) > at(D, '07:40').getTime());
-  expect(far.length).toBeGreaterThanOrEqual(3);
-  flow('t-scan.yaml', { SIM_INDEX: simIndex(far[0]._id), RESULT: 'Očitano van plana', MSG: ANY, SHOT: 'a06-prerano-ocitavanje' });
+  // Zamena i povlačenje idu na tag bez tačke u ovoj smeni: povučen tag izlazi iz plana objekta i iz aktivne smene
+  // (tags.js releaseFromActiveShifts), a vraćanje u upotrebu ga ne vraća, pa bi tačka tog taga nestala iz smene
+  const spare = far.find((t) => !R.some((r) => String(r.tagId) === String(t._id)));
+  const others = far.filter((t) => t !== spare);
+  expect(spare, 'checkpoint koji nije u planu dnevne smene').toBeTruthy();
+  expect(others.length).toBeGreaterThanOrEqual(3);
+  flow('t-scan.yaml', { SIM_INDEX: simIndex(others[0]._id), RESULT: 'Očitano van plana', MSG: ANY, SHOT: 'a06-prerano-ocitavanje' });
   expect((await lastScan()).result).toBe('extra');
 
   // zamenjen tag (stari čip) i povučen tag, pa vraćen u upotrebu
-  const oldUid = far[0].uid;
+  const planOf = (f) => ({
+    day: f.roundPlan.day.map((p) => ({ tagId: String(p.tagId), time: p.time })),
+    night: f.roundPlan.night.map((p) => ({ tagId: String(p.tagId), time: p.time })),
+  });
+  const planBefore = planOf(await db.withDb((d) => d.collection('securityfacilities').findOne({ name: ctx.facility.name })));
+  const oldUid = spare.uid;
   const newUid = '04:E2:E0:00:99:00:01';
   await fresh();
   await db.withDb((d) => d.collection('nfctags').deleteMany({ uid: newUid }));
-  await ctx.api.post(`/tags/${far[0]._id}/replace`, { uid: newUid, reason: 'E2E zamena oštećenog taga' });
+  await ctx.api.post(`/tags/${spare._id}/replace`, { uid: newUid, reason: 'E2E zamena oštećenog taga' });
   flow('sim-uid-scan.yaml', { TAG_UID: oldUid, RESULT: 'Tag je zamenjen' });
   expect((await lastScan()).result).toBe('replaced_tag');
   await fresh();
-  await ctx.api.post(`/tags/${far[0]._id}/retire`, { reason: 'E2E' });
+  await ctx.api.post(`/tags/${spare._id}/retire`, { reason: 'E2E' });
   flow('sim-uid-scan.yaml', { TAG_UID: newUid, RESULT: 'Tag nije u upotrebi' });
   expect((await lastScan()).result).toBe('retired_tag');
   await fresh();
-  await ctx.api.post(`/tags/${far[0]._id}/reactivate`, {});
+  await ctx.api.post(`/tags/${spare._id}/reactivate`, {});
+  // povlačenje je izbacilo tag iz plana objekta: admin ga vraća u plan (noćna smena B pravi tačke iz plana pri prijavi)
+  await ctx.api.put(`/facilities/${ctx.facility._id}/round-plan`, planBefore);
 
   // sat telefona 10 min napred: važi vreme servera, a očitavanje dobija oznaku "sat"
   await clock.travel(at(D, '06:25'), { deviceSkewMin: 10 });
   await fresh();
-  flow('t-scan.yaml', { SIM_INDEX: simIndex(far[1]._id), RESULT: 'Očitano van plana', MSG: ANY, SHOT: 'a07-sat-telefona' });
+  flow('t-scan.yaml', { SIM_INDEX: simIndex(others[1]._id), RESULT: 'Očitano van plana', MSG: ANY, SHOT: 'a07-sat-telefona' });
   expect((await lastScan()).flags).toContain('clock');
 
   // dva različita checkpointa za manje od 15 s: oznaka "brz obilazak" (tag možda skinut sa zida)
   await clock.travel(at(D, '06:30'));
-  flow('t-scan-two.yaml', { SIM_A: simIndex(far[1]._id), SIM_B: simIndex(far[2]._id) });
+  flow('t-scan-two.yaml', { SIM_A: simIndex(others[1]._id), SIM_B: simIndex(others[2]._id) });
   const fast = await lastScan();
-  expect(String(fast.tagId)).toBe(String(far[2]._id));
+  expect(String(fast.tagId)).toBe(String(others[2]._id));
   expect(fast.flags).toContain('fast');
 
   // tačka 1: 2 min posle plana (u toleranciji)
@@ -202,7 +214,7 @@ test('A dnevna smena kroz vreme: od prerane prijave do izveštaja', async () => 
 
   // posle odjave: očitavanje se ne računa, kartica pokazuje završenu smenu
   await fresh();
-  flow('t-scan.yaml', { SIM_INDEX: simIndex(far[2]._id), RESULT: 'Smena je završena', MSG: ANY, SHOT: 'a17-posle-odjave' });
+  flow('t-scan.yaml', { SIM_INDEX: simIndex(others[2]._id), RESULT: 'Smena je završena', MSG: ANY, SHOT: 'a17-posle-odjave' });
   expect((await lastScan()).result).toBe('shift_done');
   flow('t-status.yaml', { PILL: 'završena', TITLE: 'Smena je završena u .*', HINT: ANY, SHOT: 'a18-zavrsena' });
 });
