@@ -37,7 +37,7 @@ const PerformanceLogSchema = new Schema({
 
   userRole: {
     type: String,
-    enum: ['technician', 'admin', 'superadmin', 'supervisor']
+    enum: ['technician', 'admin', 'superadmin', 'supervisor', 'guard', 'coordinator']
   },
 
   // Database metrike

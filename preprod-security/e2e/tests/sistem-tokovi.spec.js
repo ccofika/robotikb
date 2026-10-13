@@ -285,6 +285,8 @@ test('admin menja toleranciju za tačku na webu: mehanizam alarma je primenjuje 
 test('dva admina: "Dodeli i dodaj" u rasporedu ne skida radnika koga je drugi admin upravo dodao', async ({ browser }) => {
   const ctx = await S.fresh();
   await db.resetGuard('E2E Cuvar Dva');
+  // zamena radnika (test iznad) ostavlja E2E Cuvar Dva na objektu, a ovde ga drugi admin tek dodaje
+  await db.withDb((d) => d.collection('securityworkers').updateOne({ _id: oid(guard2._id) }, { $pull: { facilityIds: oid(ctx.facility._id) } }));
   const date = api.addDays(api.belgrade().ymd, 20); // van rasporeda iz seed-a (±14 dana), bez preklapanja
   const page = await webAs(browser, ADMIN, `/security/raspored?objekat=${ctx.facility._id}&nedelja=${weekStartYmd(date)}`);
   await expect(page.locator('[data-testid="sched-cell"]').first()).toBeVisible();

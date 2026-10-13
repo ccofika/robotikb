@@ -94,7 +94,8 @@ test('noć vraćanja sata (24/25.10.2026): smena traje 13 h, telefon, web, alarm
   await clock.travel(new Date(midnight));
   ctx = await api.setup(); g = await api.guardApi();
   runFlow('guard-login.yaml', { GUARD_NAME: GUARD, GUARD_PASSWORD: PASSWORD });
-  flow('t-text.yaml', { TEXT: '.*do 07:00 · još 7 h (29|30) min.*', SHOT: 'vreme-dst-telefon' });
+  // sat telefona teče dok traju prijava i Maestro (na Mac-u i do 2 min), pa minuti nisu tačno 29 ili 30
+  flow('t-text.yaml', { TEXT: '.*do 07:00 · još 7 h (2[0-9]|30) min.*', SHOT: 'vreme-dst-telefon' });
   const web = await webAt(browser, 'E2E Admin', midnight);
   try {
     await expect(web.page.locator('.sx-rail__shift-left'), 'meni na webu: preostalo vreme noćne smene (stvarno, ne po zidnom satu)').toHaveText(/još 7 h (29|30) min/);
@@ -257,6 +258,24 @@ test('brzi zadatak sa weba u 23:10: "za 1 h" je sutra posle ponoći, ne današnj
   const task = await db.withDb((d) => d.collection('securitytasks').findOne({ text: 'E2E Proveri zadnji ulaz posle ponoći' }, { sort: { _id: -1 } }));
   expect(T.instantToLocal(task.dueAt).ymd, 'zadatak je za sutra').toBe(tomorrow);
   expect(T.instantToLocal(task.dueAt).hhmm).toBe('00:10');
+});
+
+test('brzi zadatak sa weba u 23:10: ukucano 23:40 je danas, 06:30 sutra, a ručno izabran dan ostaje', async ({ browser }) => {
+  const web = await webAt(browser, 'E2E Koordinator', at(api.belgrade().ymd, '23:10'));
+  try {
+    const { page } = web;
+    await page.getByTestId('new-task').first().click();
+    const dlg = page.getByTestId('quick-task');
+    const day = (i, msg) => expect(dlg.getByTestId(`task-day-${i}`), msg).toHaveAttribute('aria-checked', 'true');
+    await day(1, 'podrazumevano 00:30 je sutra');
+    await dlg.getByTestId('task-time').fill('23:40');
+    await day(0, 'ukucano 23:40 je danas, ne sutra u 23:40');
+    await dlg.getByTestId('task-time').fill('06:30');
+    await day(1, '06:30 je danas već prošlo');
+    await dlg.getByTestId('task-day-1').click();
+    await dlg.getByTestId('task-time').fill('23:50');
+    await day(1, 'ručno izabran dan se ne menja');
+  } finally { await web.close(); }
 });
 
 test('očitavanje bez interneta pre odjave, poslato posle odjave, računa se u smenu', async () => {
