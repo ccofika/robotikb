@@ -397,6 +397,216 @@ const processPendingComplaintFixes = async (workOrderId) => {
   return { ok: true, created };
 };
 
+// Minus koji superadmin može ručno da postavi: samo koraci od 10%, 100% = nalog se ne plaća
+const ALLOWED_PENALTY_PERCENTS = [0, 10, 20, 30, 40, 50, 100];
+
+// Broj vraćanja sa umanjenjem koji odgovara minusu, da bi sledeće vraćanje dodalo tačno 10%
+const penaltyCountForPercent = (percent) => (
+  percent >= 100 ? PENALTY_MAX_STEPS + 1 : Math.round(percent / PENALTY_STEP_PERCENT)
+);
+
+const grossOf = (techEntry) => round2(
+  techEntry.grossEarnings !== undefined && techEntry.grossEarnings !== null ? techEntry.grossEarnings : techEntry.earnings
+);
+
+// Stavka iz koje je plaćen tekući ciklus naloga (na nju se odnosi trenutni minus):
+// bez reklamacije redovna stavka; posle reklamacije isplata za ispravku, ili redovna stavka
+// ako nalog pre reklamacije nije bio plaćen. null = u tekućem ciklusu nalog još nije plaćen.
+const findCurrentCyclePaymentEntry = async (workOrder) => {
+  const complaints = Array.isArray(workOrder.complaints) ? workOrder.complaints : [];
+  if ((workOrder.penaltyCycle || 0) === 0 || complaints.length === 0) {
+    return FinancialTransaction.findOne({ workOrderId: workOrder._id, ...STANDARD_ENTRY_FILTER });
+  }
+  const lastComplaint = complaints[complaints.length - 1];
+  if (lastComplaint.fixStatus === 'paid' && lastComplaint.fixTransactionId) {
+    return FinancialTransaction.findById(lastComplaint.fixTransactionId);
+  }
+  if (lastComplaint.fixStatus === 'included') {
+    return FinancialTransaction.findOne({ workOrderId: workOrder._id, ...STANDARD_ENTRY_FILTER });
+  }
+  return null;
+};
+
+const summarizePaymentEntry = (entry) => (entry ? {
+  transactionId: entry._id,
+  entryType: entry.entryType || 'standard',
+  verifiedAt: entry.verifiedAt,
+  penaltyPercent: entry.rejectionPenaltyPercent || 0,
+  technicians: entry.technicians.map(t => ({
+    technicianId: t.technicianId,
+    name: t.name,
+    paymentType: t.paymentType || 'po_statusu',
+    grossEarnings: grossOf(t),
+    earnings: round2(t.earnings),
+    penaltyPercent: t.penaltyPercent || 0
+  }))
+} : null);
+
+// Stanje za modal "Promena minusa": trenutni minus i koliko je ko dobio (ako je nalog plaćen)
+const getPenaltyAdjustmentPreview = async (workOrder) => {
+  const entry = await findCurrentCyclePaymentEntry(workOrder);
+  return {
+    workOrderId: workOrder._id,
+    currentPercent: workOrder.rejectionPenaltyPercent || 0,
+    cycle: workOrder.penaltyCycle || 0,
+    options: ALLOWED_PENALTY_PERCENTS,
+    payment: summarizePaymentEntry(entry)
+  };
+};
+
+// Nalog skinut zbog tuđe reklamacije: odbitak ('complaint_extra') treba da prati novu isplatu za taj nalog,
+// da bi nalog i dalje bio potpuno skinut (bez viška ili manjka posle promene minusa).
+const syncComplaintExtraDeductions = async (workOrderId, paymentEntry) => {
+  const deductions = await FinancialTransaction.find({
+    workOrderId,
+    entryType: 'complaint_deduction',
+    deductionKind: 'complaint_extra'
+  });
+
+  let updated = 0;
+  for (const deduction of deductions) {
+    const deductedTech = deduction.technicians[0];
+    const paidTech = deductedTech && paymentEntry.technicians.find(t => sameId(t.technicianId, deductedTech.technicianId));
+    if (!paidTech) continue;
+
+    const amount = round2(paidTech.earnings);
+    if (round2(-deductedTech.earnings) === amount) continue;
+
+    deductedTech.earnings = -amount;
+    deductedTech.grossEarnings = amount;
+    deduction.totalTechnicianEarnings = -amount;
+    deduction.companyProfit = amount;
+    deduction.markModified('technicians');
+    await deduction.save({ validateModifiedOnly: true });
+
+    // Iznos i u zapisu reklamacije na reklamiranom nalogu (prikaz na nalogu)
+    if (deduction.relatedWorkOrderId) {
+      const complainedOrder = await WorkOrder.findById(deduction.relatedWorkOrderId);
+      if (complainedOrder) {
+        let changed = false;
+        (complainedOrder.complaints || []).forEach(complaint => {
+          (complaint.removedTechnicians || []).forEach(removed => {
+            if (sameId(removed.extraDeductionTransactionId, deduction._id)) {
+              removed.extraDeductionAmount = amount;
+              removed.deductionAmount = round2((removed.orderDeductionAmount || 0) + amount);
+              changed = true;
+            }
+          });
+        });
+        if (changed) await complainedOrder.save({ validateModifiedOnly: true });
+      }
+    }
+    updated++;
+  }
+  return updated;
+};
+
+// Superadmin menja minus naloga (0, 10, 20 ... 50% ili 100%). Menja se trenutni minus na nalogu,
+// a ako je tekući ciklus već plaćen, preračunava se i ta isplata — finansije i mesečni obračun
+// čitaju te stavke, pa odmah prikazuju novi iznos.
+// Vraća { status, error } za greške ili { status: 200, result }.
+const adjustWorkOrderPenalty = async ({ workOrderId, percent, reason, user }) => {
+  const newPercent = Number(percent);
+  if (!ALLOWED_PENALTY_PERCENTS.includes(newPercent)) {
+    return { status: 400, error: `Minus može biti samo ${ALLOWED_PENALTY_PERCENTS.join('%, ')}%` };
+  }
+
+  const workOrder = await WorkOrder.findById(workOrderId);
+  if (!workOrder) return { status: 404, error: 'Radni nalog nije pronađen' };
+
+  const percentBefore = workOrder.rejectionPenaltyPercent || 0;
+  const cycle = workOrder.penaltyCycle || 0;
+  const entry = await findCurrentCyclePaymentEntry(workOrder);
+  const entryPercent = entry ? (entry.rejectionPenaltyPercent || 0) : null;
+
+  if (percentBefore === newPercent && (entryPercent === null || entryPercent === newPercent)) {
+    return { status: 400, error: `Minus je već ${newPercent}%` };
+  }
+
+  // 1) Radni nalog. Uslov na stari minus: ako je nalog u međuvremenu vraćen, izmena se ne upisuje.
+  const now = new Date();
+  const update = {
+    $set: {
+      rejectionPenaltyPercent: newPercent,
+      rejectionPenaltyCount: penaltyCountForPercent(newPercent)
+    }
+  };
+  if (percentBefore !== newPercent) {
+    update.$push = {
+      penaltyAdjustments: {
+        adjustedAt: now,
+        adjustedBy: user?._id,
+        adjustedByName: user?.name || '',
+        percentBefore,
+        percentAfter: newPercent,
+        reason: (reason || '').trim(),
+        cycle,
+        financeUpdated: !!entry
+      }
+    };
+  }
+  const updatedWorkOrder = await WorkOrder.findOneAndUpdate(
+    { _id: workOrderId, rejectionPenaltyPercent: percentBefore === 0 ? { $in: [0, null] } : percentBefore },
+    update,
+    { new: true }
+  );
+  if (!updatedWorkOrder) {
+    return { status: 409, error: 'Minus na nalogu je u međuvremenu promenjen (npr. nalog je vraćen). Osvežite stranicu.' };
+  }
+
+  // 2) Već obračunata isplata za tekući ciklus: ista bruto zarada, novi minus
+  let payment = null;
+  let syncedDeductions = 0;
+  if (entry) {
+    if (entry.penaltyPercentOriginal === undefined || entry.penaltyPercentOriginal === null) {
+      entry.penaltyPercentOriginal = entry.rejectionPenaltyPercent || 0;
+    }
+    entry.technicians.forEach(t => {
+      const { gross, net, penaltyAmount, percent: appliedPercent } = applyPenalty(grossOf(t), newPercent);
+      t.grossEarnings = gross;
+      t.earnings = net;
+      t.penaltyPercent = appliedPercent;
+      t.penaltyAmount = penaltyAmount;
+      if (t.paymentType === 'plata' && t.salaryDetails) {
+        t.salaryDetails.earnedTowardsSalary = net;
+      }
+    });
+    entry.totalTechnicianEarnings = round2(entry.technicians.reduce((sum, t) => sum + (t.earnings || 0), 0));
+    entry.companyProfit = round2((entry.finalPrice || 0) - entry.totalTechnicianEarnings);
+    entry.rejectionPenaltyPercent = newPercent;
+    entry.rejectionCount = penaltyCountForPercent(newPercent);
+    entry.penaltyAdjustedAt = now;
+    entry.penaltyAdjustedByName = user?.name || '';
+    entry.markModified('technicians');
+    await entry.save({ validateModifiedOnly: true });
+
+    // Isplata za ispravku po reklamaciji: iznos i u zapisu reklamacije
+    if (entry.entryType === 'complaint_fix') {
+      const complaint = (updatedWorkOrder.complaints || []).find(c => sameId(c.fixTransactionId, entry._id));
+      if (complaint) {
+        complaint.fixAmount = round2(entry.technicians[0]?.earnings || 0);
+        complaint.fixNote = newPercent > 0 ? `Umanjeno ${newPercent}% zbog vraćanja naloga.` : '';
+        await updatedWorkOrder.save({ validateModifiedOnly: true });
+      }
+    }
+
+    syncedDeductions = await syncComplaintExtraDeductions(updatedWorkOrder._id, entry);
+    payment = summarizePaymentEntry(entry);
+  }
+
+  return {
+    status: 200,
+    result: {
+      workOrder: updatedWorkOrder,
+      percentBefore,
+      percentAfter: newPercent,
+      financeUpdated: !!entry,
+      syncedDeductions,
+      payment
+    }
+  };
+};
+
 // Mesečni obračun tehničara za period (datumi 'YYYY-MM-DD', isti filter kao na stranici Finansije)
 const buildTechnicianStatement = async (technicianId, dateFrom, dateTo) => {
   const technician = await Technician.findById(technicianId)
@@ -494,5 +704,10 @@ module.exports = {
   buildComplaintPlan,
   createComplaintDeductionEntry,
   processPendingComplaintFixes,
+  ALLOWED_PENALTY_PERCENTS,
+  penaltyCountForPercent,
+  findCurrentCyclePaymentEntry,
+  getPenaltyAdjustmentPreview,
+  adjustWorkOrderPenalty,
   buildTechnicianStatement
 };

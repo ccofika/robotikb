@@ -225,6 +225,42 @@ const WorkOrderSchema = new Schema({
     type: Number,
     default: 0
   },
+  // Ručne izmene minusa (superadmin utvrdi da tehničar nije kriv pa minus poništi ili promeni)
+  penaltyAdjustments: [{
+    adjustedAt: {
+      type: Date,
+      default: Date.now
+    },
+    adjustedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'Technician'
+    },
+    adjustedByName: {
+      type: String,
+      default: ''
+    },
+    percentBefore: {
+      type: Number,
+      default: 0
+    },
+    percentAfter: {
+      type: Number,
+      default: 0
+    },
+    reason: {
+      type: String,
+      default: ''
+    },
+    cycle: {
+      type: Number,
+      default: 0
+    },
+    // Da li je izmena preračunala već obračunatu zaradu (nalog je bio plaćen)
+    financeUpdated: {
+      type: Boolean,
+      default: false
+    }
+  }],
   // Reklamacije: radovi kod korisnika loše izvedeni, nalog se dodeljuje drugom tehničaru
   complaints: [{
     createdAt: {
