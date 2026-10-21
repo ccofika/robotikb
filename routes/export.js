@@ -15,6 +15,9 @@ const WorkOrder = require('../models/WorkOrder');
 const Equipment = require('../models/Equipment');
 const SupportCall = require('../models/SupportCall');
 
+// Tim radnog naloga (WorkOrder.tim) - iste labele kao routes/workorders.js
+const TIM_LABELS = { robotik: 'Robotik', mtel: 'mtel' };
+
 // Prikazne labele za tipove poziva podršci u exportu
 const SUPPORT_TYPE_LABELS = {
   administrative: 'Administrativna podrška',
@@ -1124,6 +1127,15 @@ router.post('/evidencija-new', async (req, res) => {
       });
     }
 
+    // Tim (robotik | mtel) je na radnom nalogu, ne na evidenciji
+    const timByWorkOrderId = new Map();
+    if (allWorkOrderIds.length > 0) {
+      const timDocs = await WorkOrder.find({ _id: { $in: allWorkOrderIds } })
+        .select('tim')
+        .lean();
+      timDocs.forEach(wo => timByWorkOrderId.set(wo._id.toString(), wo.tim));
+    }
+
     // Kreiramo novi workbook
     const workbook = xlsx.utils.book_new();
 
@@ -1135,10 +1147,13 @@ router.post('/evidencija-new', async (req, res) => {
 
     // Header red 2 - naslov i kategorije opreme
     const headerRow2 = [
-      null, null, null, null, null, null,
+      null, null, null, null, null, null, null,
       'Spcifikacija instalacija:',
       'Instalacije - Regija Beograd',
-      null, null, null, null, null,
+      // 6 praznih: naslovi opreme moraju stajati na pocetku svog merge-a ispod
+      // (kada je dodata kolona Telefon ovde je falio jedan null, pa je svaki
+      // naslov stajao kolonu levo od svojih podataka - ONT/HFC iznad Tehnicar 2)
+      null, null, null, null, null, null,
       'ONT/HFC', null,
       'Hybrid', null,
       'STB/CAM', null,
@@ -1150,9 +1165,9 @@ router.post('/evidencija-new', async (req, res) => {
       'Mini node', null,
       'DEMONT, N-ispravno,R-neispravno'
     ];
-    while (headerRow2.length < 34) headerRow2.push(null);
-    headerRow2.push('Zaduženje opreme', null); // kolone 34-35
-    headerRow2.push('Pozivi podršci');         // kolona 36
+    while (headerRow2.length < 35) headerRow2.push(null);
+    headerRow2.push('Zaduženje opreme', null); // kolone 35-36
+    headerRow2.push('Pozivi podršci');         // kolona 37
     evidencijaData.push(headerRow2);
     
     // Header red 3 - prazan
@@ -1160,7 +1175,7 @@ router.post('/evidencija-new', async (req, res) => {
 
     // Header red 4 - kolone
     evidencijaData.push([
-      'Datum', 'STATUS', 'Napomena', 'ID zahteva', 'ID korisnika', 'Telefon', 'Vrsta Naloga',
+      'Datum', 'STATUS', 'Tim', 'Napomena', 'ID zahteva', 'ID korisnika', 'Telefon', 'Vrsta Naloga',
       'Mesto', 'Adresa', 'Korisnik', 'Napomena', 'Status korisnika',
       'Tehnicar 1', 'Tehnicar 2',
       'Serijski broj', 'N/R',  // ONT/HFC
@@ -1198,9 +1213,15 @@ router.post('/evidencija-new', async (req, res) => {
       }
 
       // Osnovni podaci
+      // Stari nalozi uvezeni bez kolone "Tim" nemaju vrednost - ostaje prazno
+      const tim = evidence.workOrderId
+        ? timByWorkOrderId.get(evidence.workOrderId.toString())
+        : null;
+
       const row = [
         formattedDate,                                // Datum
         evidence.status || 'U TOKU',                  // STATUS
+        TIM_LABELS[tim] || '',                        // Tim
         napomenaValue,                                // Napomena
         evidence.tisJobId || '',                      // ID zahteva
         evidence.tisId || '',                         // ID korisnika
@@ -1216,13 +1237,13 @@ router.post('/evidencija-new', async (req, res) => {
       ];
 
       // Kreiranje mapiranja za kategorije opreme sa više slotova
-      // Indeksi su pomereni za +1 zbog nove kolone Telefon
+      // Indeksi su pomereni za +1 zbog kolone Telefon i jos +1 zbog kolone Tim
       const equipmentSlots = {
-        'ONT/HFC': { startIndex: 14, maxSlots: 1, equipment: [] },
-        'Hybrid': { startIndex: 16, maxSlots: 1, equipment: [] },
-        'STB/CAM': { startIndex: 18, maxSlots: 3, equipment: [] },
-        'Kartica': { startIndex: 24, maxSlots: 3, equipment: [] },
-        'Mini node': { startIndex: 30, maxSlots: 1, equipment: [] }
+        'ONT/HFC': { startIndex: 15, maxSlots: 1, equipment: [] },
+        'Hybrid': { startIndex: 17, maxSlots: 1, equipment: [] },
+        'STB/CAM': { startIndex: 19, maxSlots: 3, equipment: [] },
+        'Kartica': { startIndex: 25, maxSlots: 3, equipment: [] },
+        'Mini node': { startIndex: 31, maxSlots: 1, equipment: [] }
       };
 
       // Popunjavanje instaliranih uređaja
@@ -1259,11 +1280,11 @@ router.post('/evidencija-new', async (req, res) => {
       // Indeksi pomereni za +1 zbog nove kolone Telefon
       if (evidence.removedEquipment && evidence.removedEquipment.length > 0) {
         const firstRemoved = evidence.removedEquipment[0];
-        row[32] = firstRemoved.serialNumber || '';
-        row[33] = firstRemoved.condition || 'R';
+        row[33] = firstRemoved.serialNumber || '';
+        row[34] = firstRemoved.condition || 'R';
       } else {
-        row[32] = '';
         row[33] = '';
+        row[34] = '';
       }
 
       // Zaduženje instalirane opreme: kada i ko je zadužio opremu tehničaru.
@@ -1282,10 +1303,10 @@ router.post('/evidencija-new', async (req, res) => {
       const uniqueDates = [...new Set(stampParts.map(p => p.date).filter(Boolean))];
       const uniqueNames = [...new Set(stampParts.map(p => p.by).filter(Boolean))];
 
-      row[34] = uniqueDates.length <= 1
+      row[35] = uniqueDates.length <= 1
         ? (uniqueDates[0] || '')
         : stampParts.filter(p => p.date).map(p => `${p.serial}: ${p.date}`).join('\n');
-      row[35] = uniqueNames.length <= 1
+      row[36] = uniqueNames.length <= 1
         ? (uniqueNames[0] || '')
         : stampParts.filter(p => p.by).map(p => `${p.serial}: ${p.by}`).join('\n');
 
@@ -1294,7 +1315,7 @@ router.post('/evidencija-new', async (req, res) => {
       const workOrderCalls = evidence.workOrderId
         ? (supportCallsByWorkOrderId.get(evidence.workOrderId.toString()) || [])
         : [];
-      row[36] = workOrderCalls
+      row[37] = workOrderCalls
         .map(call => {
           const label = SUPPORT_TYPE_LABELS[call.supportType] || call.supportType;
           const phone = call.phoneNumber ? ` (${call.phoneNumber})` : '';
@@ -1313,25 +1334,26 @@ router.post('/evidencija-new', async (req, res) => {
     if (!ws['!merges']) ws['!merges'] = [];
     
     // Spajanje ćelija za "Specifikacija instalacija"
-    ws['!merges'].push({ s: { r: 1, c: 6 }, e: { r: 1, c: 7 } });
+    ws['!merges'].push({ s: { r: 1, c: 7 }, e: { r: 1, c: 8 } });
     
     // Spajanje ćelija za kategorije opreme (indeksi pomereni za +1 zbog kolone Telefon)
-    ws['!merges'].push({ s: { r: 1, c: 14 }, e: { r: 1, c: 15 } }); // ONT/HFC
-    ws['!merges'].push({ s: { r: 1, c: 16 }, e: { r: 1, c: 17 } }); // Hybrid
-    ws['!merges'].push({ s: { r: 1, c: 18 }, e: { r: 1, c: 19 } }); // STB/CAM 1
-    ws['!merges'].push({ s: { r: 1, c: 20 }, e: { r: 1, c: 21 } }); // STB/CAM 2
-    ws['!merges'].push({ s: { r: 1, c: 22 }, e: { r: 1, c: 23 } }); // STB/CAM 3
-    ws['!merges'].push({ s: { r: 1, c: 24 }, e: { r: 1, c: 25 } }); // Kartica 1
-    ws['!merges'].push({ s: { r: 1, c: 26 }, e: { r: 1, c: 27 } }); // Kartica 2
-    ws['!merges'].push({ s: { r: 1, c: 28 }, e: { r: 1, c: 29 } }); // Kartica 3
-    ws['!merges'].push({ s: { r: 1, c: 30 }, e: { r: 1, c: 31 } }); // Mini node
-    ws['!merges'].push({ s: { r: 1, c: 32 }, e: { r: 1, c: 33 } }); // Demontaža
-    ws['!merges'].push({ s: { r: 1, c: 34 }, e: { r: 1, c: 35 } }); // Zaduženje opreme
+    ws['!merges'].push({ s: { r: 1, c: 15 }, e: { r: 1, c: 16 } }); // ONT/HFC
+    ws['!merges'].push({ s: { r: 1, c: 17 }, e: { r: 1, c: 18 } }); // Hybrid
+    ws['!merges'].push({ s: { r: 1, c: 19 }, e: { r: 1, c: 20 } }); // STB/CAM 1
+    ws['!merges'].push({ s: { r: 1, c: 21 }, e: { r: 1, c: 22 } }); // STB/CAM 2
+    ws['!merges'].push({ s: { r: 1, c: 23 }, e: { r: 1, c: 24 } }); // STB/CAM 3
+    ws['!merges'].push({ s: { r: 1, c: 25 }, e: { r: 1, c: 26 } }); // Kartica 1
+    ws['!merges'].push({ s: { r: 1, c: 27 }, e: { r: 1, c: 28 } }); // Kartica 2
+    ws['!merges'].push({ s: { r: 1, c: 29 }, e: { r: 1, c: 30 } }); // Kartica 3
+    ws['!merges'].push({ s: { r: 1, c: 31 }, e: { r: 1, c: 32 } }); // Mini node
+    ws['!merges'].push({ s: { r: 1, c: 33 }, e: { r: 1, c: 34 } }); // Demontaža
+    ws['!merges'].push({ s: { r: 1, c: 35 }, e: { r: 1, c: 36 } }); // Zaduženje opreme
 
     // Postavljanje širine kolona
     const colWidths = [
       { width: 12 }, // Datum
       { width: 15 }, // STATUS
+      { width: 10 }, // Tim
       { width: 30 }, // Napomena
       { width: 12 }, // ID zahteva
       { width: 12 }, // ID korisnika
