@@ -346,7 +346,7 @@ class AndroidNotificationService {
       console.log('📤 Slanje sync recordings notifikacije svim tehničarima...');
 
       // Debug: proveri SVE tehničare i njihove tokene
-      const allTechnicians = await Technician.find({})
+      const allTechnicians = await Technician.find({ deletedAt: null })
         .select('name pushNotificationToken pushNotificationsEnabled phoneNumber');
 
       console.log(`DEBUG: Ukupno tehničara u bazi: ${allTechnicians.length}`);

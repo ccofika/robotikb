@@ -84,6 +84,10 @@ const auth = async (req, res, next) => {
     if (!technician) {
       return res.status(401).json({ error: 'Pristup odbijen. Tehničar nije pronađen.' });
     }
+    // aplikacija ovu poruku prikazuje tehničaru pri odjavi
+    if (technician.deletedAt) {
+      return res.status(401).json({ error: 'Nalog je obrisan. Javi se administratoru.' });
+    }
     
     // Dodaj tehničara u request
     req.user = {

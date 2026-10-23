@@ -45,10 +45,12 @@ router.get('/', auth, isAdmin, async (req, res) => {
 
     // Za dashboard, vrati samo broj elemenata
     if (statsOnly === 'true') {
-      const count = await Technician.countDocuments();
+      const count = await Technician.countDocuments({ deletedAt: null });
       return res.json({ total: count });
     }
 
+    // I obrisani (deletedAt), da bi web i dalje prikazivao njihova imena na nalozima i u istoriji;
+    // web ih izbacuje iz spiskova i padajućih menija
     const technicians = await Technician.find().select('-password').lean();
 
     // Dodaj detalje osnovne opreme za svakog tehničara
@@ -252,7 +254,9 @@ router.post('/', auth, isAdmin, logActivity('technicians', 'technician_add', {
     const existingTechnician = await Technician.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
     
     if (existingTechnician) {
-      return res.status(400).json({ error: 'Tehničar sa ovim imenom već postoji' });
+      return res.status(400).json({ error: existingTechnician.deletedAt
+        ? 'Postoji obrisan tehničar sa ovim imenom (njegova istorija ostaje sačuvana). Unesite drugačije ime.'
+        : 'Tehničar sa ovim imenom već postoji' });
     }
     
     // Heširanje lozinke
@@ -386,7 +390,7 @@ router.delete('/:id', auth, isAdmin, logActivity('technicians', 'technician_dele
     
     const technician = await Technician.findById(id);
     
-    if (!technician) {
+    if (!technician || technician.deletedAt) {
       return res.status(404).json({ error: 'Tehničar nije pronađen' });
     }
     
@@ -395,13 +399,11 @@ router.delete('/:id', auth, isAdmin, logActivity('technicians', 'technician_dele
       return res.status(403).json({ error: 'Nije moguće obrisati administratora' });
     }
     
-    // Oslobodi svu opremu koja je dodeljena ovom tehničaru
-    await Equipment.updateMany(
-      { assignedTo: id },
-      { $set: { assignedTo: null, location: 'magacin', status: 'available', assignedAt: null, assignedBy: null, assignedByName: '' } }
-    );
-
-    await Technician.findByIdAndDelete(id);
+    // Samo oznaka brisanja: oprema (instalirana i zadužena), materijal i istorija ostaju kako su bili
+    technician.deletedAt = new Date();
+    technician.isActive = false;
+    technician.pushNotificationToken = null;
+    await technician.save();
 
     res.json({
       message: 'Tehničar uspešno obrisan',
@@ -441,7 +443,7 @@ router.post('/:id/materials', auth, isAdmin, logActivity('technicians', 'materia
     }
 
     const technician = await Technician.findById(id);
-    if (!technician) {
+    if (!technician || technician.deletedAt) {
       return res.status(404).json({ error: 'Tehničar nije pronađen' });
     }
 
@@ -691,7 +693,7 @@ router.post('/:id/equipment', auth, isAdmin, logActivity('technicians', 'equipme
     }
 
     const technician = await Technician.findById(id);
-    if (!technician) {
+    if (!technician || technician.deletedAt) {
       return res.status(404).json({ error: 'Technician not found' });
     }
 
@@ -1211,7 +1213,7 @@ router.post('/:id/basic-equipment', auth, isAdmin, logActivity('technicians', 'b
     }
 
     const technician = await Technician.findById(id);
-    if (!technician) {
+    if (!technician || technician.deletedAt) {
       return res.status(404).json({ error: 'Tehničar nije pronađen' });
     }
 

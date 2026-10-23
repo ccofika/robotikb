@@ -1,0 +1,17 @@
+# Tehničar je obrisan dok je prijavljen: prvi poziv servera (otvaranje opreme) vraća odbijanje, aplikacija ga
+# odjavljuje i kaže zašto. Promenljive: SHOT
+appId: com.robotik.mobile
+---
+- tapOn:
+    text: "Oprema"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "Nalog je obrisan. Javi se administratoru."
+    timeout: 60000
+- takeScreenshot: ${SHOT}
+- tapOn:
+    text: "U redu"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "Unesite korisničko ime"
+    timeout: 30000

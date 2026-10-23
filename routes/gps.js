@@ -32,7 +32,7 @@ router.post('/request-locations', auth, async (req, res) => {
     const requestId = uuidv4();
 
     // Dohvati sve tehničare sa validnim push tokenom
-    const allTechnicians = await Technician.find({})
+    const allTechnicians = await Technician.find({ deletedAt: null })
       .select('name pushNotificationToken pushNotificationsEnabled phoneNumber');
 
     console.log(`DEBUG: Ukupno tehničara u bazi: ${allTechnicians.length}`);
@@ -408,6 +408,7 @@ router.get('/stale-trackers', auth, async (req, res) => {
         as: 'technician'
       }},
       { $unwind: '$technician' },
+      { $match: { 'technician.deletedAt': null } },
       { $project: {
         technicianId: '$_id',
         'technician.name': 1,
@@ -464,7 +465,8 @@ router.post('/nudge-stale', auth, async (req, res) => {
         foreignField: '_id',
         as: 'technician'
       }},
-      { $unwind: '$technician' }
+      { $unwind: '$technician' },
+      { $match: { 'technician.deletedAt': null } }
     ]);
 
     let nudged = 0;

@@ -430,7 +430,7 @@ router.get('/categories', auth, isAdmin, async (req, res) => {
 router.get('/locations', auth, isAdmin, async (req, res) => {
   try {
     // Dobij sve tehničare
-    const technicians = await require('../models').Technician.find().select('_id name').lean();
+    const technicians = await require('../models').Technician.find().select('_id name deletedAt').lean();
 
     // Kreiraj lokacije array sa magacinom i svim tehničarima
     const locations = [
@@ -441,7 +441,7 @@ router.get('/locations', auth, isAdmin, async (req, res) => {
     technicians.forEach(tech => {
       locations.push({
         value: `tehnicar-${tech._id}`,
-        label: `Tehničar: ${tech.name}`
+        label: `Tehničar: ${tech.name}${tech.deletedAt ? ' (obrisan)' : ''}`
       });
     });
 

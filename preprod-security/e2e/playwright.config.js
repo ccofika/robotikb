@@ -24,5 +24,7 @@ module.exports = defineConfig({
     { name: 'web', testMatch: /web-.*\.spec\.js/ },
     // Android i web zajedno: tokovi admin/koordinator na webu + radnik na telefonu, istovremeni događaji
     { name: 'sistem', testMatch: /sistem-.*\.spec\.js/ },
+    // Montaža (bez emulatora): brisanje tehničara i ostalo van Security modula
+    { name: 'montaza', testMatch: /[\\/]montaza-[^\\/]*\.spec\.js$/ },
   ],
 });

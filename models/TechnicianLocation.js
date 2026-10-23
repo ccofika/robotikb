@@ -88,6 +88,9 @@ TechnicianLocationSchema.statics.getLatestLocationsForAll = async function() {
       $unwind: '$technician'
     },
     {
+      $match: { 'technician.deletedAt': null }
+    },
+    {
       $project: {
         _id: 1,
         technicianId: 1,

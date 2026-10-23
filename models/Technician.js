@@ -91,6 +91,12 @@ const TechnicianSchema = new Schema({
     type: Date,
     default: null
   },
+  // Obrisan tehničar ostaje u bazi (nema ga u spiskovima i ne može da se prijavi), da bi nalozi,
+  // instalirana oprema i finansije i dalje imali njegovo ime
+  deletedAt: {
+    type: Date,
+    default: null
+  },
   // Dokumentacija tehničara (ugovori, sertifikati, lekarsko uverenje, itd.)
   documents: [{
     name: {

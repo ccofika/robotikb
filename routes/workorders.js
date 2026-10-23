@@ -1448,8 +1448,8 @@ router.post('/upload', auth, isAdmin, logActivity('workorders', 'workorder_bulk_
       return res.status(400).json({ error: 'Excel fajl ne sadrži podatke ni u jednom sheet-u' });
     }
 
-    // Dohvatanje svih tehničara iz baze
-    const technicians = await Technician.find().lean();
+    // Dohvatanje svih tehničara iz baze (bez obrisanih)
+    const technicians = await Technician.find({ deletedAt: null }).lean();
     
     // Mapiranje tehničara po imenu
     const technicianByName = {};
@@ -1816,7 +1816,7 @@ router.post('/', auth, isAdmin, logActivity('workorders', 'workorder_add', {
     // Provera da li tehničar postoji
     if (technicianId && mongoose.Types.ObjectId.isValid(technicianId)) {
       const technician = await Technician.findById(technicianId);
-      if (!technician) {
+      if (!technician || technician.deletedAt) {
         return res.status(400).json({ error: 'Tehničar nije pronađen' });
       }
     }
@@ -1824,7 +1824,7 @@ router.post('/', auth, isAdmin, logActivity('workorders', 'workorder_add', {
     // Provera da li drugi tehničar postoji
     if (technician2Id && mongoose.Types.ObjectId.isValid(technician2Id)) {
       const technician2 = await Technician.findById(technician2Id);
-      if (!technician2) {
+      if (!technician2 || technician2.deletedAt) {
         return res.status(400).json({ error: 'Drugi tehničar nije pronađen' });
       }
       
@@ -3383,8 +3383,8 @@ router.post('/:id/complaint', auth, isAdmin, logActivity('workorders', 'workorde
       return res.status(400).json({ error: 'Izaberite tehničara kog sklanjate sa naloga' });
     }
 
-    const newTechnician = await Technician.findById(newTechnicianId).select('name role').lean();
-    if (!newTechnician) {
+    const newTechnician = await Technician.findById(newTechnicianId).select('name role deletedAt').lean();
+    if (!newTechnician || newTechnician.deletedAt) {
       return res.status(400).json({ error: 'Izabrani tehničar ne postoji' });
     }
     if (ADMIN_ROLES.includes(newTechnician.role)) {
@@ -5290,17 +5290,17 @@ const findTechnicianByPhone = async (phoneNumber) => {
   if (!normalized) return null;
 
   // Pokušaj direktno
-  let technician = await Technician.findOne({ phoneNumber: normalized });
+  let technician = await Technician.findOne({ phoneNumber: normalized, deletedAt: null });
   if (technician) return technician;
 
   // Pokušaj sa +381 prefiksom
   const withPrefix = '+381' + normalized.substring(1);
-  technician = await Technician.findOne({ phoneNumber: withPrefix });
+  technician = await Technician.findOne({ phoneNumber: withPrefix, deletedAt: null });
   if (technician) return technician;
 
   // Pokušaj sa 381 prefiksom
   const with381 = '381' + normalized.substring(1);
-  technician = await Technician.findOne({ phoneNumber: with381 });
+  technician = await Technician.findOne({ phoneNumber: with381, deletedAt: null });
 
   return technician;
 };

@@ -1,0 +1,34 @@
+# Tehničar (Montaža) se prijavljuje u Android aplikaciju (čisto stanje, sve dozvole odobrene)
+# Promenljive: TECH_NAME, TECH_PASSWORD
+appId: com.robotik.mobile
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- extendedWaitUntil:
+    visible: "Unesite korisničko ime"
+    timeout: 180000
+- tapOn:
+    text: "Unesite korisničko ime"
+    retryTapIfNoChange: false
+- inputText: ${TECH_NAME}
+- tapOn:
+    text: "Unesite lozinku"
+    retryTapIfNoChange: false
+- inputText: ${TECH_PASSWORD}
+- hideKeyboard
+- tapOn:
+    text: "Prijavi se"
+    retryTapIfNoChange: false
+# posle prijave tehničara iskače "Uspešno / Dobrodošli!" preko ekrana naloga
+- extendedWaitUntil:
+    visible: "Dobrodošli!"
+    timeout: 90000
+- tapOn:
+    text: "OK"
+    retryTapIfNoChange: false
+- runFlow: dismiss-dev-warnings.yaml
+- extendedWaitUntil:
+    visible: "Oprema"
+    timeout: 30000

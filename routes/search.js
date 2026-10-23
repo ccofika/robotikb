@@ -75,7 +75,7 @@ router.get('/', auth, isAdmin, async (req, res) => {
         ],
         role: 'technician'
       })
-        .select('name phoneNumber isActive')
+        .select('name phoneNumber isActive deletedAt')
         .limit(3)
         .lean()
     ]);

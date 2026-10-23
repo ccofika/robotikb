@@ -217,12 +217,13 @@ router.get('/technicians', auth, isSupervisorOrSuperAdmin, async (req, res) => {
     if (statsOnly === 'true') {
       const count = await Technician.countDocuments({
         role: { $nin: ['admin', 'superadmin', 'supervisor'] },
-        isAdmin: { $ne: true }
+        isAdmin: { $ne: true },
+        deletedAt: null
       });
       return res.json({ total: count });
     }
 
-    const allTechnicians = await Technician.find({})
+    const allTechnicians = await Technician.find({ deletedAt: null })
       .select('_id name role isAdmin paymentType monthlySalary')
       .sort({ name: 1 })
       .lean(); // Dodano lean za performance

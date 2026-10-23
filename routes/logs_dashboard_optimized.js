@@ -800,7 +800,7 @@ const getTechnicianComparison = async (req, res) => {
 
     // For dashboard stats, return only basic numbers
     if (statsOnly === 'true') {
-      const count = await Technician.countDocuments({});
+      const count = await Technician.countDocuments({ deletedAt: null });
 
       console.log(`👥 Technician stats returned in ${Date.now() - startTime}ms`);
       return res.json({ total: count });

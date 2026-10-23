@@ -340,7 +340,7 @@ router.get('/debug-tokens', auth, async (req, res) => {
       return res.status(403).json({ error: 'Nemate pristup' });
     }
 
-    const allTechnicians = await Technician.find({})
+    const allTechnicians = await Technician.find({ deletedAt: null })
       .select('name phoneNumber pushNotificationToken pushNotificationsEnabled role')
       .lean();
 
@@ -401,7 +401,7 @@ router.post('/manual-register-token', auth, async (req, res) => {
       return res.status(400).json({ error: 'technicianName i pushToken su obavezni' });
     }
 
-    const technician = await Technician.findOne({ name: technicianName });
+    const technician = await Technician.findOne({ name: technicianName, deletedAt: null });
     if (!technician) {
       return res.status(404).json({ error: `Tehničar "${technicianName}" nije pronađen` });
     }

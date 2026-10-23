@@ -43,13 +43,13 @@ router.post('/login', async (req, res) => {
     
     // Traženje korisnika u bazi (tehničar, admin, supervisor, superadmin)
     const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    let technician = await Technician.findOne({ name: { $regex: new RegExp(`^${escapedName}$`, 'i') } });
+    let technician = await Technician.findOne({ name: { $regex: new RegExp(`^${escapedName}$`, 'i') }, deletedAt: null });
 
     // Fallback: poklapanje bez dijakritika — "milan aca" pronalazi "Milan Aća".
     // Prihvata se samo ako je poklapanje JEDINSTVENO (lozinka se svakako proverava).
     if (!technician) {
       const target = foldName(name);
-      const allTechnicians = await Technician.find({});
+      const allTechnicians = await Technician.find({ deletedAt: null });
       const matches = allTechnicians.filter(t => foldName(t.name) === target);
       if (matches.length === 1) {
         technician = matches[0];
@@ -168,7 +168,7 @@ router.post('/refresh-token', async (req, res) => {
     // SuperAdmin refresh
     else if (decoded.role === 'superadmin') {
       const superadmin = await Technician.findById(decoded._id);
-      if (!superadmin || superadmin.role !== 'superadmin') {
+      if (!superadmin || superadmin.role !== 'superadmin' || superadmin.deletedAt) {
         return res.status(401).json({ error: 'SuperAdmin nije pronađen' });
       }
 
@@ -189,7 +189,7 @@ router.post('/refresh-token', async (req, res) => {
     // Supervisor refresh
     else if (decoded.role === 'supervisor') {
       const supervisor = await Technician.findById(decoded._id);
-      if (!supervisor || supervisor.role !== 'supervisor') {
+      if (!supervisor || supervisor.role !== 'supervisor' || supervisor.deletedAt) {
         return res.status(401).json({ error: 'Supervisor nije pronađen' });
       }
 
@@ -210,7 +210,7 @@ router.post('/refresh-token', async (req, res) => {
     // Admin refresh
     else if (decoded.role === 'admin') {
       const admin = await Technician.findById(decoded._id);
-      if (!admin || admin.role !== 'admin') {
+      if (!admin || admin.role !== 'admin' || admin.deletedAt) {
         return res.status(401).json({ error: 'Admin nije pronađen' });
       }
 
@@ -234,6 +234,9 @@ router.post('/refresh-token', async (req, res) => {
       const technician = await Technician.findById(decoded.id || decoded._id);
       if (!technician) {
         return res.status(401).json({ error: 'Korisnik nije pronađen' });
+      }
+      if (technician.deletedAt) {
+        return res.status(401).json({ error: 'Nalog je obrisan. Javi se administratoru.' });
       }
 
       // Use actual role from database
