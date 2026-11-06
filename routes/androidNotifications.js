@@ -149,9 +149,6 @@ router.put('/:id/read', auth, async (req, res) => {
 // PUT /api/android-notifications/mark-all-read - Označi sve notifikacije kao pročitane
 router.put('/mark-all-read', auth, async (req, res) => {
   try {
-    const now = new Date();
-    const serbianTime = new Date(now.getTime() + (2 * 60 * 60 * 1000));
-
     const result = await AndroidNotification.updateMany(
       {
         technicianId: req.user.id,
@@ -159,7 +156,7 @@ router.put('/mark-all-read', auth, async (req, res) => {
       },
       {
         isRead: true,
-        readAt: serbianTime
+        readAt: new Date()
       }
     );
 

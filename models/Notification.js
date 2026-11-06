@@ -131,23 +131,16 @@ const NotificationSchema = new mongoose.Schema({
   readAt: {
     type: Date,
   },
+  // Pravo vreme (UTC). Ranije je upisivano "sada + 2h", pa je zimi panel kasnio 1h,
+  // a "upravo sada" je stajalo 2h. Prikaz u srpskom vremenu radi formattedTimestamp.
   createdAt: {
     type: Date,
-    default: function() {
-      // Create timestamp in Serbian timezone (UTC+1/UTC+2)
-      const now = new Date();
-      const serbianTime = new Date(now.getTime() + (2 * 60 * 60 * 1000)); // UTC+2 for CEST
-      return serbianTime;
-    },
+    default: Date.now,
   },
   expiresAt: {
     type: Date,
-    default: function() {
-      // Auto-delete notifications after 30 days, adjusted for Serbian timezone
-      const now = new Date();
-      const serbianTime = new Date(now.getTime() + (2 * 60 * 60 * 1000)); // UTC+2 for CEST
-      return new Date(serbianTime.getTime() + 30 * 24 * 60 * 60 * 1000);
-    }
+    // Auto-delete notifications after 30 days
+    default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
   }
 });
 
@@ -318,9 +311,7 @@ NotificationSchema.statics.createLowReviewRating = function(reviewId, technician
 // Instance method to mark as read
 NotificationSchema.methods.markAsRead = function() {
   this.isRead = true;
-  // Set readAt timestamp in Serbian timezone (UTC+2 for CEST)
-  const now = new Date();
-  this.readAt = new Date(now.getTime() + (2 * 60 * 60 * 1000));
+  this.readAt = new Date();
   return this.save();
 };
 
@@ -336,12 +327,13 @@ NotificationSchema.virtual('timeAgo').get(function() {
   if (minutes < 60) return `${minutes} min`;
   if (hours < 24) return `${hours}h`;
   if (days < 7) return `${days} dan${days > 1 ? 'a' : ''}`;
-  return this.createdAt.toLocaleDateString('sr-RS');
+  return this.createdAt.toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' });
 });
 
-// Virtual for formatted timestamp  
+// Virtual for formatted timestamp (server na Render-u radi u UTC, zato eksplicitna zona)
 NotificationSchema.virtual('formattedTimestamp').get(function() {
   return this.createdAt.toLocaleDateString('sr-RS', {
+    timeZone: 'Europe/Belgrade',
     weekday: 'long',
     hour: '2-digit',
     minute: '2-digit'

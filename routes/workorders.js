@@ -4164,14 +4164,11 @@ router.get('/statistics/completion-time', auth, isAdmin, async (req, res) => {
                 year: { $year: '$date' },
                 month: { $month: '$date' },
                 day: { $dayOfMonth: '$date' },
-                // Convert Belgrade time to UTC by subtracting 2 hours
-                hour: { 
-                  $subtract: [
-                    { $toInt: { $substr: [{ $ifNull: ['$time', '09:00'] }, 0, 2] } },
-                    2 // Belgrade is UTC+2
-                  ]
-                },
-                minute: { $toInt: { $substr: [{ $ifNull: ['$time', '09:00'] }, 3, 2] } }
+                hour: { $toInt: { $substr: [{ $ifNull: ['$time', '09:00'] }, 0, 2] } },
+                minute: { $toInt: { $substr: [{ $ifNull: ['$time', '09:00'] }, 3, 2] } },
+                // Termin je zidno vreme u Srbiji; zona sama računa letnje/zimsko vreme
+                // (ranije fiksno -2h, pa je zimi trajanje bilo duže za 1h)
+                timezone: 'Europe/Belgrade'
               }
             },
             else: '$date' // fallback to just date if time is missing

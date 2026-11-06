@@ -70,24 +70,17 @@ const AndroidNotificationSchema = new mongoose.Schema({
   },
 
   // Timestamps
+  // Pravo vreme (UTC), aplikacija ga sama prikazuje u lokalnom vremenu telefona.
+  // Ranije je upisivano "sada + 2h", pa je "Upravo sada" stajalo 2h.
   createdAt: {
     type: Date,
-    default: () => {
-      // Serbian timezone (UTC+1/UTC+2)
-      const now = new Date();
-      const serbianTime = new Date(now.getTime() + (2 * 60 * 60 * 1000));
-      return serbianTime;
-    }
+    default: Date.now
   },
 
   expiresAt: {
     type: Date,
-    default: () => {
-      // Auto-delete after 7 days
-      const now = new Date();
-      const serbianTime = new Date(now.getTime() + (2 * 60 * 60 * 1000));
-      return new Date(serbianTime.getTime() + 7 * 24 * 60 * 60 * 1000);
-    }
+    // Auto-delete after 7 days
+    default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
   }
 });
 
@@ -99,8 +92,7 @@ AndroidNotificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 // Instance metoda za označavanje kao pročitano
 AndroidNotificationSchema.methods.markAsRead = function() {
   this.isRead = true;
-  const now = new Date();
-  this.readAt = new Date(now.getTime() + (2 * 60 * 60 * 1000));
+  this.readAt = new Date();
   return this.save();
 };
 
@@ -118,12 +110,13 @@ AndroidNotificationSchema.virtual('timeAgo').get(function() {
   if (days === 0) return 'danas';
   if (days === 1) return 'juče';
   if (days < 7) return `${days} dana`;
-  return this.createdAt.toLocaleDateString('sr-RS');
+  return this.createdAt.toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' });
 });
 
-// Virtual za formatovan datum
+// Virtual za formatovan datum (server na Render-u radi u UTC, zato eksplicitna zona)
 AndroidNotificationSchema.virtual('formattedDate').get(function() {
   return this.createdAt.toLocaleDateString('sr-RS', {
+    timeZone: 'Europe/Belgrade',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
