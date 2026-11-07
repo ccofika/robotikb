@@ -6,6 +6,7 @@ const createNotification = notificationsRouter.createNotification;
 const androidNotificationService = require('./androidNotificationService');
 const emailService = require('./emailService');
 const ContactEvent = require('../models/ContactEvent');
+const { TZ, localToInstant } = require('../utils/belgradeTime');
 
 // Koliko minuta pre termina se šalje podsetnik tehničarima
 const REMINDER_LEAD_MINUTES = 30;
@@ -119,27 +120,8 @@ async function checkOverdueWorkOrders() {
   }
 }
 
-// Offset (u minutima) zone Europe/Belgrade u odnosu na UTC za dati trenutak (DST-aware).
-// Ne zavisi od vremenske zone servera (Render radi u UTC).
-function belgradeOffsetMinutes(date) {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Europe/Belgrade',
-    hour12: false,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  });
-  const parts = {};
-  fmt.formatToParts(date).forEach(p => { parts[p.type] = p.value; });
-  const asUTC = Date.UTC(
-    parseInt(parts.year), parseInt(parts.month) - 1, parseInt(parts.day),
-    parseInt(parts.hour) % 24, parseInt(parts.minute)
-  );
-  return Math.round((asUTC - date.getTime()) / 60000);
-}
-
-// Pravi trenutak termina: kalendarski dan iz `date` + `time` (zidno vreme u Srbiji).
-// NAPOMENA: appointmentDateTime u bazi je upisan setHours-om u zoni SERVERA (UTC),
-// pa je pomeren za 1-2h u odnosu na stvarno beogradsko vreme — zato računamo ovde.
+// Pravi trenutak termina: kalendarski dan iz `date` (ponoć UTC) + `time` (zidno vreme u Srbiji).
+// Svi upisi appointmentDateTime koriste ovu funkciju (ranije setHours na UTC serveru, +1h/+2h).
 function getAppointmentInstant(workOrder) {
   if (!workOrder.date) return null;
   const d = new Date(workOrder.date);
@@ -154,9 +136,8 @@ function getAppointmentInstant(workOrder) {
     if (!isNaN(m) && m >= 0 && m <= 59) minutes = m;
   }
 
-  const utcGuess = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hours, minutes, 0, 0);
-  const offset = belgradeOffsetMinutes(new Date(utcGuess));
-  return new Date(utcGuess - offset * 60000);
+  const pad = (n) => String(n).padStart(2, '0');
+  return localToInstant(d.toISOString().slice(0, 10), `${pad(hours)}:${pad(minutes)}`);
 }
 
 // Podsetnik 30 minuta pre zakazanog termina — šalje push obojici tehničara na nalogu.
@@ -168,9 +149,8 @@ async function checkUpcomingWorkOrderReminders() {
   try {
     const now = new Date();
 
-    // Grubi prozor po appointmentDateTime — pomeren 1-2h zbog zone servera pri
-    // upisu, a za termine u 00:xx i do ~11.5h jer pisci koriste `parseInt(h) || 9`
-    // pa se ponoć upiše kao 09:xx. Precizna provera pravog termina je u JS ispod.
+    // Grubi prozor po appointmentDateTime (stari zapisi mogu biti pomereni nekoliko sati);
+    // precizna provera pravog termina iz date + time je u JS ispod.
     const windowStart = new Date(now.getTime() - 3 * 60 * 60 * 1000);
     const windowEnd = new Date(now.getTime() + 12 * 60 * 60 * 1000);
 
@@ -371,26 +351,16 @@ async function ensureAppointmentDateTimeSet() {
     if (workOrdersWithoutDateTime.length > 0) {
       console.log(`Setting appointmentDateTime for ${workOrdersWithoutDateTime.length} work orders`);
       
-      const bulkOps = workOrdersWithoutDateTime.map(workOrder => {
-        // Parse time (format: "09:00" or "9:00")
-        let [hours, minutes] = [9, 0];
-        if (workOrder.time && typeof workOrder.time === 'string') {
-          const timeParts = workOrder.time.split(':');
-          hours = parseInt(timeParts[0]) || 9;
-          minutes = parseInt(timeParts[1]) || 0;
-        }
-        
-        // Create appointmentDateTime by combining date and time
-        const appointmentDateTime = new Date(workOrder.date);
-        appointmentDateTime.setHours(hours, minutes, 0, 0);
-        
-        return {
+      const bulkOps = workOrdersWithoutDateTime
+        .map(workOrder => ({ workOrder, appointmentDateTime: getAppointmentInstant(workOrder) }))
+        .filter(({ appointmentDateTime }) => appointmentDateTime)
+        .map(({ workOrder, appointmentDateTime }) => ({
           updateOne: {
             filter: { _id: workOrder._id },
             update: { $set: { appointmentDateTime } }
           }
-        };
-      });
+        }));
+      if (bulkOps.length === 0) return;
       
       await WorkOrder.bulkWrite(bulkOps);
       console.log(`Successfully set appointmentDateTime for ${workOrdersWithoutDateTime.length} work orders`);
@@ -567,10 +537,11 @@ function startWorkOrderScheduler() {
   });
   
   // Proveri vozila sa istekajućom registracijom i ugovore tehničara jednom dnevno u 9:00 ujutru
+  // po srpskom vremenu (bez zone cron radi po UTC-u servera, tj. u 10:00 zimi / 11:00 leti)
   cron.schedule('0 9 * * *', async () => {
     await checkVehicleRegistrations();
     await checkTechnicianEmployments();
-  });
+  }, { timezone: TZ });
 
   // Podsetnik 30 min pre termina — proverava svakog minuta (jeftin indeksiran upit)
   cron.schedule('* * * * *', async () => {

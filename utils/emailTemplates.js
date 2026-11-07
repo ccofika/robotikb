@@ -212,7 +212,7 @@ const createEmailTemplate = (type, data) => {
           <hr style="margin: 20px 0;">
           <p style="font-size: 12px; color: #666;">
             Ova poruka je automatski generisana od strane Robotik sistema.<br>
-            Vreme slanja: ${new Date().toLocaleString('sr-RS')}
+            Vreme slanja: ${new Date().toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}
           </p>
         </div>
       `
@@ -233,7 +233,7 @@ const createEmailTemplate = (type, data) => {
           <hr style="margin: 20px 0;">
           <p style="font-size: 12px; color: #666;">
             Ova poruka je automatski generisana od strane Robotik sistema.<br>
-            Vreme slanja: ${new Date().toLocaleString('sr-RS')}
+            Vreme slanja: ${new Date().toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}
           </p>
         </div>
       `
@@ -255,7 +255,7 @@ const createEmailTemplate = (type, data) => {
           <hr style="margin: 20px 0;">
           <p style="font-size: 12px; color: #666;">
             Ova poruka je automatski generisana od strane Robotik sistema.<br>
-            Vreme slanja: ${new Date().toLocaleString('sr-RS')}
+            Vreme slanja: ${new Date().toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}
           </p>
         </div>
       `
@@ -274,7 +274,7 @@ const createEmailTemplate = (type, data) => {
           <hr style="margin: 20px 0;">
           <p style="font-size: 12px; color: #666;">
             Ova poruka je automatski generisana od strane Robotik sistema.<br>
-            Vreme slanja: ${new Date().toLocaleString('sr-RS')}
+            Vreme slanja: ${new Date().toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}
           </p>
         </div>
       `
@@ -346,7 +346,7 @@ const createEmailTemplate = (type, data) => {
           <hr style="margin: 20px 0;">
           <p style="font-size: 12px; color: #666;">
             <strong>Robotik</strong> - Centralizovani sistem za upravljanje opremom i materijalima<br>
-            <em>Automatski generisano ${new Date().toLocaleString('sr-RS')}</em>
+            <em>Automatski generisano ${new Date().toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}</em>
           </p>
         </div>
       `
@@ -412,7 +412,7 @@ const createEmailTemplate = (type, data) => {
           <hr style="margin: 20px 0;">
           <p style="font-size: 12px; color: #666;">
             <strong>Robotik</strong> - Centralizovani sistem za upravljanje opremom i materijalima<br>
-            <em>Automatski generisano ${new Date().toLocaleString('sr-RS')}</em>
+            <em>Automatski generisano ${new Date().toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}</em>
           </p>
         </div>
       `
@@ -440,7 +440,7 @@ const createEmailTemplate = (type, data) => {
                 ✅ Novi radni nalog (${(data.workOrders && data.workOrders.length) || 1} ${((data.workOrders && data.workOrders.length) || 1) === 1 ? 'nalog' : 'naloga'})
               </p>
               <p style="color: #15803d; margin: 8px 0 0 0; font-size: 12px;">
-                <strong>Datum dodeljivanja:</strong> ${new Date().toLocaleString('sr-RS', { 
+                <strong>Datum dodeljivanja:</strong> ${new Date().toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade', 
                   day: '2-digit', 
                   month: '2-digit', 
                   year: 'numeric', 
@@ -489,7 +489,7 @@ const createEmailTemplate = (type, data) => {
                     <td style="padding: 16px 24px; color: #64748b; font-size: 14px; font-weight: 500;">${index + 1}.</td>
                     <td style="padding: 16px 24px;">
                       <div style="color: #1e293b; font-size: 14px; font-weight: 500;">
-                        ${order.date ? new Date(order.date).toLocaleDateString('sr-RS') : 'N/A'}
+                        ${order.date ? new Date(order.date).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }) : 'N/A'}
                       </div>
                     </td>
                     <td style="padding: 16px 24px;">
@@ -559,7 +559,7 @@ const createEmailTemplate = (type, data) => {
                 <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">👤 Odgovorno lice</div>
               </div>
               <div style="text-align: center; padding: 16px; background: #fef7ed; border-radius: 12px;">
-                <div style="font-size: 14px; font-weight: 600; color: #ea580c; margin-bottom: 4px;">${new Date().toLocaleDateString('sr-RS')}</div>
+                <div style="font-size: 14px; font-weight: 600; color: #ea580c; margin-bottom: 4px;">${new Date().toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })}</div>
                 <div style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">📅 Datum dodeljivanja</div>
               </div>
             </div>
@@ -599,7 +599,7 @@ const createEmailTemplate = (type, data) => {
             <hr style="border: none; height: 1px; background: linear-gradient(to right, transparent, #e2e8f0, transparent); margin: 16px 0;">
             <p style="font-size: 12px; color: #64748b; margin: 0; line-height: 1.4;">
               <strong style="color: #1e293b;">Robotik</strong> - Centralizovani sistem za upravljanje radnim nalozima<br>
-              <em>Automatski generisano ${new Date().toLocaleString('sr-RS', { 
+              <em>Automatski generisano ${new Date().toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade', 
                 weekday: 'long',
                 day: '2-digit', 
                 month: 'long', 

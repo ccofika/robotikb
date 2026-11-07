@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
 const mongoose = require('mongoose');
+const { belgradeDayRange, belgradeYmd } = require('../utils/belgradeTime');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const WorkOrder = require('../models/WorkOrder');
 const Equipment = require('../models/Equipment');
@@ -99,9 +100,8 @@ const readJSONFile = (filePath) => {
 
 // Helper funkcija za filtriranje po datumu
 const filterByDateRange = (items, startDate, endDate, dateField = 'date') => {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  end.setHours(23, 59, 59, 999); // Uključuje ceo krajnji dan
+  // Celi dani po srpskom vremenu, uključujući krajnji dan (server radi u UTC-u)
+  const { start, end } = belgradeDayRange(startDate, endDate);
   
   return items.filter(item => {
     const itemDate = new Date(item[dateField]);
@@ -125,9 +125,7 @@ router.get('/preview', (req, res) => {
     const filteredWorkOrders = filterByDateRange(workOrders, startDate, endDate);
     const filteredEquipment = userEquipment.filter(item => {
       const installDate = new Date(item.installedAt);
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
+      const { start, end } = belgradeDayRange(startDate, endDate);
       
       return installDate >= start && installDate <= end;
     });
@@ -173,8 +171,8 @@ router.get('/userequipment', (req, res) => {
       'Status': item.status === 'active' ? 'Aktivno' : 'Uklonjeno',
       'Stanje': item.condition === 'working' ? 'Ispravno' : 
                 item.condition === 'defective' ? 'Neispravno' : '-',
-      'Datum instalacije': new Date(item.installedAt).toLocaleDateString('sr-RS'),
-      'Datum uklanjanja': item.removedAt ? new Date(item.removedAt).toLocaleDateString('sr-RS') : '-',
+      'Datum instalacije': new Date(item.installedAt).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }),
+      'Datum uklanjanja': item.removedAt ? new Date(item.removedAt).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }) : '-',
       'ID Radnog naloga': item.workOrderId,
       'ID Tehničara': item.technicianId,
       'ID Tehničara uklanjanja': item.removalTechnicianId || '-',
@@ -229,7 +227,7 @@ router.post('/specifikacija', (req, res) => {
     
         // Header
     specRadovaData.push([]);
-    specRadovaData.push([null, "Specifikacija radova:", `Instalacije L4 faza - Regija Beograd - Robotik montaža - ${new Date(startDate).toLocaleDateString('sr-RS')} do ${new Date(endDate).toLocaleDateString('sr-RS')}`]);
+    specRadovaData.push([null, "Specifikacija radova:", `Instalacije L4 faza - Regija Beograd - Robotik montaža - ${new Date(startDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })} do ${new Date(endDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })}`]);
     specRadovaData.push([]);
     specRadovaData.push(["SAP Br. Usluge", "VRSTA RADA", "Jed. mere", "Količina", "Jed. cena (DIN)", "Ukupno (DIN)", "Napomena"]);
     
@@ -265,7 +263,7 @@ router.post('/specifikacija', (req, res) => {
     const specInstalacijaData = [];
     
     // Header
-    specInstalacijaData.push(["Specifikacija instalacija:", null, null, null, null, `Instalacije L4 faza - Regija Beograd - Robotik montaža - ${new Date(startDate).toLocaleDateString('sr-RS')} do ${new Date(endDate).toLocaleDateString('sr-RS')}`]);
+    specInstalacijaData.push(["Specifikacija instalacija:", null, null, null, null, `Instalacije L4 faza - Regija Beograd - Robotik montaža - ${new Date(startDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })} do ${new Date(endDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })}`]);
     specInstalacijaData.push(["Instalater/izvođač:"]);
     specInstalacijaData.push([]);
     specInstalacijaData.push(["ID zahteva", "ID korisnika", "Korisnik", "Adresa", "Vrsta naloga", "Datum instalacije", "Mesto"]);
@@ -281,7 +279,7 @@ router.post('/specifikacija', (req, res) => {
         wo.userName || '',
         wo.address || '',
         wo.type || '',
-        new Date(wo.date).toLocaleDateString('sr-RS'),
+        new Date(wo.date).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }),
         wo.municipality || ''
       ]);
     });
@@ -293,7 +291,7 @@ router.post('/specifikacija', (req, res) => {
     const specKorisnickeOpremeData = [];
     
     // Header
-    specKorisnickeOpremeData.push(["Specifikacija korisničke opreme:", null, null, `Instalacije L4 faza - Regija Beograd - Robotik montaža - ${new Date(startDate).toLocaleDateString('sr-RS')} do ${new Date(endDate).toLocaleDateString('sr-RS')}`]);
+    specKorisnickeOpremeData.push(["Specifikacija korisničke opreme:", null, null, `Instalacije L4 faza - Regija Beograd - Robotik montaža - ${new Date(startDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })} do ${new Date(endDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })}`]);
     specKorisnickeOpremeData.push(["Instalater/izvođač:"]);
     specKorisnickeOpremeData.push([]);
     specKorisnickeOpremeData.push([null, null, "ONT/HFC", "Hybrid", "Hybrid", "STB/CAM"]);
@@ -338,7 +336,7 @@ router.post('/specifikacija', (req, res) => {
     const specDemontiraneOpremeData = [];
     
     // Header
-    specDemontiraneOpremeData.push(["Specifikacija demontirane korisničke opreme:", null, null, `Instalacije L4 faza - Regija Beograd - Robotik montaža - ${new Date(startDate).toLocaleDateString('sr-RS')} do ${new Date(endDate).toLocaleDateString('sr-RS')}`]);
+    specDemontiraneOpremeData.push(["Specifikacija demontirane korisničke opreme:", null, null, `Instalacije L4 faza - Regija Beograd - Robotik montaža - ${new Date(startDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })} do ${new Date(endDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })}`]);
     specDemontiraneOpremeData.push(["Instalater/izvođač:"]);
     specDemontiraneOpremeData.push([]);
     specDemontiraneOpremeData.push([null, null, "ONT/HFC", "Hybrid", "Hybrid", "STB/CAM"]);
@@ -364,7 +362,7 @@ router.post('/specifikacija', (req, res) => {
     
     // Header
     specMaterijalaData.push([]);
-    specMaterijalaData.push([null, null, "Specifikacija materijala:", `Instalacije L4 faza - Regija Beograd - Robotik montaža - ${new Date(startDate).toLocaleDateString('sr-RS')} do ${new Date(endDate).toLocaleDateString('sr-RS')}`]);
+    specMaterijalaData.push([null, null, "Specifikacija materijala:", `Instalacije L4 faza - Regija Beograd - Robotik montaža - ${new Date(startDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })} do ${new Date(endDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })}`]);
     specMaterijalaData.push([]);
     specMaterijalaData.push([null, "Šifra", "Naziv", "Jedinica mere", "Količina", "Napomena"]);
     
@@ -409,8 +407,8 @@ router.post('/specifikacija', (req, res) => {
     const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     
     // Postavljamo headere za download
-    const startDateStr = new Date(startDate).toLocaleDateString('sr-RS').replace(/\./g, '-');
-    const endDateStr = new Date(endDate).toLocaleDateString('sr-RS').replace(/\./g, '-');
+    const startDateStr = new Date(startDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }).replace(/\./g, '-');
+    const endDateStr = new Date(endDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }).replace(/\./g, '-');
     const filename = `Specifikacija_${startDateStr}_do_${endDateStr}.xlsx`;
     
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -636,8 +634,8 @@ router.post('/tabela', async (req, res) => {
     const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     
     // Postavljamo headere za download
-    const startDateStr = new Date(startDate).toLocaleDateString('sr-RS').replace(/\./g, '-');
-    const endDateStr = new Date(endDate).toLocaleDateString('sr-RS').replace(/\./g, '-');
+    const startDateStr = new Date(startDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }).replace(/\./g, '-');
+    const endDateStr = new Date(endDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }).replace(/\./g, '-');
     const filename = `Tabela_${startDateStr}_do_${endDateStr}.xlsx`;
     
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -901,7 +899,7 @@ router.post('/evidencija', (req, res) => {
     const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     
     // Postavljamo headere za download
-    const startDateStr = new Date(startDate).toLocaleDateString('sr-RS');
+    const startDateStr = new Date(startDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' });
     const filename = `${startDateStr}.evidencija.xlsx`;
     
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -958,9 +956,9 @@ router.get('/evidence-preview', async (req, res) => {
       return res.json(cachedData.data);
     }
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    // Celi dani po srpskom vremenu, uključujući krajnji dan. Browser šalje lokalnu ponoć
+    // (npr. 31.10. kao 30.10. 23:00Z), pa je ranije setHours na UTC serveru gubio poslednji dan.
+    const { start, end } = belgradeDayRange(startDate, endDate);
 
     // Optimized aggregation pipeline instead of client-side processing
     const stats = await WorkOrderEvidence.aggregate([
@@ -1042,9 +1040,9 @@ router.post('/evidencija-new', async (req, res) => {
     console.log('📊 Starting evidencija export generation...');
     const perfStart = Date.now();
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    // Celi dani po srpskom vremenu, uključujući krajnji dan. Browser šalje lokalnu ponoć
+    // (npr. 31.10. kao 30.10. 23:00Z), pa je ranije setHours na UTC serveru gubio poslednji dan.
+    const { start, end } = belgradeDayRange(startDate, endDate);
 
     // Optimized data fetching with lean()
     const evidenceRecords = await WorkOrderEvidence.find({
@@ -1194,9 +1192,10 @@ router.post('/evidencija-new', async (req, res) => {
 
     // Dodavanje podataka za svaki WorkOrderEvidence zapis
     evidenceRecords.forEach(evidence => {
-      // Formatiramo datum kao čitljiv string (DD.MM.YYYY)
-      const execDate = new Date(evidence.executionDate);
-      const formattedDate = `${execDate.getDate().toString().padStart(2, '0')}.${(execDate.getMonth() + 1).toString().padStart(2, '0')}.${execDate.getFullYear()}`;
+      // Datum kao DD.MM.YYYY po srpskom vremenu (deo starih zapisa ima pravo vreme izvršenja,
+      // pa bi UTC getteri na serveru posle ponoći dali prethodni dan)
+      const [execYear, execMonth, execDay] = belgradeYmd(evidence.executionDate).split('-');
+      const formattedDate = `${execDay}.${execMonth}.${execYear}`;
 
       let napomenaValue = evidence.notes || '';
       if (evidence.status === 'OTKAZANO' || evidence.status === 'ODLOŽENO') {
@@ -1387,7 +1386,7 @@ router.post('/evidencija-new', async (req, res) => {
     console.log(`📊 Total evidencija export completed in ${totalTime}ms`);
 
     // Postavljamo headere za download
-    const startDateStr = new Date(startDate).toLocaleDateString('sr-RS');
+    const startDateStr = new Date(startDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' });
     const filename = `${startDateStr}.evidencija.xlsx`;
 
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

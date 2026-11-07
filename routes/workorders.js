@@ -20,6 +20,7 @@ const { parseBuffer } = require('music-metadata');
 const { logActivity } = require('../middleware/activityLogger');
 const { auth, isAdmin, isSuperAdmin, isTechnicianOwner } = require('../middleware/auth');
 const { looseTextRegex, digitsLooseVariants } = require('../utils/searchRegex');
+const { belgradeMonthRange, belgradeDayRange, belgradeYmd, localToInstant } = require('../utils/belgradeTime');
 const {
   STANDARD_ENTRY_FILTER,
   round2,
@@ -79,7 +80,7 @@ const {
   logWorkOrderUpdated,
   checkMaterialAnomaly
 } = require('../utils/logger');
-const { testScheduler } = require('../services/workOrderScheduler');
+const { testScheduler, getAppointmentInstant } = require('../services/workOrderScheduler');
 const notificationsRouter = require('./notifications');
 const createNotification = notificationsRouter.createNotification;
 
@@ -291,9 +292,8 @@ async function createFinancialTransaction(workOrderId) {
     // procesira istovremeno za istog tehničara. U produkciji bi trebalo koristiti
     // MongoDB transactions ili optimistic locking za sprečavanje ovog problema.
     const getTechnicianMonthlyEarnings = async (technicianId) => {
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      // Tekući mesec po srpskom vremenu (server radi u UTC-u)
+      const { start: startOfMonth, end: endOfMonth } = belgradeMonthRange();
 
       const transactions = await FinancialTransaction.find({
         'technicians.technicianId': technicianId,
@@ -1606,16 +1606,8 @@ router.post('/upload', auth, isAdmin, logActivity('workorders', 'workorder_bulk_
           }
         }
         
-        // Kreiraj appointmentDateTime kombinovanjem date i time
-        const bulkWorkOrderTime = time || '09:00';
-        let [bulkHours, bulkMinutes] = [9, 0];
-        if (bulkWorkOrderTime && typeof bulkWorkOrderTime === 'string') {
-          const bulkTimeParts = bulkWorkOrderTime.split(':');
-          bulkHours = parseInt(bulkTimeParts[0]) || 9;
-          bulkMinutes = parseInt(bulkTimeParts[1]) || 0;
-        }
-        const bulkAppointmentDateTime = new Date(date);
-        bulkAppointmentDateTime.setHours(bulkHours, bulkMinutes, 0, 0);
+        // Pravi trenutak termina: date + time po srpskom vremenu
+        const bulkAppointmentDateTime = getAppointmentInstant({ date, time: time || '09:00' });
 
         // Kreiranje novog radnog naloga
         const newWorkOrder = new WorkOrder({
@@ -1857,16 +1849,8 @@ router.post('/', auth, isAdmin, logActivity('workorders', 'workorder_add', {
       userId = user._id;
     }
     
-    // Kreiraj appointmentDateTime kombinovanjem date i time
-    const workOrderTime = time || '09:00';
-    let [hours, minutes] = [9, 0];
-    if (workOrderTime && typeof workOrderTime === 'string') {
-      const timeParts = workOrderTime.split(':');
-      hours = parseInt(timeParts[0]) || 9;
-      minutes = parseInt(timeParts[1]) || 0;
-    }
-    const appointmentDateTime = new Date(date);
-    appointmentDateTime.setHours(hours, minutes, 0, 0);
+    // Pravi trenutak termina: date + time po srpskom vremenu
+    const appointmentDateTime = getAppointmentInstant({ date, time: time || '09:00' });
 
     // Kreiranje novog radnog naloga
     const newWorkOrder = new WorkOrder({
@@ -2125,8 +2109,8 @@ router.put('/:id', auth, isAdmin, logActivity('workorders', 'workorder_edit', {
         }
       } else if (key === 'date' || key === 'appointmentDateTime' || key === 'postponedUntil' || key === 'statusChangedAt' || key === 'verifiedAt' || key === 'overdueMarkedAt') {
         // Format datuma za prikaz
-        const oldDate = oldValue ? new Date(oldValue).toLocaleDateString('sr-RS') : 'Nije postavljen';
-        const newDate = newValue ? new Date(newValue).toLocaleDateString('sr-RS') : 'Nije postavljen';
+        const oldDate = oldValue ? new Date(oldValue).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }) : 'Nije postavljen';
+        const newDate = newValue ? new Date(newValue).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }) : 'Nije postavljen';
         if (oldDate !== newDate) {
           changes.push(`Promenjen ${label}: ${oldDate} → ${newDate}`);
         }
@@ -2230,17 +2214,8 @@ router.put('/:id', auth, isAdmin, logActivity('workorders', 'workorder_edit', {
       const newDate = updateData.date || workOrder.date;
       const newTime = updateData.time || workOrder.time || '09:00';
 
-      // Parse time (format: "09:00" or "9:00")
-      let [hours, minutes] = [9, 0];
-      if (newTime && typeof newTime === 'string') {
-        const timeParts = newTime.split(':');
-        hours = parseInt(timeParts[0]) || 9;
-        minutes = parseInt(timeParts[1]) || 0;
-      }
-
-      // Kreiraj novi appointmentDateTime
-      const appointmentDateTime = new Date(newDate);
-      appointmentDateTime.setHours(hours, minutes, 0, 0);
+      // Pravi trenutak termina: date + time po srpskom vremenu
+      const appointmentDateTime = getAppointmentInstant({ date: newDate, time: newTime });
       updateData.appointmentDateTime = appointmentDateTime;
 
       console.log('Date/Time changed - updating appointmentDateTime:', {
@@ -2692,8 +2667,11 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
         
         // Ako su dostavljeni novi datum i vreme, ažuriramo ih i validiramo
         if (postponeDate && postponeTime) {
-          // Kreiraj postponedUntil datetime objekat
-          const postponedDateTime = new Date(`${postponeDate}T${postponeTime}:00`);
+          // Novi termin je zidno vreme u Srbiji (server radi u UTC-u, pa ne new Date(`${datum}T${vreme}`))
+          const postponedDateTime = getAppointmentInstant({ date: postponeDate, time: postponeTime });
+          if (!postponedDateTime) {
+            return res.status(400).json({ error: 'Neispravan datum ili vreme odlaganja.' });
+          }
           const currentTime = new Date();
           const maxAllowedTime = new Date(currentTime.getTime() + (48 * 60 * 60 * 1000)); // 48 sati
           
@@ -2719,16 +2697,8 @@ router.put('/:id/technician-update', auth, logActivity('workorders', 'workorder_
           workOrder.time = postponeTime;
           workOrder.postponedUntil = postponedDateTime;
 
-          // Ažuriraj appointmentDateTime kada se menja datum/vreme
-          let [postponeHours, postponeMinutes] = [9, 0];
-          if (postponeTime && typeof postponeTime === 'string') {
-            const postponeTimeParts = postponeTime.split(':');
-            postponeHours = parseInt(postponeTimeParts[0]) || 9;
-            postponeMinutes = parseInt(postponeTimeParts[1]) || 0;
-          }
-          const newAppointmentDateTime = new Date(postponeDate);
-          newAppointmentDateTime.setHours(postponeHours, postponeMinutes, 0, 0);
-          workOrder.appointmentDateTime = newAppointmentDateTime;
+          // Novi termin naloga je isto vreme do kog je odložen
+          workOrder.appointmentDateTime = postponedDateTime;
         }
         
         // Dodaj podatke o odlaganju u historiju
@@ -3474,9 +3444,7 @@ router.post('/:id/complaint', auth, isAdmin, logActivity('workorders', 'workorde
 
     // Termin ispravke — bez novog termina nalog bi odmah bio "prekoračen" i zaključao aplikaciju tehničaru
     const fixDateObj = new Date(fixDate);
-    const [fixHours, fixMinutes] = normalizedFixTime.split(':').map(n => parseInt(n, 10));
-    const appointmentDateTime = new Date(fixDateObj);
-    appointmentDateTime.setHours(fixHours || 9, fixMinutes || 0, 0, 0);
+    const appointmentDateTime = getAppointmentInstant({ date: fixDate, time: normalizedFixTime });
 
     const trimmedReason = (reason || '').toString().trim();
     const complaintEntry = {
@@ -4091,24 +4059,26 @@ router.get('/statistics/completion-time', auth, isAdmin, async (req, res) => {
     // Add date filtering based on prvoMenjanjeStatusa
     if (period && period !== 'all') {
       const now = new Date();
+      // Početak dana/meseca/godine po srpskom vremenu (server radi u UTC-u)
+      const [year, month] = belgradeYmd(now).split('-').map(Number);
+      const firstOfMonth = (m) => localToInstant(`${year}-${String(m).padStart(2, '0')}-01`);
       let dateFrom;
       
       switch (period) {
         case 'danas':
-          dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          dateFrom = localToInstant(belgradeYmd(now));
           break;
         case 'nedelja':
           dateFrom = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
           break;
         case 'mesec':
-          dateFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+          dateFrom = firstOfMonth(month);
           break;
         case 'kvartal':
-          const currentQuarter = Math.floor(now.getMonth() / 3);
-          dateFrom = new Date(now.getFullYear(), currentQuarter * 3, 1);
+          dateFrom = firstOfMonth(Math.floor((month - 1) / 3) * 3 + 1);
           break;
         case 'godina':
-          dateFrom = new Date(now.getFullYear(), 0, 1);
+          dateFrom = firstOfMonth(1);
           break;
         default:
           dateFrom = null;
@@ -4122,11 +4092,13 @@ router.get('/statistics/completion-time', auth, isAdmin, async (req, res) => {
         };
       }
     } else if (startDate && endDate) {
+      // Celi dani po srpskom vremenu
+      const { start, end } = belgradeDayRange(startDate, endDate);
       matchCriteria.prvoMenjanjeStatusa = {
         $exists: true,
         $ne: null,
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $gte: start,
+        $lte: end
       };
     }
     

@@ -6,6 +6,7 @@ const FinancialTransaction = require('../models/FinancialTransaction');
 const FinancialSettings = require('../models/FinancialSettings');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const { WorkOrder, Technician } = require('../models');
+const { belgradeDayRange, belgradeMonthRange } = require('../utils/belgradeTime');
 
 const PENALTY_STEP_PERCENT = 10;
 const PENALTY_MAX_STEPS = 5;
@@ -49,8 +50,8 @@ const getTechnicianStatusPrice = (settings, technicianId, customerStatus) => {
 
 // Koliko je tehničar sa platom zaradio ka plati u mesecu datuma refDate
 const getTechnicianMonthlyEarnings = async (technicianId, refDate = new Date()) => {
-  const startOfMonth = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
-  const endOfMonth = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0, 23, 59, 59, 999);
+  // Mesec po srpskom vremenu (server radi u UTC-u)
+  const { start: startOfMonth, end: endOfMonth } = belgradeMonthRange(refDate);
 
   const transactions = await FinancialTransaction.find({
     'technicians.technicianId': technicianId,
@@ -614,12 +615,11 @@ const buildTechnicianStatement = async (technicianId, dateFrom, dateTo) => {
     .lean();
   if (!technician) return null;
 
+  // Celi dani po srpskom vremenu, isto kao filter na stranici Finansije
+  const { start, end } = belgradeDayRange(dateFrom, dateTo);
   const transactions = await FinancialTransaction.find({
     'technicians.technicianId': technician._id,
-    verifiedAt: {
-      $gte: new Date(dateFrom + 'T00:00:00.000Z'),
-      $lte: new Date(dateTo + 'T23:59:59.999Z')
-    }
+    verifiedAt: { $gte: start, $lte: end }
   })
     .populate('workOrderId', 'tisId tisJobId date originalDate address municipality')
     .lean();

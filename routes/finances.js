@@ -9,6 +9,7 @@ const WorkOrder = require('../models/WorkOrder');
 const WorkOrderEvidence = require('../models/WorkOrderEvidence');
 const Technician = require('../models/Technician');
 const { auth, isSupervisorOrSuperAdmin, isSuperAdmin } = require('../middleware/auth');
+const { belgradeDayRange } = require('../utils/belgradeTime');
 const { logActivity } = require('../middleware/activityLogger');
 const {
   ADJUSTMENT_ENTRY_TYPES,
@@ -283,10 +284,9 @@ router.get('/reports', auth, isSupervisorOrSuperAdmin, async (req, res) => {
 
     let filter = {};
     if (dateFrom && dateTo) {
-      filter.verifiedAt = {
-        $gte: new Date(dateFrom + 'T00:00:00.000Z'),
-        $lte: new Date(dateTo + 'T23:59:59.999Z')
-      };
+      // Celi dani po srpskom vremenu (isto kao mesečni obračun tehničara)
+      const { start, end } = belgradeDayRange(dateFrom, dateTo);
+      filter.verifiedAt = { $gte: start, $lte: end };
     }
 
     // Search is now handled in aggregation pipeline for proper $lookup

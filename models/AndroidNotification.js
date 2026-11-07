@@ -130,7 +130,7 @@ AndroidNotificationSchema.statics.createWorkOrderNotification = async function(t
   const { address, municipality, date, time, orderId } = workOrderData;
 
   // Format poruke
-  const formattedDate = new Date(date).toLocaleDateString('sr-RS', { day: '2-digit', month: '2-digit' });
+  const formattedDate = new Date(date).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade', day: '2-digit', month: '2-digit' });
   const message = `${address}, ${municipality} - ${formattedDate} u ${time}`;
 
   return this.create({

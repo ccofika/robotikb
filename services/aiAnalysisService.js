@@ -464,8 +464,8 @@ function createUserPromptForAnalysis(data) {
 ═══════════════════════════════════════
 PERIOD ANALIZE
 ═══════════════════════════════════════
-Početak: ${new Date(period.start).toLocaleString('sr-RS')}
-Kraj: ${new Date(period.end).toLocaleString('sr-RS')}
+Početak: ${new Date(period.start).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}
+Kraj: ${new Date(period.end).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}
 Trajanje: ${period.duration}
 
 ═══════════════════════════════════════
@@ -534,7 +534,7 @@ PRIMERI AKTIVNOSTI (Sample)
 
 ADMIN AKCIJE (prvih 10):
 ${sampleLogs.adminActivities.slice(0, 10).map(log =>
-  `• ${log.action} - ${log.user} (${log.role}) - ${new Date(log.timestamp).toLocaleString('sr-RS')}`
+  `• ${log.action} - ${log.user} (${log.role}) - ${new Date(log.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}`
 ).join('\n')}
 
 PERFORMANCE ISSUES (najsporije):

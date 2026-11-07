@@ -491,8 +491,8 @@ function createUserPromptForTechnicianAnalysis(data) {
 ═══════════════════════════════════════
 PERIOD ANALIZE
 ═══════════════════════════════════════
-Početak: ${new Date(period.start).toLocaleString('sr-RS')}
-Kraj: ${new Date(period.end).toLocaleString('sr-RS')}
+Početak: ${new Date(period.start).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}
+Kraj: ${new Date(period.end).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade' })}
 Trajanje: ${period.duration}
 
 ═══════════════════════════════════════

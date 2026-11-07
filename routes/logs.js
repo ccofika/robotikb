@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const fetch = require('node-fetch');
 const geocodingService = require('../services/geocodingService');
 const { auth, isAdmin } = require('../middleware/auth');
+const { parseBelgradeDateTime, belgradeDayRange, belgradeYmd, belgradeHour, belgradeDayOfWeek, addDaysYmd, localToInstant } = require('../utils/belgradeTime');
 
 // Logovi i dashboard analitika - samo admin/supervisor/superadmin
 router.use(auth, isAdmin);
@@ -170,10 +171,10 @@ router.get('/technicians', async (req, res) => {
     if (dateFrom || dateTo) {
       filter.timestamp = {};
       if (dateFrom) {
-        filter.timestamp.$gte = new Date(dateFrom);
+        filter.timestamp.$gte = parseBelgradeDateTime(dateFrom);
       }
       if (dateTo) {
-        filter.timestamp.$lte = new Date(dateTo);
+        filter.timestamp.$lte = parseBelgradeDateTime(dateTo, { endOfDay: true });
       }
     }
 
@@ -327,10 +328,10 @@ router.get('/users', async (req, res) => {
     if (dateFrom || dateTo) {
       filter.timestamp = {};
       if (dateFrom) {
-        filter.timestamp.$gte = new Date(dateFrom);
+        filter.timestamp.$gte = parseBelgradeDateTime(dateFrom);
       }
       if (dateTo) {
-        filter.timestamp.$lte = new Date(dateTo);
+        filter.timestamp.$lte = parseBelgradeDateTime(dateTo, { endOfDay: true });
       }
     }
 
@@ -441,11 +442,10 @@ router.get('/actions', async (req, res) => {
 router.get('/statistics', async (req, res) => {
   try {
     const totalLogs = await Log.countDocuments();
+    // Danas po srpskom vremenu (server radi u UTC-u)
+    const today = belgradeDayRange(new Date(), new Date());
     const todayLogs = await Log.countDocuments({
-      timestamp: {
-        $gte: new Date(new Date().setHours(0, 0, 0, 0)),
-        $lt: new Date(new Date().setHours(23, 59, 59, 999))
-      }
+      timestamp: { $gte: today.start, $lte: today.end }
     });
     
     const actionStats = await Log.aggregate([
@@ -840,8 +840,8 @@ router.get('/dashboard/map-data', async (req, res) => {
     
     if (startDate && endDate) {
       filter.timestamp = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $gte: parseBelgradeDateTime(startDate),
+        $lte: parseBelgradeDateTime(endDate, { endOfDay: true })
       };
     }
     
@@ -914,8 +914,8 @@ router.get('/dashboard/travel-analytics', async (req, res) => {
     
     if (startDate && endDate) {
       filter.timestamp = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $gte: parseBelgradeDateTime(startDate),
+        $lte: parseBelgradeDateTime(endDate, { endOfDay: true })
       };
     }
     
@@ -978,8 +978,9 @@ router.get('/dashboard/travel-analytics', async (req, res) => {
         const currentWO = workOrders[i];
         
         // Check if they're on the same day
-        const prevDay = new Date(previousWO.finishedAt).toDateString();
-        const currDay = new Date(currentWO.createdAt).toDateString();
+        // Isti dan po srpskom vremenu
+        const prevDay = belgradeYmd(previousWO.finishedAt);
+        const currDay = belgradeYmd(currentWO.createdAt);
         
         if (prevDay === currDay) {
           const travelTime = new Date(currentWO.createdAt) - new Date(previousWO.finishedAt);
@@ -1727,33 +1728,35 @@ function buildDashboardFilter(period, technician, municipality, action) {
   
   // Period filter
   if (period && period !== 'all') {
-    const now = new Date();
+    // Počeci perioda po srpskom vremenu (server radi u UTC-u)
+    const todayYmd = belgradeYmd(new Date());
+    const [year, month] = todayYmd.split('-').map(Number);
+    const firstOfMonth = (m) => localToInstant(`${year}-${String(m).padStart(2, '0')}-01`);
     let startDate;
     
     switch (period) {
       case 'danas':
-        startDate = new Date(now.setHours(0, 0, 0, 0));
+        startDate = localToInstant(todayYmd);
         filter.timestamp = { $gte: startDate };
         break;
-      case 'nedelja':
-        const dayOfWeek = now.getDay();
+      case 'nedelja': {
+        // Ponedeljak tekuće nedelje
+        const dayOfWeek = new Date(`${todayYmd}T00:00:00Z`).getUTCDay();
         const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-        startDate = new Date(now);
-        startDate.setDate(now.getDate() - daysToMonday);
-        startDate.setHours(0, 0, 0, 0);
+        startDate = localToInstant(addDaysYmd(todayYmd, -daysToMonday));
         filter.timestamp = { $gte: startDate };
         break;
+      }
       case 'mesec':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        startDate = firstOfMonth(month);
         filter.timestamp = { $gte: startDate };
         break;
       case 'kvartal':
-        const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3;
-        startDate = new Date(now.getFullYear(), quarterStartMonth, 1);
+        startDate = firstOfMonth(Math.floor((month - 1) / 3) * 3 + 1);
         filter.timestamp = { $gte: startDate };
         break;
       case 'godina':
-        startDate = new Date(now.getFullYear(), 0, 1);
+        startDate = firstOfMonth(1);
         filter.timestamp = { $gte: startDate };
         break;
     }
@@ -1778,38 +1781,39 @@ function buildDashboardFilter(period, technician, municipality, action) {
 }
 
 // Helper function to get period grouping for timeline chart
+// Grupe po srpskom vremenu (bez timezone Mongo grupiše po UTC-u)
 function getPeriodGrouping(period) {
   switch (period) {
     case 'danas':
       return {
-        year: { $year: '$timestamp' },
-        month: { $month: '$timestamp' },
-        day: { $dayOfMonth: '$timestamp' },
-        hour: { $hour: '$timestamp' }
+        year: { $year: { date: '$timestamp', timezone: 'Europe/Belgrade' } },
+        month: { $month: { date: '$timestamp', timezone: 'Europe/Belgrade' } },
+        day: { $dayOfMonth: { date: '$timestamp', timezone: 'Europe/Belgrade' } },
+        hour: { $hour: { date: '$timestamp', timezone: 'Europe/Belgrade' } }
       };
     case 'nedelja':
       return {
-        year: { $year: '$timestamp' },
-        month: { $month: '$timestamp' },
-        day: { $dayOfMonth: '$timestamp' }
+        year: { $year: { date: '$timestamp', timezone: 'Europe/Belgrade' } },
+        month: { $month: { date: '$timestamp', timezone: 'Europe/Belgrade' } },
+        day: { $dayOfMonth: { date: '$timestamp', timezone: 'Europe/Belgrade' } }
       };
     case 'mesec':
       return {
-        year: { $year: '$timestamp' },
-        month: { $month: '$timestamp' },
-        week: { $week: '$timestamp' }
+        year: { $year: { date: '$timestamp', timezone: 'Europe/Belgrade' } },
+        month: { $month: { date: '$timestamp', timezone: 'Europe/Belgrade' } },
+        week: { $week: { date: '$timestamp', timezone: 'Europe/Belgrade' } }
       };
     case 'kvartal':
     case 'godina':
       return {
-        year: { $year: '$timestamp' },
-        month: { $month: '$timestamp' }
+        year: { $year: { date: '$timestamp', timezone: 'Europe/Belgrade' } },
+        month: { $month: { date: '$timestamp', timezone: 'Europe/Belgrade' } }
       };
     default:
       return {
-        year: { $year: '$timestamp' },
-        month: { $month: '$timestamp' },
-        day: { $dayOfMonth: '$timestamp' }
+        year: { $year: { date: '$timestamp', timezone: 'Europe/Belgrade' } },
+        month: { $month: { date: '$timestamp', timezone: 'Europe/Belgrade' } },
+        day: { $dayOfMonth: { date: '$timestamp', timezone: 'Europe/Belgrade' } }
       };
   }
 }
@@ -1960,7 +1964,7 @@ router.get('/dashboard/hourly-activity-distribution', async (req, res) => {
       return {
         id: log._id.toString(),
         timestamp: log.timestamp,
-        hour: new Date(log.timestamp).getHours(),
+        hour: belgradeHour(log.timestamp),
         dayOfWeek: getDayOfWeek(new Date(log.timestamp)),
         technician: log.performedByName || log.performedBy?.name || 'Nepoznat tehničar',
         municipality: log.workOrderInfo?.municipality || workOrder?.municipality || 'Nepoznato',
@@ -2028,7 +2032,7 @@ function getActivityPriority(action) {
 // Helper function to get day of week
 function getDayOfWeek(date) {
   const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  return days[date.getDay()];
+  return days[belgradeDayOfWeek(date)];
 }
 
 // Helper function to categorize cancellation reasons
@@ -2369,17 +2373,17 @@ router.get('/drilldown', async (req, res) => {
     }
 
     if (date) {
-      const targetDate = new Date(date);
-      const nextDate = new Date(targetDate);
-      nextDate.setDate(nextDate.getDate() + 1);
+      // Ceo izabrani dan po srpskom vremenu
+      const { start: targetDate, end: dayEnd } = belgradeDayRange(date, date);
 
       logFilter.timestamp = {
         $gte: targetDate,
-        $lt: nextDate
+        $lte: dayEnd
       };
+      // WorkOrder.date je ponoć UTC tog dana, pa je u istom opsegu
       workOrderFilter.date = {
         $gte: targetDate,
-        $lt: nextDate
+        $lte: dayEnd
       };
     }
 
@@ -3381,8 +3385,8 @@ router.get('/dashboard/predictive-analytics', async (req, res) => {
 
     if (startDate && endDate) {
       dateFilter.date = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
+        $gte: parseBelgradeDateTime(startDate),
+        $lte: parseBelgradeDateTime(endDate, { endOfDay: true })
       };
     } else {
       // Default to last 90 days for analysis

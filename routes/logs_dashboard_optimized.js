@@ -716,7 +716,7 @@ const getFinancialAnalysis = async (req, res) => {
           },
           dailyRevenue: {
             $push: {
-              date: { $dateToString: { format: '%Y-%m-%d', date: '$verifiedAt' } },
+              date: { $dateToString: { format: '%Y-%m-%d', date: '$verifiedAt', timezone: 'Europe/Belgrade' } },
               amount: '$totalAmount'
             }
           }

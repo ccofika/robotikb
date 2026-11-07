@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { belgradeYmd } = require('../utils/belgradeTime');
 const Schema = mongoose.Schema;
 
 // Service record schema for embedded services
@@ -113,11 +114,18 @@ const VehicleSchema = new Schema({
   toObject: { virtuals: true }
 });
 
+// Dana do isteka registracije po kalendaru u Srbiji. registrationExpiry je kalendarski dan
+// (ponoć UTC iz <input type="date">); ranije se računalo od trenutka na UTC serveru, pa je
+// između ponoći i 01:00 (02:00 leti) ostajao dan više.
+const daysUntilRegistrationExpiry = (expiry) => {
+  if (!expiry || Number.isNaN(new Date(expiry).getTime())) return NaN; // kao ranije: bez datuma nema broja dana
+  const expiryYmd = new Date(expiry).toISOString().slice(0, 10);
+  return Math.round((Date.parse(expiryYmd) - Date.parse(belgradeYmd())) / (1000 * 60 * 60 * 24));
+};
+
 // Virtual for registration status
 VehicleSchema.virtual('registrationStatus').get(function() {
-  const now = new Date();
-  const expiry = this.registrationExpiry;
-  const daysUntilExpiry = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+  const daysUntilExpiry = daysUntilRegistrationExpiry(this.registrationExpiry);
   
   if (daysUntilExpiry < 0) {
     return 'expired';
@@ -130,9 +138,7 @@ VehicleSchema.virtual('registrationStatus').get(function() {
 
 // Virtual for days until registration expiry
 VehicleSchema.virtual('daysUntilRegistrationExpiry').get(function() {
-  const now = new Date();
-  const expiry = this.registrationExpiry;
-  return Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+  return daysUntilRegistrationExpiry(this.registrationExpiry);
 });
 
 // Virtual for latest service

@@ -221,7 +221,7 @@ NotificationSchema.statics.createMaterialAnomaly = function(logId, technicianId,
 NotificationSchema.statics.createVehicleRegistrationExpiry = function(vehicleId, vehicleName, licensePlate, expiryDate, recipientId) {
   return this.create({
     title: 'Isticanje registracije vozila',
-    message: `Registracija vozila "${vehicleName}" (${licensePlate}) ističe ${new Date(expiryDate).toLocaleDateString('sr-RS')}.`,
+    message: `Registracija vozila "${vehicleName}" (${licensePlate}) ističe ${new Date(expiryDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })}.`,
     type: 'vehicle_registration_expiry',
     priority: 'high',
     recipientId,
@@ -278,7 +278,7 @@ NotificationSchema.statics.createDuplicateAddressSummary = function(count, recip
 NotificationSchema.statics.createTechnicianEmploymentExpiry = function(technicianId, technicianName, expiryDate, recipientId) {
   return this.create({
     title: 'Isticanje ugovora tehničara',
-    message: `Ugovor tehničara "${technicianName}" ističe ${new Date(expiryDate).toLocaleDateString('sr-RS')}.`,
+    message: `Ugovor tehničara "${technicianName}" ističe ${new Date(expiryDate).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })}.`,
     type: 'technician_employment_expiry',
     priority: 'high',
     recipientId,

@@ -343,7 +343,7 @@ TIS Job ID: ${workOrder.tisJobId}
 Korisnik: ${workOrder.userName}
 Telefon: ${workOrder.userPhone}
 Adresa: ${workOrder.address}, ${workOrder.municipality}
-Datum: ${new Date(workOrder.date).toLocaleDateString('sr-RS')} u ${workOrder.time}
+Datum: ${new Date(workOrder.date).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })} u ${workOrder.time}
 
 Tip instalacije: ${workOrder.type}
 Tehnologija: ${workOrder.technology}
@@ -369,7 +369,7 @@ INSTALIRANA OPREMA (${installedEquipment.length})
 ═══════════════════════════════════════
 ${installedEquipment.length > 0
   ? installedEquipment.map(eq =>
-      `• ${eq.category}: ${eq.description}\n  Serijski broj: ${eq.serialNumber}\n  Status: ${eq.status}${eq.installedAt ? `\n  Instalirano: ${new Date(eq.installedAt).toLocaleDateString('sr-RS')}` : ''}`
+      `• ${eq.category}: ${eq.description}\n  Serijski broj: ${eq.serialNumber}\n  Status: ${eq.status}${eq.installedAt ? `\n  Instalirano: ${new Date(eq.installedAt).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' })}` : ''}`
     ).join('\n\n')
   : 'Nema instalirane opreme'}
 

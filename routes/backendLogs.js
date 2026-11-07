@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { auth, isSupervisorOrSuperAdmin } = require('../middleware/auth');
 const { AdminActivityLog, ErrorLog, PerformanceLog } = require('../models');
+const { parseBelgradeDateTime } = require('../utils/belgradeTime');
 
 // ============================================
 // ADMIN ACTIVITY LOGS
@@ -40,10 +41,10 @@ router.get('/activities', auth, isSupervisorOrSuperAdmin, async (req, res) => {
     if (dateFrom || dateTo) {
       query.timestamp = {};
       if (dateFrom) {
-        query.timestamp.$gte = new Date(dateFrom);
+        query.timestamp.$gte = parseBelgradeDateTime(dateFrom);
       }
       if (dateTo) {
-        query.timestamp.$lte = new Date(dateTo);
+        query.timestamp.$lte = parseBelgradeDateTime(dateTo, { endOfDay: true });
       }
     }
 
@@ -129,8 +130,8 @@ router.get('/activities/stats', auth, isSupervisorOrSuperAdmin, async (req, res)
     const query = {};
     if (dateFrom || dateTo) {
       query.timestamp = {};
-      if (dateFrom) query.timestamp.$gte = new Date(dateFrom);
-      if (dateTo) query.timestamp.$lte = new Date(dateTo);
+      if (dateFrom) query.timestamp.$gte = parseBelgradeDateTime(dateFrom);
+      if (dateTo) query.timestamp.$lte = parseBelgradeDateTime(dateTo, { endOfDay: true });
     }
 
     // Ukupan broj aktivnosti
@@ -179,7 +180,7 @@ router.get('/activities/stats', auth, isSupervisorOrSuperAdmin, async (req, res)
       { $match: query },
       {
         $group: {
-          _id: { $hour: '$timestamp' },
+          _id: { $hour: { date: '$timestamp', timezone: 'Europe/Belgrade' } },
           count: { $sum: 1 }
         }
       },
@@ -241,8 +242,8 @@ router.get('/errors', auth, isSupervisorOrSuperAdmin, async (req, res) => {
     // Date range filter
     if (dateFrom || dateTo) {
       query.timestamp = {};
-      if (dateFrom) query.timestamp.$gte = new Date(dateFrom);
-      if (dateTo) query.timestamp.$lte = new Date(dateTo);
+      if (dateFrom) query.timestamp.$gte = parseBelgradeDateTime(dateFrom);
+      if (dateTo) query.timestamp.$lte = parseBelgradeDateTime(dateTo, { endOfDay: true });
     }
 
     // Search filter
@@ -290,8 +291,8 @@ router.get('/errors/stats', auth, isSupervisorOrSuperAdmin, async (req, res) => 
     const query = {};
     if (dateFrom || dateTo) {
       query.timestamp = {};
-      if (dateFrom) query.timestamp.$gte = new Date(dateFrom);
-      if (dateTo) query.timestamp.$lte = new Date(dateTo);
+      if (dateFrom) query.timestamp.$gte = parseBelgradeDateTime(dateFrom);
+      if (dateTo) query.timestamp.$lte = parseBelgradeDateTime(dateTo, { endOfDay: true });
     }
 
     // Ukupan broj grešaka
@@ -424,8 +425,8 @@ router.get('/performance', auth, isSupervisorOrSuperAdmin, async (req, res) => {
     // Date range filter
     if (dateFrom || dateTo) {
       query.timestamp = {};
-      if (dateFrom) query.timestamp.$gte = new Date(dateFrom);
-      if (dateTo) query.timestamp.$lte = new Date(dateTo);
+      if (dateFrom) query.timestamp.$gte = parseBelgradeDateTime(dateFrom);
+      if (dateTo) query.timestamp.$lte = parseBelgradeDateTime(dateTo, { endOfDay: true });
     }
 
     // Search filter
@@ -472,8 +473,8 @@ router.get('/performance/stats', auth, isSupervisorOrSuperAdmin, async (req, res
     const query = {};
     if (dateFrom || dateTo) {
       query.timestamp = {};
-      if (dateFrom) query.timestamp.$gte = new Date(dateFrom);
-      if (dateTo) query.timestamp.$lte = new Date(dateTo);
+      if (dateFrom) query.timestamp.$gte = parseBelgradeDateTime(dateFrom);
+      if (dateTo) query.timestamp.$lte = parseBelgradeDateTime(dateTo, { endOfDay: true });
     }
 
     // Ukupan broj logova
@@ -539,8 +540,8 @@ router.get('/dashboard', auth, isSupervisorOrSuperAdmin, async (req, res) => {
     const query = {};
     if (dateFrom || dateTo) {
       query.timestamp = {};
-      if (dateFrom) query.timestamp.$gte = new Date(dateFrom);
-      if (dateTo) query.timestamp.$lte = new Date(dateTo);
+      if (dateFrom) query.timestamp.$gte = parseBelgradeDateTime(dateFrom);
+      if (dateTo) query.timestamp.$lte = parseBelgradeDateTime(dateTo, { endOfDay: true });
     }
 
     // Paralelno dohvatanje svih statistika
@@ -636,8 +637,8 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
     // Date range filter
     if (dateFrom || dateTo) {
       query.timestamp = {};
-      if (dateFrom) query.timestamp.$gte = new Date(dateFrom);
-      if (dateTo) query.timestamp.$lte = new Date(dateTo);
+      if (dateFrom) query.timestamp.$gte = parseBelgradeDateTime(dateFrom);
+      if (dateTo) query.timestamp.$lte = parseBelgradeDateTime(dateTo, { endOfDay: true });
     }
 
     // Category filter
@@ -715,7 +716,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
         // Ako nema stavki u assignedItems, prikaži samo summary
         if (items.length === 0) {
           excelData.push({
-            'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+            'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
               year: 'numeric',
               month: '2-digit',
               day: '2-digit',
@@ -739,7 +740,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
           // Prikaži svaki komad opreme u posebnom redu
           items.forEach(item => {
             excelData.push({
-              'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+              'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
                 year: 'numeric',
                 month: '2-digit',
                 day: '2-digit',
@@ -766,7 +767,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
 
         if (items.length === 0) {
           excelData.push({
-            'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+            'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
               year: 'numeric',
               month: '2-digit',
               day: '2-digit',
@@ -788,7 +789,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
         } else {
           items.forEach(item => {
             excelData.push({
-              'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+              'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
                 year: 'numeric',
                 month: '2-digit',
                 day: '2-digit',
@@ -812,7 +813,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
       else if ((activity.category === 'equipment' || activity.action.includes('equipment')) && (activity.details?.after || activity.details?.before)) {
         const data = activity.details.after || activity.details.before;
         excelData.push({
-          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
@@ -848,7 +849,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
         }
 
         excelData.push({
-          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
@@ -872,7 +873,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
       else if (activity.category === 'technicians' && (activity.action === 'technician_add' || activity.action === 'technician_edit' || activity.action === 'technician_delete')) {
         const data = activity.details?.after || activity.details?.before || {};
         excelData.push({
-          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
@@ -917,7 +918,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
                                    (item.technicianId ? techNames[item.technicianId.toString()] || '' : '');
 
             excelData.push({
-              'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+              'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
                 year: 'numeric',
                 month: '2-digit',
                 day: '2-digit',
@@ -930,7 +931,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
               'TIS Job ID': item.tisJobId || '',
               'Adresa': item.address || '',
               'Opština': item.municipality || '',
-              'Datum Naloga': item.date ? new Date(item.date).toLocaleDateString('sr-RS') : '',
+              'Datum Naloga': item.date ? new Date(item.date).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }) : '',
               'Status': item.status || '',
               'Dodeljen Tehničar': technicianName,
               'Trajanje (ms)': activity.metadata?.requestDuration || ''
@@ -942,7 +943,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
                                  (data.technicianId ? await getTechnicianName(data.technicianId) : '');
 
           excelData.push({
-            'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+            'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
               year: 'numeric',
               month: '2-digit',
               day: '2-digit',
@@ -958,7 +959,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
             'TIS Job ID': data.tisJobId || activity.entityName || '',
             'Adresa': data.address || '',
             'Opština': data.municipality || '',
-            'Datum Naloga': data.date ? new Date(data.date).toLocaleDateString('sr-RS') : '',
+            'Datum Naloga': data.date ? new Date(data.date).toLocaleDateString('sr-RS', { timeZone: 'Europe/Belgrade' }) : '',
             'Status': data.status || '',
             'Dodeljen Tehničar': technicianName,
             'Promene': activity.details?.changes ? activity.details.changes.join('; ') : '',
@@ -970,7 +971,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
       else if (activity.category === 'users' || activity.action.includes('user')) {
         const data = activity.details?.after || activity.details?.before || {};
         excelData.push({
-          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
@@ -993,7 +994,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
       else if (activity.category === 'vehicles' || activity.action.includes('vehicle')) {
         const data = activity.details?.after || activity.details?.before || {};
         excelData.push({
-          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
@@ -1016,7 +1017,7 @@ router.get('/export-activities', auth, isSupervisorOrSuperAdmin, async (req, res
       // Generic fallback za ostale kategorije
       else {
         excelData.push({
-          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', {
+          'Vreme': new Date(activity.timestamp).toLocaleString('sr-RS', { timeZone: 'Europe/Belgrade',
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',

@@ -12,6 +12,7 @@ const { createInventorySummary } = require('../utils/emailTemplates');
 const { logActivity } = require('../middleware/activityLogger');
 
 const { auth, isAdmin, isTechnicianOwner } = require('../middleware/auth');
+const { belgradeDayRange, belgradeMonthRange, belgradeYmd, localToInstant } = require('../utils/belgradeTime');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -1385,16 +1386,9 @@ router.get('/:id/recordings', auth, isAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Tehničar nije pronađen' });
     }
 
-    // Ako nema datuma, koristi današnji
-    // Parsiraj datum kao lokalno vreme (Europe/Belgrade = UTC+1 ili UTC+2 za letnje)
-    const queryDate = date ? new Date(date + 'T00:00:00+01:00') : new Date();
-
-    // Kreiraj range za ceo dan u lokalnom vremenu
-    const startOfDay = new Date(queryDate);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(queryDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Ceo izabrani dan po srpskom vremenu (bez datuma: danas). Ranije fiksno +01:00 i
+    // setHours na UTC serveru, pa je izabrani dan pokazivao snimke prethodnog dana.
+    const { start: startOfDay, end: endOfDay } = belgradeDayRange(date || new Date(), date || new Date());
 
     // Kreiraj query
     const query = {
@@ -1458,13 +1452,14 @@ router.get('/:id/recordings/dates', auth, isAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Neispravan ID tehničara' });
     }
 
-    // Default: tekući mesec i godina
-    const queryYear = year ? parseInt(year) : new Date().getFullYear();
-    const queryMonth = month ? parseInt(month) - 1 : new Date().getMonth(); // 0-indexed
+    // Default: tekući mesec i godina po srpskom vremenu
+    const [currentYear, currentMonth] = belgradeYmd().split('-').map(Number);
+    const queryYear = year ? parseInt(year) : currentYear;
+    const queryMonth = month ? parseInt(month) - 1 : currentMonth - 1; // 0-indexed
 
-    // Kreiraj range za ceo mesec
-    const startOfMonth = new Date(queryYear, queryMonth, 1);
-    const endOfMonth = new Date(queryYear, queryMonth + 1, 0, 23, 59, 59, 999);
+    // Ceo mesec po srpskom vremenu (isto kao grupisanje po danima ispod)
+    const { start: startOfMonth, end: endOfMonth } =
+      belgradeMonthRange(localToInstant(`${queryYear}-${String(queryMonth + 1).padStart(2, '0')}-15`));
 
     // Agregiraj po datumu
     const recordingDates = await CallRecording.aggregate([

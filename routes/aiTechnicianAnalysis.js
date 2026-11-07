@@ -3,6 +3,7 @@ const router = express.Router();
 const { auth, isSupervisorOrSuperAdmin } = require('../middleware/auth');
 const AITechnicianAnalysis = require('../models/AITechnicianAnalysis');
 const { performAITechnicianAnalysis } = require('../services/aiTechnicianAnalysisService');
+const { belgradeYmd, addDaysYmd, localToInstant } = require('../utils/belgradeTime');
 
 /**
  * @route   POST /api/ai-technician-analysis/analyze
@@ -239,9 +240,8 @@ router.get('/scheduled/trigger', async (req, res) => {
     const endDate = new Date(now);
 
     // Start date = prošli ponedeljak u 00:00
-    const startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - 7); // Idi 7 dana unazad (prošli ponedeljak)
-    startDate.setHours(0, 0, 0, 0); // Postavi na 00:00:00
+    // Prošli ponedeljak u 00:00 po srpskom vremenu (server radi u UTC-u)
+    const startDate = localToInstant(addDaysYmd(belgradeYmd(now), -7));
 
     console.log('Analysis period:');
     console.log('  Start:', startDate.toISOString(), '(Last Monday 00:00)');

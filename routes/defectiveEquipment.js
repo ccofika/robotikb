@@ -222,8 +222,8 @@ const express = require('express');
            {
              $group: {
                _id: {
-                 year: { $year: '$removedAt' },
-                 month: { $month: '$removedAt' }
+                 year: { $year: { date: '$removedAt', timezone: 'Europe/Belgrade' } },
+                 month: { $month: { date: '$removedAt', timezone: 'Europe/Belgrade' } }
                },
                count: { $sum: 1 }
              }
