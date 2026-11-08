@@ -91,8 +91,9 @@ test('brisanje tehničara ne dira opremu, materijal ni istoriju', async ({ page 
   const techRow = () => page.locator('tr', { hasText: TECH }).filter({ has: page.getByTitle('Obriši tehničara') });
   const row = techRow();
   await expect(row).toHaveCount(1);
-  page.once('dialog', (d) => d.accept());
+  // potvrda je dijalog u izgledu Security dela (ranije window.confirm)
   await row.getByTitle('Obriši tehničara').click();
+  await page.getByTestId('confirm-ok').click();
   await expect(page.getByText('Tehničar je uspešno obrisan!')).toBeVisible();
   await page.reload();
   await page.getByPlaceholder(/Pretra/i).first().fill(TECH);
