@@ -1388,7 +1388,7 @@ router.get('/:id/recordings', auth, isAdmin, async (req, res) => {
 
     // Ceo izabrani dan po srpskom vremenu (bez datuma: danas). Ranije fiksno +01:00 i
     // setHours na UTC serveru, pa je izabrani dan pokazivao snimke prethodnog dana.
-    const { start: startOfDay, end: endOfDay } = belgradeDayRange(date || new Date(), date || new Date());
+    const { start: startOfDay, end: endOfDay, fromYmd: queryYmd } = belgradeDayRange(date || new Date(), date || new Date());
 
     // Kreiraj query
     const query = {
@@ -1427,7 +1427,7 @@ router.get('/:id/recordings', auth, isAdmin, async (req, res) => {
       success: true,
       technicianId: id,
       technicianName: technician.name,
-      date: queryDate.toISOString().split('T')[0],
+      date: queryYmd,
       totalCount: formattedRecordings.length,
       linkedCount: formattedRecordings.filter(r => r.linkedToWorkOrder).length,
       unlinkedCount: formattedRecordings.filter(r => !r.linkedToWorkOrder).length,

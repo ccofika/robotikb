@@ -1607,7 +1607,8 @@ router.post('/upload', auth, isAdmin, logActivity('workorders', 'workorder_bulk_
         }
         
         // Pravi trenutak termina: date + time po srpskom vremenu
-        const bulkAppointmentDateTime = getAppointmentInstant({ date, time: time || '09:00' });
+        const bulkWorkOrderTime = time || '09:00';
+        const bulkAppointmentDateTime = getAppointmentInstant({ date, time: bulkWorkOrderTime });
 
         // Kreiranje novog radnog naloga
         const newWorkOrder = new WorkOrder({
@@ -1850,7 +1851,8 @@ router.post('/', auth, isAdmin, logActivity('workorders', 'workorder_add', {
     }
     
     // Pravi trenutak termina: date + time po srpskom vremenu
-    const appointmentDateTime = getAppointmentInstant({ date, time: time || '09:00' });
+    const workOrderTime = time || '09:00';
+    const appointmentDateTime = getAppointmentInstant({ date, time: workOrderTime });
 
     // Kreiranje novog radnog naloga
     const newWorkOrder = new WorkOrder({
